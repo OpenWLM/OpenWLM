@@ -51,7 +51,7 @@ OpenWLM is an independent, open-source educational project and a nostalgic tribu
 - npm
 
 ### Installation
-```bash
-git clone [https://github.com/OpenWLM/OpenWLM.git](https://github.com/OpenWLM/OpenWLM.git)
+
+git clone https://github.com/OpenWLM/OpenWLM.git](https://github.com/OpenWLM/OpenWLM.git
 cd OpenWLM
 npm install

@@ -44,6 +44,15 @@ OpenWLM is an independent, open-source educational project and a nostalgic tribu
 - **P2P** : WebRTC (Signaling chiffré).
 - **Sécurité** : Web Crypto API (SubtleCrypto), PBKDF2 pour le hachage.
 
+
+<p align="center">
+  <img src="Screen1.jpg" alt="OpenWLM Logo" width="200" />
+</p>
+
+<p align="center">
+  <img src="Screen2.jpg" alt="OpenWLM Logo" width="200" />
+</p>
+
 ## 📦 Installation & Lancement
 
 ### Prérequis

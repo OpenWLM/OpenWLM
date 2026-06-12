@@ -46,11 +46,8 @@ OpenWLM is an independent, open-source educational project and a nostalgic tribu
 
 
 <p align="center">
-  <img src="Screen1.jpg" alt="OpenWLM Logo" width="200" />
-</p>
-
-<p align="center">
-  <img src="Screen2.jpg" alt="OpenWLM Logo" width="200" />
+  <img src="Screen1.jpg" width="45%" />
+  <img src="Screen2.jpg" width="25%" />
 </p>
 
 ## 📦 Installation & Lancement

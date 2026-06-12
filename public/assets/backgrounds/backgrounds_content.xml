@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://messenger.msn.com/messengercontent/1.0" xmlns:background="http://messenger.msn.com/background/1.0" version="1.0" type="theme">
+  <item id="1" background:version="1.0" type="background" mimetype="image/jpg" contenttype="D" file="car.jpg" background:default="false" background:displayname="Voiture" />
+  <item id="2" background:version="1.0" type="background" mimetype="image/jpg" contenttype="D" file="fish.jpg" background:default="false" background:displayname="Poisson" />
+  <item id="3" background:version="1.0" type="background" mimetype="image/jpg" contenttype="D" file="hearts.jpg" background:default="false" background:displayname="Cœurs" />
+  <item id="4" background:version="1.0" type="background" mimetype="image/jpg" contenttype="D" file="lavender.jpg" background:default="false" background:displayname="Lavande" />
+  <item id="5" background:version="1.0" type="background" mimetype="image/jpg" contenttype="D" file="planets.jpg" background:default="false" background:displayname="Planètes" />
+</package>

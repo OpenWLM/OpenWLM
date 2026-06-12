@@ -1,0 +1,21 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Shaking lines (blue) -->
+  <path d="M4 8C3 10 3 14 4 16" stroke="#4b80b2" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M2 7C0.5 10 0.5 14 2 17" stroke="#4b80b2" stroke-width="1" stroke-opacity="0.6" stroke-linecap="round"/>
+  
+  <path d="M20 8C21 10 21 14 20 16" stroke="#4b80b2" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M22 7C23.5 10 23.5 14 22 17" stroke="#4b80b2" stroke-width="1" stroke-opacity="0.6" stroke-linecap="round"/>
+
+  <!-- Smiley (yellow) -->
+  <circle cx="12" cy="12" r="7" fill="#ffe500" stroke="#cc9900" stroke-width="0.5"/>
+  
+  <!-- Eyes -->
+  <circle cx="10" cy="10.5" r="1.2" fill="white" stroke="black" stroke-width="0.3"/>
+  <circle cx="10.2" cy="10.2" r="0.4" fill="black"/>
+  
+  <circle cx="14" cy="10.5" r="1.2" fill="white" stroke="black" stroke-width="0.3"/>
+  <circle cx="13.8" cy="10.8" r="0.4" fill="black"/>
+
+  <!-- Mouth (wavy) -->
+  <path d="M9 14.5C9.5 13.5 10.5 13.5 11 14.5C11.5 15.5 12.5 15.5 13 14.5C13.5 13.5 14.5 13.5 15 14.5" stroke="black" stroke-width="0.8" stroke-linecap="round" fill="none"/>
+</svg>

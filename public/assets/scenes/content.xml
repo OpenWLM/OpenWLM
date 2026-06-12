@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://messenger.msn.com/messengercontent/1.0" xmlns:scene="http://messenger.msn.com/scene/1.0" version="1.0" type="theme">
+  <item id="1" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="0001.png" scene:default="false" scene:displayname="Champ de marguerites" />
+  <item id="2" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="0002.jpg" scene:default="false" scene:displayname="Bambou" />
+  <item id="3" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="0003.jpg" scene:default="false" scene:displayname="Cerisiers" />
+  <item id="4" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="0004.png" scene:default="false" scene:displayname="Géranium violet" />
+  <item id="5" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="0005.png" scene:default="false" scene:displayname="Arabesque" />
+  <item id="6" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="0006.png" scene:default="false" scene:displayname="Aurore" />
+  <item id="7" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="0007.png" scene:default="false" scene:displayname="Champ" />
+  <item id="8" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="0008.png" scene:default="false" scene:displayname="Magie noire" />
+  <item id="9" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="ButterflyPattern.png" scene:default="false" scene:displayname="Papillon" />
+  <item id="10" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="CarbonFiber.jpg" scene:default="false" scene:displayname="Fibre de carbone" />
+  <item id="11" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="DottieGreen.png" scene:default="false" scene:displayname="Dottie Green" />
+  <item id="12" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="Graffiti.jpg" scene:default="false" scene:displayname="Graffiti" />
+  <item id="13" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="MesmerizingWhite.png" scene:default="false" scene:displayname="Magie blanche" />
+  <item id="14" scene:version="1.0" type="scene" mimetype="image/png" contenttype="D" file="Morty.png" scene:default="false" scene:displayname="Morty" />
+  <item id="15" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="Robot.jpg" scene:default="false" scene:displayname="Robot" />
+  <item id="16" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="Silhouette.jpg" scene:default="false" scene:displayname="Silhouette" />
+  <item id="17" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="zune_01.jpg" scene:default="false" scene:displayname="zune_01" />
+  <item id="18" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="zune_02.jpg" scene:default="false" scene:displayname="zune_02" />
+  <item id="19" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="zune_03.jpg" scene:default="false" scene:displayname="zune_03" />
+  <item id="20" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="zune_04.jpg" scene:default="false" scene:displayname="zune_04" />
+  <item id="21" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="zune_05.jpg" scene:default="false" scene:displayname="zune_05" />
+  <item id="22" scene:version="1.0" type="scene" mimetype="image/jpg" contenttype="D" file="zune_06.jpg" scene:default="false" scene:displayname="zune_06" />
+</package>

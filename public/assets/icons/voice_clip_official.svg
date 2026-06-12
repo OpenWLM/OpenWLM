@@ -1,0 +1,8 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Thought bubble -->
+  <path d="M16 6C10 6 5 9 5 13C5 15 7 17 9 18.5V23L13 20C14 20.5 15 20.5 16 20.5C22 20.5 27 17.5 27 13.5C27 9.5 22 6.5 16 6.5V6Z" fill="white" stroke="#99b4d1" stroke-width="1"/>
+  <!-- Microphone -->
+  <path d="M16 9C15 9 14 10 14 11V14C14 15 15 16 16 16C17 16 18 15 18 14V11C18 10 17 9 16 9Z" fill="#666"/>
+  <path d="M13 13V14C13 15.5 14.5 17 16 17C17.5 17 19 15.5 19 14V13" stroke="#666" stroke-width="1" stroke-linecap="round"/>
+  <path d="M16 17V19" stroke="#666" stroke-width="1"/>
+</svg>

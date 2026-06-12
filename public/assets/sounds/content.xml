@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<package version="1.0" type="theme" partnerid="TEST" xmlns="http://messenger.msn.com/messengercontent/1.0" xmlns:sound="http://messenger.msn.com/sound/1.0">
+  <item id="1" type="sound" file="smooth_sax.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Sax velours" />
+  <item id="2" type="sound" file="gong.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Gong" />
+  <item id="3" type="sound" file="Kiss.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Bisou" />
+  <item id="4" type="sound" file="driving_bass.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Basse" />
+  <item id="5" type="sound" file="band_intro.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Intro" />
+  <item id="6" type="sound" file="electric_guitar.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Guitare électrique" />
+  <item id="7" type="sound" file="alien.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Extra-terrestre" />
+  <item id="8" type="sound" file="life_in_redmond.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Vie à Redmond" />
+  <item id="9" type="sound" file="piano.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST174546111" sound:displayname="Piano" />
+  <item id="10" type="sound" file="cafe_in_paris.wma" mimetype="audio/x-ms-wma" sound:version="1.0" sound:default="true" contenttype="D" contentid="TEST1763405680" sound:displayname="Café à Paris" />
+</package>

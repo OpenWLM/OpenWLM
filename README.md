@@ -10,7 +10,7 @@ Une récréation moderne, open-source et sécurisée de l'expérience iconique d
 OpenWLM is an independent, open-source educational project and a nostalgic tribute. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Microsoft Corporation or any of its subsidiaries.
 
 **Please note:** - This project is currently a **Proof of Concept (PoC)** developed for educational purposes. 
-- **AI-Assisted Codebase:** Parts of this codebase and its architecture have been generated or assisted by AI (Gemini). While it implements modern cryptographic concepts (E2EE, Zero-Knowledge), the code **has not undergone a professional human security audit and may contain vulnerabilities**. 
+- **AI-Assisted Codebase:** Parts of this codebase and its architecture have been generated or assisted by AI. While it implements modern cryptographic concepts (E2EE, Zero-Knowledge), the code **has not undergone a professional human security audit and may contain vulnerabilities**. 
 - Do not use OpenWLM to exchange highly sensitive data. Use it at your own risk.
 
 ---

@@ -19,7 +19,17 @@ const __dirname = path.dirname(__filename);
 
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true, mode: 0o700 });
+} else {
+  try { fs.chmodSync(UPLOADS_DIR, 0o700); } catch (e) {}
+}
+
+// SÉCURITÉ : Interdire toute exécution de script si un serveur web frontal pointe par mégarde sur uploads
+const htaccessPath = path.join(UPLOADS_DIR, '.htaccess');
+if (!fs.existsSync(htaccessPath)) {
+  try {
+    fs.writeFileSync(htaccessPath, "Require all denied\nOptions -Indexes -ExecCGI\nRemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phps .cgi .pl .py .jsp .asp .sh .bash\n");
+  } catch (e) {}
 }
 
 const fileStorage = multer.diskStorage({
@@ -34,7 +44,7 @@ const fileStorage = multer.diskStorage({
 
 const upload = multer({
   storage: fileStorage,
-  limits: { fileSize: 50 * 1024 * 1024 } // Limite 50 Mo
+  limits: { fileSize: 100 * 1024 * 1024 } // Limite 100 Mo
 });
 
 const app = express();
@@ -776,48 +786,71 @@ app.post('/api/messages/clear', authenticateToken, (req, res) => {
  * Le serveur reçoit uniquement des octets chiffrés avec AES-GCM (Zero-Knowledge)
  * Validité : 4 heures maximum
  */
-app.post('/api/files/upload', authenticateToken, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "Aucun fichier reçu." });
-  }
+app.post('/api/files/upload', authenticateToken, (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    // 1. GESTION PROPRE DES ERREURS MULTER (Ex: dépassement de taille)
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({
+            error: "Le fichier dépasse la taille maximale autorisée de 100 Mo."
+          });
+        }
+        return res.status(400).json({ error: `Erreur d'envoi du fichier : ${err.message}` });
+      }
+      return res.status(400).json({ error: err.message || "Erreur lors du téléversement du fichier." });
+    }
 
-  const senderId = req.user.id;
-  const receiverId = parseInt(req.body.receiverId);
-  const originalName = req.body.originalName || 'fichier_chiffre.bin';
-  const fileType = req.body.fileType || 'application/octet-stream';
-  const fileSize = req.file.size;
+    if (!req.file) {
+      return res.status(400).json({ error: "Aucun fichier reçu." });
+    }
 
-  if (!receiverId) {
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: "Destinataire manquant." });
-  }
+    // 2. NE PAS FAIRE CONFIANCE AU MIME ET NOM DÉCLARÉS PAR LE CLIENT
+    // - Assainir le nom original pour bloquer toute tentative de path traversal ou caractères de contrôle
+    const rawOriginalName = String(req.body.originalName || 'fichier_chiffre.bin');
+    const safeOriginalName = path.basename(rawOriginalName).replace(/[/\\?%*:|"<>]/g, '_').slice(0, 255) || 'fichier_chiffre.bin';
 
-  const fileId = crypto.randomUUID();
-  const token = crypto.randomBytes(24).toString('hex');
-  const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
-  const expiresAt = Date.now() + FOUR_HOURS_MS;
+    // - Valider strictement le format MIME 'type/subtype' (sans l'utiliser comme type d'exécution serveur)
+    const rawFileType = String(req.body.fileType || 'application/octet-stream');
+    const mimeRegex = /^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/;
+    const safeFileType = mimeRegex.test(rawFileType) ? rawFileType.slice(0, 100) : 'application/octet-stream';
 
-  try {
-    const stmt = db.prepare(`
-      INSERT INTO shared_files (id, sender_id, receiver_id, filename, original_name, file_size, file_type, token, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(fileId, senderId, receiverId, req.file.filename, originalName, fileSize, fileType, token, expiresAt);
+    const senderId = req.user.id;
+    const receiverId = parseInt(req.body.receiverId);
+    const fileSize = req.file.size;
 
-    res.json({
-      success: true,
-      fileId,
-      token,
-      downloadUrl: `/api/files/download/${fileId}?token=${token}`,
-      expiresAt,
-      originalName,
-      fileSize
-    });
-  } catch (err) {
-    console.error("Erreur enregistrement fichier:", err);
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: "Erreur lors de l'enregistrement du fichier." });
-  }
+    if (!receiverId || isNaN(receiverId)) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: "Destinataire manquant ou invalide." });
+    }
+
+    const fileId = crypto.randomUUID();
+    const token = crypto.randomBytes(24).toString('hex');
+    const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+    const expiresAt = Date.now() + FOUR_HOURS_MS;
+
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO shared_files (id, sender_id, receiver_id, filename, original_name, file_size, file_type, token, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(fileId, senderId, receiverId, req.file.filename, safeOriginalName, fileSize, safeFileType, token, expiresAt);
+
+      res.json({
+        success: true,
+        fileId,
+        token,
+        downloadUrl: `/api/files/download/${fileId}?token=${token}`,
+        expiresAt,
+        originalName: safeOriginalName,
+        fileSize
+      });
+    } catch (dbErr) {
+      console.error("Erreur enregistrement fichier:", dbErr);
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      res.status(500).json({ error: "Erreur lors de l'enregistrement du fichier." });
+    }
+  });
 });
 
 /**
@@ -856,9 +889,18 @@ app.get('/api/files/download/:fileId', (req, res) => {
     return res.status(404).json({ error: "Fichier physique introuvable sur le disque." });
   }
 
+  // SÉCURITÉ MIME & ANTI-EXÉCUTION :
+  // Le serveur ne fait JAMAIS confiance au MIME déclaré par le client.
+  // 1. Content-Type forcé en application/octet-stream (flux binaire brut).
+  // 2. X-Content-Type-Options: nosniff pour interdire au navigateur de renifler ou interpréter du code (HTML, JS, SVG).
+  // 3. Content-Security-Policy: sandbox stricte pour neutraliser toute possibilité d'exécution de script.
+  // 4. Content-Disposition: attachment avec nom anonymisé .bin pour forcer le téléchargement sans ouverture inline.
   res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   res.setHeader('Content-Disposition', `attachment; filename="encrypted_${fileRecord.id}.bin"`);
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
   res.sendFile(filePath);
 });
 

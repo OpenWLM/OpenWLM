@@ -1237,9 +1237,9 @@ const App: React.FC = () => {
     if (!myKeys) { alert("Clés E2E non prêtes."); return; }
     if (!activeChatId) { alert("Veuillez sélectionner un contact."); return; }
 
-    const MAX_SIZE = 50 * 1024 * 1024; // 50 Mo max
+    const MAX_SIZE = 100 * 1024 * 1024; // 100 Mo max
     if (file.size > MAX_SIZE) {
-      alert("Le fichier dépasse la taille maximale autorisée (50 Mo).");
+      alert("Le fichier dépasse la taille maximale autorisée (100 Mo).");
       return;
     }
 
@@ -1271,7 +1271,7 @@ const App: React.FC = () => {
       });
 
       if (!res.data.success) {
-        throw new Error("Erreur serveur lors de l'envoi du fichier.");
+        throw new Error(res.data.error || "Erreur serveur lors de l'envoi du fichier.");
       }
 
       // 4. Préparer le payload E2EE contenant les métadonnées et clés de déchiffrement
@@ -1343,13 +1343,23 @@ const App: React.FC = () => {
           }
         }
       });
-
+    } catch (err: unknown) {
+      console.error("Erreur lors de l'envoi du fichier:", err);
+      const axiosErr = err as { response?: { status?: number; data?: { error?: string } }; message?: string };
+      const serverError = axiosErr.response?.data?.error;
+      if (axiosErr.response?.status === 413 || (serverError && /100\s*Mo|taille|large/i.test(serverError))) {
+        alert("Échec de l'envoi : le fichier dépasse la taille maximale autorisée (100 Mo).");
+      } else if (serverError) {
+        alert(`Échec de l'envoi : ${serverError}`);
+      } else if (axiosErr.message) {
+        alert(`Échec de l'envoi : ${axiosErr.message}`);
+      } else {
+        alert("Une erreur est survenue lors du chiffrement ou de l'envoi du fichier.");
+      }
+    } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-    } catch (err) {
-      console.error("Erreur lors de l'envoi du fichier:", err);
-      alert("Une erreur est survenue lors du chiffrement ou de l'envoi du fichier.");
     }
   };
 

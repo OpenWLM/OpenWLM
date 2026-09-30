@@ -1,0 +1,53 @@
+{
+  "name": "Windows Live Messenger",
+  "short_name": "OpenWLM",
+  "description": "Windows Live Messenger 2009 Web Edition (Chiffrement E2EE & Rétro)",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#d5e9f8",
+  "theme_color": "#0078d7",
+  "lang": "fr-FR",
+  "scope": "/",
+  "categories": ["social", "communications"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "320x305",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Messagerie",
+      "short_name": "Chat",
+      "description": "Ouvrir vos conversations",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

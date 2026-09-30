@@ -64,6 +64,32 @@ body, html {
 .wlm-logo-text { font-weight: bold; font-size: 13px; color: #004b8d; }
 .msn-butterfly { width: 18px; height: 18px; background: url('/assets/openwlm_logo.png') center center; background-size: cover; border-radius: 2px; }
 
+.pwa-install-btn {
+  margin-left: auto;
+  font-size: 11px;
+  color: #004b8d;
+  background: linear-gradient(to bottom, #ffffff, #e6f2fb);
+  border: 1px solid #7eb4ea;
+  border-radius: 3px;
+  padding: 3px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.pwa-install-btn:hover {
+  background: linear-gradient(to bottom, #edf6fd, #d0e7f9);
+  border-color: #3d88cf;
+}
+.pwa-install-btn:active {
+  background: #c3dff5;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
 .wlm-header-main {
   height: 110px; position: relative;
   background: linear-gradient(to bottom, #fcfdfe, #e1eff7);

@@ -111,6 +111,31 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// PWA : Servir le Service Worker avec les en-têtes obligatoires
+app.get('/sw.js', (req, res) => {
+  const swDistPath = path.join(__dirname, '../dist/sw.js');
+  const targetPath = fs.existsSync(swDistPath) ? swDistPath : path.join(__dirname, '../public/sw.js');
+  if (fs.existsSync(targetPath)) {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.sendFile(targetPath);
+  }
+  res.status(404).send('Service Worker introuvable.');
+});
+
+// PWA : Servir le Manifeste avec le bon type MIME
+app.get('/manifest.json', (req, res) => {
+  const manifestDistPath = path.join(__dirname, '../dist/manifest.json');
+  const targetPath = fs.existsSync(manifestDistPath) ? manifestDistPath : path.join(__dirname, '../public/manifest.json');
+  if (fs.existsSync(targetPath)) {
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.sendFile(targetPath);
+  }
+  res.status(404).send('Manifest introuvable.');
+});
+
 // SÉCURITÉ : Servir les fichiers statiques du frontend (React/Vite) avec redirect: false pour éviter l'Open Redirect sur les dossiers
 app.use(express.static(path.join(__dirname, '../dist'), { redirect: false }));
 

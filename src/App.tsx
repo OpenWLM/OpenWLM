@@ -17,6 +17,7 @@ import {
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
 import FileTransferCard, { type FileDataPayload } from './components/FileTransferCard';
+import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 
 /**
  * INTERFACES
@@ -348,6 +349,13 @@ const App: React.FC = () => {
       return saved ? parseInt(saved) : 0;
     } catch (e) { return 0; }
   });
+
+  // --- SUPPORT PWA (INSTALLATION) ---
+  const [canInstallPWA, setCanInstallPWA] = useState(false);
+  useEffect(() => {
+    const unsub = onInstallAvailabilityChange(setCanInstallPWA);
+    return unsub;
+  }, []);
 
   // --- ÉTAT DU PROFIL PERSONNEL ---
   const [myStatus, setMyStatus] = useState('online');
@@ -1886,6 +1894,15 @@ const App: React.FC = () => {
         <div className="wlm-branding">
           <div className="msn-butterfly"></div>
           <div className="wlm-logo-text">Open<span>WLM</span></div>
+          {canInstallPWA && (
+            <button 
+              className="pwa-install-btn" 
+              onClick={() => promptPWAInstall()}
+              title="Installer Windows Live Messenger sur votre ordinateur ou mobile"
+            >
+              📥 Installer
+            </button>
+          )}
         </div>
 
         {/* En-tête Profil (Avatar, Nom, PSM) */}

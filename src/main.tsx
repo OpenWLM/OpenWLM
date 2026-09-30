@@ -2,6 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { initPWA } from './pwa'
+
+// Initialiser le Service Worker PWA et les gestionnaires d'installation
+initPWA()
 
 // SÉCURITÉ & WEBRTC : Forcer le passage en HTTPS si on est en production
 // Les navigateurs bloquent l'accès à la caméra/micro sur du HTTP simple.

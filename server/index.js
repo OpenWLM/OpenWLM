@@ -1186,6 +1186,112 @@ io.on('connection', (socket) => {
   });
 
   /**
+   * --- ACTIVITÉS & JEUX MULTI-JOUEURS MSN (MORPION / TIC-TAC-TOE) ---
+   */
+
+  // 1. Envoi d'une invitation à jouer
+  socket.on('game_invite', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const { target, gameType } = data;
+    const targetSocketId = onlineUsers.get(target);
+
+    if (targetSocketId) {
+      const senderUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
+      if (!senderUser) return;
+
+      io.to(targetSocketId).emit('game_invite_received', {
+        from: socket.user.id,
+        fromName: senderUser.nickname || senderUser.username,
+        gameType: gameType || 'morpion'
+      });
+    } else {
+      socket.emit('game_user_offline', { target });
+    }
+  });
+
+  // 2. Acceptation de l'invitation
+  socket.on('game_accept', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const { target, gameType } = data;
+    const targetSocketId = onlineUsers.get(target);
+
+    const acceptorUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
+    const targetUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(target);
+
+    if (targetSocketId && acceptorUser && targetUser) {
+      // L'initiateur joue 'X' et a le premier tour
+      io.to(targetSocketId).emit('game_started', {
+        opponentId: socket.user.id,
+        opponentName: acceptorUser.nickname || acceptorUser.username,
+        mySymbol: 'X',
+        isMyTurn: true,
+        gameType: gameType || 'morpion'
+      });
+
+      // L'accepteur joue 'O' et attend son tour
+      socket.emit('game_started', {
+        opponentId: target,
+        opponentName: targetUser.nickname || targetUser.username,
+        mySymbol: 'O',
+        isMyTurn: false,
+        gameType: gameType || 'morpion'
+      });
+    }
+  });
+
+  // 3. Refus de l'invitation
+  socket.on('game_decline', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const { target } = data;
+    const targetSocketId = onlineUsers.get(target);
+    if (targetSocketId) {
+      const user = db.prepare('SELECT nickname, username FROM users WHERE id = ?').get(socket.user.id);
+      io.to(targetSocketId).emit('game_declined', {
+        from: socket.user.id,
+        fromName: user?.nickname || user?.username || 'Le contact'
+      });
+    }
+  });
+
+  // 4. Transmission d'un coup joué sur la grille
+  socket.on('game_move', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const { target, index, symbol } = data;
+    const targetSocketId = onlineUsers.get(target);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('game_move', {
+        from: socket.user.id,
+        index,
+        symbol
+      });
+    }
+  });
+
+  // 5. Demande de nouvelle manche / Recommencer
+  socket.on('game_restart', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const { target } = data;
+    const targetSocketId = onlineUsers.get(target);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('game_restart', {
+        from: socket.user.id
+      });
+    }
+  });
+
+  // 6. Quitter / Abandonner la partie
+  socket.on('game_quit', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const { target } = data;
+    const targetSocketId = onlineUsers.get(target);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('game_quit', {
+        from: socket.user.id
+      });
+    }
+  });
+
+  /**
    * Gestion de la déconnexion
    */
   socket.on('disconnect', () => {

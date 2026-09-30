@@ -17,6 +17,7 @@ import {
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
 import FileTransferCard, { type FileDataPayload } from './components/FileTransferCard';
+import MorpionGame from './components/MorpionGame';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 
 /**
@@ -516,6 +517,25 @@ const App: React.FC = () => {
   const [callSignal, setCallSignal] = useState<any>(null);
   const [isAudioOnly, setIsAudioOnly] = useState(false);
   const [iceCandidatesBuffer, setIceCandidatesBuffer] = useState<any[]>([]);
+
+  // --- ÉTAT DU JEU MORPION (ACTIVITÉS MSN) ---
+  const [activeGame, setActiveGame] = useState<{
+    opponentId: number;
+    opponentName: string;
+    mySymbol: 'X' | 'O';
+    isMyTurn: boolean;
+    gameType: string;
+  } | null>(null);
+  const [incomingGameInvite, setIncomingGameInvite] = useState<{
+    from: number;
+    fromName: string;
+    gameType: string;
+  } | null>(null);
+  const [outgoingGameInvite, setOutgoingGameInvite] = useState<{
+    target: number;
+    targetName: string;
+  } | null>(null);
+  const [showGamesMenu, setShowGamesMenu] = useState(false);
 
   // --- ÉTAT DES CONTACTS & MESSAGES ---
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -1074,6 +1094,28 @@ const App: React.FC = () => {
       // Invitation acceptée
       newSocket.on('contact_accepted', () => {
         refreshData();
+      });
+
+      // --- ÉVÉNEMENTS JEUX & ACTIVITÉS MSN (MORPION) ---
+      newSocket.on('game_invite_received', (data: { from: number; fromName: string; gameType: string }) => {
+        setIncomingGameInvite(data);
+        try { SoundManager.play('ONLINE'); } catch {}
+      });
+
+      newSocket.on('game_started', (data: { opponentId: number; opponentName: string; mySymbol: 'X' | 'O'; isMyTurn: boolean; gameType: string }) => {
+        setIncomingGameInvite(null);
+        setOutgoingGameInvite(null);
+        setActiveGame(data);
+      });
+
+      newSocket.on('game_declined', (data: { from: number; fromName: string }) => {
+        setOutgoingGameInvite(null);
+        alert(`${data.fromName} a décliné l'invitation à jouer.`);
+      });
+
+      newSocket.on('game_user_offline', () => {
+        setOutgoingGameInvite(null);
+        alert("Ce contact n'est pas en ligne pour jouer actuellement.");
       });
 
       setSocket(newSocket);
@@ -1669,6 +1711,40 @@ const App: React.FC = () => {
   };
 
   /**
+   * GESTION DES JEUX MULTI-JOUEURS (MORPION)
+   */
+  const handleInviteGame = (gameType: string = 'morpion') => {
+    if (!activeChatId || !socket || !user) return;
+    const contact = contacts.find(c => c.id === activeChatId);
+    if (!contact || contact.status === 'offline') {
+      alert("Ce contact doit être en ligne pour jouer au Morpion.");
+      return;
+    }
+
+    socket.emit('game_invite', { target: activeChatId, gameType });
+    setOutgoingGameInvite({ target: activeChatId, targetName: contact.nickname || contact.username });
+    setShowGamesMenu(false);
+  };
+
+  const handleAcceptGameInvite = () => {
+    if (!incomingGameInvite || !socket) return;
+    socket.emit('game_accept', { target: incomingGameInvite.from, gameType: incomingGameInvite.gameType });
+    setIncomingGameInvite(null);
+  };
+
+  const handleDeclineGameInvite = () => {
+    if (!incomingGameInvite || !socket) return;
+    socket.emit('game_decline', { target: incomingGameInvite.from });
+    setIncomingGameInvite(null);
+  };
+
+  const handleCancelOutgoingInvite = () => {
+    if (!outgoingGameInvite || !socket) return;
+    socket.emit('game_quit', { target: outgoingGameInvite.target });
+    setOutgoingGameInvite(null);
+  };
+
+  /**
    * GESTION DES DISCUSSIONS OUVERTES
    */
   const openChat = async (id: number) => {
@@ -2105,8 +2181,28 @@ const App: React.FC = () => {
               <span onClick={() => setShowBgModal(true)} style={{cursor:'pointer'}}>Arrière-plan</span>
               <span onClick={() => handleStartCall(false)} style={{cursor:'pointer'}}>Vidéo</span>
               <span onClick={() => handleStartCall(true)} style={{cursor:'pointer'}}>Appeler</span>
-              <span>Jeux</span>
-              <span>Activités</span>
+              <div className="wlm-games-menu-wrapper">
+                <span 
+                  onClick={() => setShowGamesMenu(prev => !prev)} 
+                  style={{ cursor: 'pointer', fontWeight: showGamesMenu ? 'bold' : 'normal' }}
+                  title="Jouer à un jeu MSN avec ce contact"
+                >
+                  Jeux ▾
+                </span>
+                {showGamesMenu && (
+                  <div className="wlm-games-dropdown" onClick={e => e.stopPropagation()}>
+                    <div 
+                      className="wlm-game-menu-item" 
+                      onClick={() => handleInviteGame('morpion')}
+                      title="Lancer une partie de Morpion multijoueur"
+                    >
+                      <span className="msn-game-icon">🎮</span>
+                      <span>Morpion (Tic-Tac-Toe)</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <span onClick={() => handleInviteGame('morpion')} style={{cursor:'pointer'}} title="Lancer une partie de Morpion">Activités</span>
 
               <span
                 onClick={() => {
@@ -2147,6 +2243,39 @@ const App: React.FC = () => {
                      </div>
                   </div>
                </div>
+
+                {/* Bannière d'invitation à un jeu reçu */}
+                {incomingGameInvite && incomingGameInvite.from === activeChatId && (
+                  <div className="wlm-game-invite-banner">
+                    <div className="wlm-game-invite-info">
+                      <span className="wlm-game-invite-icon">🎮</span>
+                      <div className="wlm-game-invite-text">
+                        <span className="wlm-game-invite-title">Invitation au Morpion !</span>
+                        <span className="wlm-game-invite-sub">{incomingGameInvite.fromName} vous invite à une partie en direct.</span>
+                      </div>
+                    </div>
+                    <div className="wlm-game-invite-actions">
+                      <button className="btn-game-accept" onClick={handleAcceptGameInvite}>Accepter</button>
+                      <button className="btn-game-decline" onClick={handleDeclineGameInvite}>Refuser</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bannière d'invitation à un jeu envoyé */}
+                {outgoingGameInvite && outgoingGameInvite.target === activeChatId && (
+                  <div className="wlm-game-invite-banner">
+                    <div className="wlm-game-invite-info">
+                      <span className="wlm-game-invite-icon">⏳</span>
+                      <div className="wlm-game-invite-text">
+                        <span className="wlm-game-invite-title">Partie de Morpion en attente...</span>
+                        <span className="wlm-game-invite-sub">Invitation envoyée à {outgoingGameInvite.targetName}. En attente de réponse...</span>
+                      </div>
+                    </div>
+                    <div className="wlm-game-invite-actions">
+                      <button className="btn-game-decline" onClick={handleCancelOutgoingInvite}>Annuler</button>
+                    </div>
+                  </div>
+                )}
 
                {/* Historique des messages (Scrollable) */}
                <div className="chat-log-scroll">
@@ -2491,6 +2620,22 @@ const App: React.FC = () => {
           audioOnly={isAudioOnly}
           iceCandidatesBuffer={iceCandidatesBuffer}
           onEndCall={handleEndCall}
+        />
+      )}
+
+      {/* Interface de jeu Morpion (Multi-joueurs) */}
+      {activeGame && (
+        <MorpionGame
+          socket={socket}
+          opponentId={activeGame.opponentId}
+          opponentName={activeGame.opponentName}
+          opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+          myId={user?.id || 0}
+          myName={myNickname || user?.nickname || 'Moi'}
+          myAvatar={myAvatar}
+          initialSymbol={activeGame.mySymbol}
+          initialIsMyTurn={activeGame.isMyTurn}
+          onClose={() => setActiveGame(null)}
         />
       )}
 

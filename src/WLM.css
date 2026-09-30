@@ -1249,3 +1249,402 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   font-style: italic;
 }
 
+/* ==========================================================================
+   MINI-JEUX MSN / ACTIVITÉS : MORPION (TIC-TAC-TOE)
+   ========================================================================== */
+
+.wlm-game-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 20, 45, 0.45);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.wlm-game-window {
+  width: 360px;
+  background: linear-gradient(to bottom, #fcfdfe, #e8f3fa);
+  border: 1px solid #7eb4ea;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 35, 75, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  user-select: none;
+}
+
+.wlm-game-header {
+  height: 32px;
+  background: linear-gradient(to bottom, #dbebfc, #b4d8f5);
+  border-bottom: 1px solid #91c2ed;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+}
+
+.wlm-game-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #004b8d;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.msn-game-icon {
+  font-size: 14px;
+}
+
+.wlm-game-scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(to bottom, #ffffff, #f0f7fd);
+  border-bottom: 1px solid #cce2f4;
+}
+
+.player-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  min-width: 90px;
+  transition: all 0.2s ease;
+}
+
+.player-card.active-turn {
+  background: rgba(0, 120, 215, 0.08);
+  box-shadow: 0 0 0 1px #7eb4ea, 0 2px 6px rgba(0, 120, 215, 0.15);
+}
+
+.player-avatar-wrap {
+  position: relative;
+  width: 44px;
+  height: 44px;
+}
+
+.player-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 5px;
+  border: 1px solid #99c7ea;
+  object-fit: cover;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+.player-symbol-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: white;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+.player-symbol-badge.symbol-X {
+  background: linear-gradient(135deg, #0078d7, #004b8d);
+}
+
+.player-symbol-badge.symbol-O {
+  background: linear-gradient(135deg, #ff7a00, #d95300);
+}
+
+.player-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.player-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e395b;
+  max-width: 90px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-score-badge {
+  font-size: 9px;
+  color: #557799;
+}
+
+.game-vs-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.vs-label {
+  font-size: 10px;
+  font-weight: 800;
+  color: #8da4bc;
+  letter-spacing: 1px;
+}
+
+.score-numbers {
+  font-size: 18px;
+  font-weight: 800;
+  color: #004b8d;
+}
+
+.draws-count {
+  font-size: 9px;
+  color: #8899aa;
+}
+
+.game-turn-banner {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  transition: all 0.25s ease;
+}
+
+.banner-my-turn {
+  background: #e6f6e6;
+  color: #1b681b;
+  border-bottom: 1px solid #c2e8c2;
+}
+
+.banner-wait {
+  background: #edf5fc;
+  color: #2a5b88;
+  border-bottom: 1px solid #d3e5f6;
+}
+
+.banner-me {
+  background: #fdf5d6;
+  color: #8a6700;
+  border-bottom: 1px solid #f6e297;
+  font-weight: bold;
+}
+
+.banner-opponent {
+  background: #fde8e8;
+  color: #a82020;
+  border-bottom: 1px solid #f9c2c2;
+}
+
+.banner-draw {
+  background: #f0f0f4;
+  color: #555566;
+  border-bottom: 1px solid #dcdce4;
+}
+
+/* Grille 3x3 de Morpion */
+.wlm-morpion-board {
+  display: grid;
+  grid-template-columns: repeat(3, 76px);
+  grid-template-rows: repeat(3, 76px);
+  gap: 10px;
+  justify-content: center;
+  padding: 18px;
+}
+
+.morpion-cell {
+  width: 76px;
+  height: 76px;
+  background: linear-gradient(135deg, #ffffff, #edf4fa);
+  border: 1px solid #bcd7ec;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 4px rgba(0, 45, 90, 0.06);
+  padding: 0;
+  outline: none;
+}
+
+.morpion-cell.cell-clickable {
+  cursor: pointer;
+}
+
+.morpion-cell.cell-clickable:hover {
+  background: linear-gradient(135deg, #ffffff, #dcedfa);
+  border-color: #0078d7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 120, 215, 0.2);
+}
+
+.morpion-cell.cell-winning {
+  background: linear-gradient(135deg, #fff7d6, #ffeaa7) !important;
+  border-color: #f1c40f !important;
+  animation: winPulse 0.8s ease-in-out infinite alternate;
+  box-shadow: 0 0 12px rgba(241, 196, 15, 0.6) !important;
+}
+
+@keyframes winPulse {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.05); }
+}
+
+.symbol-x {
+  font-size: 38px;
+  font-weight: 900;
+  color: #0078d7;
+  text-shadow: 0 1px 3px rgba(0, 120, 215, 0.3);
+  line-height: 1;
+}
+
+.symbol-o {
+  font-size: 38px;
+  font-weight: 900;
+  color: #ff7a00;
+  text-shadow: 0 1px 3px rgba(255, 122, 0, 0.3);
+  line-height: 1;
+}
+
+.wlm-game-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #edf5fc;
+  border-top: 1px solid #d5e6f5;
+}
+
+.primary-btn {
+  background: linear-gradient(to bottom, #0084eb, #0066cc) !important;
+  color: white !important;
+  border-color: #0052a3 !important;
+  font-weight: 600;
+}
+.primary-btn:hover {
+  background: linear-gradient(to bottom, #1a94f5, #0073e6) !important;
+}
+
+/* Menu déroulant Jeux dans la barre d'outils */
+.wlm-games-menu-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.wlm-games-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: #ffffff;
+  border: 1px solid #99c2e8;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 35, 70, 0.2);
+  min-width: 170px;
+  z-index: 1000;
+  padding: 4px 0;
+}
+
+.wlm-game-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #1e395b;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.wlm-game-menu-item:hover {
+  background: #eaf3fb;
+  color: #004b8d;
+}
+
+/* Bannière d'invitation à un jeu dans le chat */
+.wlm-game-invite-banner {
+  background: linear-gradient(to bottom, #ffffff, #eef6fd);
+  border: 1px solid #a8cce8;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 10px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 2px 6px rgba(0, 35, 70, 0.08);
+  animation: slideDown 0.25s ease-out;
+}
+
+.wlm-game-invite-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wlm-game-invite-icon {
+  font-size: 22px;
+}
+
+.wlm-game-invite-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wlm-game-invite-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #004b8d;
+}
+
+.wlm-game-invite-sub {
+  font-size: 10px;
+  color: #557799;
+}
+
+.wlm-game-invite-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-game-accept {
+  background: linear-gradient(to bottom, #44b744, #2e992e);
+  color: white;
+  border: 1px solid #237823;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.btn-game-accept:hover {
+  background: linear-gradient(to bottom, #52c752, #39aa39);
+}
+
+.btn-game-decline {
+  background: linear-gradient(to bottom, #ffffff, #e6edf2);
+  color: #445566;
+  border: 1px solid #b0c4d4;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.btn-game-decline:hover {
+  background: #d8e2eb;
+}
+
+

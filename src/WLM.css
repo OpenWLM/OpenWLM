@@ -1090,3 +1090,136 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
     padding: 15px;
   }
 }
+
+/* --- CARTE DE TRANSFERT DE FICHIER (STYLE MSN 2009 AERO) --- */
+.wlm-file-card {
+  display: inline-flex;
+  flex-direction: column;
+  background: linear-gradient(to bottom, #f9fcff, #e7f2fb);
+  border: 1px solid #99c2e0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 5px;
+  min-width: 260px;
+  max-width: 360px;
+  box-shadow: 0 1px 4px rgba(0, 75, 141, 0.12);
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  transition: all 0.2s ease;
+}
+
+.wlm-file-card:hover {
+  border-color: #0078d7;
+  box-shadow: 0 2px 8px rgba(0, 120, 215, 0.25);
+}
+
+.wlm-file-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wlm-file-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0078d7, #004b8d);
+  color: white;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 1px 3px rgba(0,0,0,0.2);
+  flex-shrink: 0;
+}
+
+.wlm-file-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-grow: 1;
+}
+
+.wlm-file-name {
+  font-size: 12px;
+  font-weight: bold;
+  color: #004b8d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wlm-file-meta {
+  font-size: 10px;
+  color: #6688aa;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.wlm-file-badge-e2ee {
+  background: #e6f4ea;
+  color: #137333;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  border: 1px solid #ceead6;
+}
+
+.wlm-file-badge-expired {
+  background: #fce8e6;
+  color: #c5221f;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  border: 1px solid #fad2cf;
+}
+
+.wlm-file-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed #c0d8ec;
+}
+
+.wlm-file-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(to bottom, #f2f8fc, #d5e9f8);
+  border: 1px solid #7eb4ea;
+  color: #004b8d;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  transition: all 0.15s ease;
+}
+
+.wlm-file-download-btn:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #e1effa, #bce0f6);
+  border-color: #0078d7;
+  color: #002855;
+  box-shadow: 0 1px 4px rgba(0, 120, 215, 0.3);
+}
+
+.wlm-file-download-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wlm-file-expiry {
+  font-size: 9px;
+  color: #8899aa;
+  font-style: italic;
+}
+

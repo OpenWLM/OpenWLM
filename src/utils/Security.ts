@@ -276,3 +276,71 @@ export const decryptFromLocal = async <T = unknown>(localData: LocalEncryptedDat
     return null;
   }
 };
+
+export interface EncryptedFileKeys {
+  iv: string;
+  keyReceiver: string;
+  keySender: string;
+}
+
+/**
+ * Chiffre un fichier binaire (ArrayBuffer) de bout en bout (E2EE)
+ * Génère une clé AES-GCM 256 bits aléatoire et la protège par RSA-OAEP avec les clés de l'expéditeur et du destinataire.
+ */
+export const encryptFileBinary = async (
+  fileBuffer: ArrayBuffer,
+  receiverPubKeyJwk: JsonWebKey,
+  senderPubKeyJwk: JsonWebKey
+): Promise<{ encryptedBlob: Blob; fileKeys: EncryptedFileKeys }> => {
+  // 1. Clé AES-GCM 256 bits unique pour ce fichier
+  const aesKey = await window.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+  // 2. Chiffrer le contenu binaire du fichier
+  const encryptedBuffer = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, fileBuffer);
+
+  // 3. Exporter la clé AES brute et la chiffrer avec les clés publiques RSA de chacun
+  const rawAesKey = await window.crypto.subtle.exportKey('raw', aesKey);
+  const receiverKey = await window.crypto.subtle.importKey('jwk', receiverPubKeyJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+  const senderKey = await window.crypto.subtle.importKey('jwk', senderPubKeyJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+
+  const encryptedKeyReceiver = await window.crypto.subtle.encrypt({ name: 'RSA-OAEP' }, receiverKey, rawAesKey);
+  const encryptedKeySender = await window.crypto.subtle.encrypt({ name: 'RSA-OAEP' }, senderKey, rawAesKey);
+
+  return {
+    encryptedBlob: new Blob([encryptedBuffer], { type: 'application/octet-stream' }),
+    fileKeys: {
+      iv: arrayBufferToBase64(iv.buffer),
+      keyReceiver: arrayBufferToBase64(encryptedKeyReceiver),
+      keySender: arrayBufferToBase64(encryptedKeySender)
+    }
+  };
+};
+
+/**
+ * Déchiffre un fichier binaire reçu depuis le serveur via la clé privée de l'utilisateur (RSA)
+ */
+export const decryptFileBinary = async (
+  encryptedBuffer: ArrayBuffer,
+  fileKeys: EncryptedFileKeys,
+  myPrivateKeyJwk: JsonWebKey,
+  isSender: boolean
+): Promise<ArrayBuffer | null> => {
+  try {
+    const myKey = await window.crypto.subtle.importKey('jwk', myPrivateKeyJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+    const encryptedAesKeyBase64 = isSender ? fileKeys.keySender : fileKeys.keyReceiver;
+    if (!encryptedAesKeyBase64) return null;
+
+    const encryptedAesKey = base64ToArrayBuffer(encryptedAesKeyBase64);
+    const rawAesKey = await window.crypto.subtle.decrypt({ name: 'RSA-OAEP' }, myKey, encryptedAesKey);
+
+    const aesKey = await window.crypto.subtle.importKey('raw', rawAesKey, { name: 'AES-GCM' }, false, ['decrypt']);
+    const iv = base64ToArrayBuffer(fileKeys.iv);
+
+    return await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, encryptedBuffer);
+  } catch (err) {
+    console.error("Échec du déchiffrement du fichier:", err);
+    return null;
+  }
+};
+

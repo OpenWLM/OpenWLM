@@ -11,10 +11,12 @@ import {
   encryptMessagePayload, 
   decryptMessagePayload, 
   encryptPrivateKeyVault, 
-  decryptPrivateKeyVault 
+  decryptPrivateKeyVault,
+  encryptFileBinary 
 } from './utils/Security';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
+import FileTransferCard, { type FileDataPayload } from './components/FileTransferCard';
 
 /**
  * INTERFACES
@@ -64,6 +66,7 @@ interface Message {
   isWink?: boolean;
   _isPending?: boolean;
   clientMsgId?: string;
+  fileData?: FileDataPayload;
 }
 
 const formatMessageTime = (rawTimestamp: string | number | undefined, fallbackTime?: string): string => {
@@ -568,6 +571,7 @@ const App: React.FC = () => {
   // --- AUTRES RÉFÉRENCES ---
   const chatEndRef = useRef<HTMLDivElement>(null);
   const loadingChatsRef = useRef<Set<number>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [contactEmail, setContactEmail] = useState('');
 
   // --- GESTION DE LA SESSION ET DES CLÉS ---
@@ -777,14 +781,20 @@ const App: React.FC = () => {
       let decryptedText = m.text;
       let decryptedAudio = m.audio;
       let decryptedStyle = m.style;
+      let fileData: FileDataPayload | undefined = m.fileData;
 
       try {
         const potentialJson = JSON.parse(m.text);
         if (potentialJson && (potentialJson.keyReceiver || potentialJson.keySender)) {
            const isSender = m.sender_id === user?.id || m.senderId === user?.id;
-           const payload = await decryptMessagePayload(potentialJson, privateKey, isSender);
+           const payload = await decryptMessagePayload<any>(potentialJson, privateKey, isSender);
            if (payload) {
-             decryptedText = payload.text;
+             if (payload.type === 'file' && payload.fileId) {
+               decryptedText = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
+               fileData = payload;
+             } else {
+               decryptedText = payload.text;
+             }
              if (payload.audio) decryptedAudio = payload.audio;
              if (payload.style) decryptedStyle = payload.style;
            } else {
@@ -806,7 +816,8 @@ const App: React.FC = () => {
         style: decryptedStyle ? (typeof decryptedStyle === 'string' ? JSON.parse(decryptedStyle) : decryptedStyle) : null,
         sender: isSender ? (myNickname || user?.nickname || 'Moi') : (m.sender || m.sender_name || 'Contact'),
         time: formattedTime,
-        timestamp: m.timestamp
+        timestamp: m.timestamp,
+        fileData: fileData
       });
     }
     return results;
@@ -944,6 +955,7 @@ const App: React.FC = () => {
         setActiveChatId(prev => prev === 0 ? senderId : prev);
 
         const formattedTime = formatMessageTime(decryptedData.timestamp, decryptedData.time);
+        const fileData = decryptedData.fileData || (decryptedData.type === 'file' && decryptedData.fileId ? decryptedData : undefined);
         const finalMsg: Message = { 
           ...decryptedData, 
           id: decryptedData.id,
@@ -953,7 +965,8 @@ const App: React.FC = () => {
           receiverId: user?.id,
           sender: decryptedData.sender || originalSenderName,
           time: formattedTime,
-          timestamp: decryptedData.timestamp || new Date().toISOString()
+          timestamp: decryptedData.timestamp || new Date().toISOString(),
+          fileData: fileData
         };
 
         setMessages(prev => {
@@ -1209,6 +1222,134 @@ const App: React.FC = () => {
     } catch (e) {
       console.error("Échec du chiffrement:", e);
       alert("Erreur lors du chiffrement du message.");
+    }
+  };
+
+  /**
+   * ENVOI D'UN FICHIER CHIFFRÉ DE BOUT EN BOUT (E2EE)
+   * Fichier chiffré stocké sur le serveur, accessible pendant 4H maximum via URL + Token
+   * Déchiffré localement dans le navigateur du destinataire avec sa clé privée RSA
+   */
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!socket) { alert("Connexion au serveur non établie."); return; }
+    if (!myKeys) { alert("Clés E2E non prêtes."); return; }
+    if (!activeChatId) { alert("Veuillez sélectionner un contact."); return; }
+
+    const MAX_SIZE = 50 * 1024 * 1024; // 50 Mo max
+    if (file.size > MAX_SIZE) {
+      alert("Le fichier dépasse la taille maximale autorisée (50 Mo).");
+      return;
+    }
+
+    const contactPubKey = await getPublicKey(activeChatId);
+    if (!contactPubKey) {
+      alert("Ce contact doit se connecter au moins une fois pour activer le transfert sécurisé.");
+      return;
+    }
+
+    try {
+      // 1. Lire le fichier sous forme binaire
+      const fileBuffer = await file.arrayBuffer();
+
+      // 2. Chiffrer le fichier avec AES-GCM 256 bits et envelopper la clé AES avec RSA-OAEP
+      const { encryptedBlob, fileKeys } = await encryptFileBinary(fileBuffer, contactPubKey, myKeys.publicKeyJwk);
+
+      // 3. Téléverser le blob chiffré sur le serveur (Zero-Knowledge)
+      const formData = new FormData();
+      formData.append('file', encryptedBlob, file.name);
+      formData.append('receiverId', activeChatId.toString());
+      formData.append('originalName', file.name);
+      formData.append('fileType', file.type || 'application/octet-stream');
+
+      const res = await axios.post('/api/files/upload', formData, {
+        headers: {
+          Authorization: `Bearer ${user?.token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (!res.data.success) {
+        throw new Error("Erreur serveur lors de l'envoi du fichier.");
+      }
+
+      // 4. Préparer le payload E2EE contenant les métadonnées et clés de déchiffrement
+      const filePayload: FileDataPayload = {
+        type: 'file',
+        fileId: res.data.fileId,
+        token: res.data.token,
+        downloadUrl: res.data.downloadUrl,
+        expiresAt: res.data.expiresAt,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type || 'application/octet-stream',
+        fileKeys
+      };
+
+      const e2eData = await encryptMessagePayload(filePayload, contactPubKey, myKeys.publicKeyJwk);
+
+      const msgData = {
+        senderId: user?.id,
+        receiverId: activeChatId,
+        text: JSON.stringify(e2eData),
+        style: null,
+        audio: null,
+        type: 'file',
+        isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
+      };
+
+      const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const nowIso = new Date().toISOString();
+      const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      const myLocalMsg: Message = {
+        id: clientMsgId,
+        clientMsgId,
+        senderId: user?.id,
+        sender_id: user?.id,
+        receiverId: activeChatId,
+        receiver_id: activeChatId,
+        sender: myNickname || user?.nickname || 'Moi',
+        text: `[Fichier] ${file.name}`,
+        type: 'file',
+        fileData: filePayload,
+        time: formattedTime,
+        timestamp: nowIso,
+        _isPending: true
+      };
+
+      setMessages(prev => ({
+        ...prev,
+        [activeChatId]: [...(prev[activeChatId] || []), myLocalMsg]
+      }));
+
+      socket.emit('send_message', msgData, (ack?: { success?: boolean, id?: number | string, timestamp?: string }) => {
+        if (ack?.id) {
+          myLocalMsg.id = ack.id;
+          myLocalMsg._isPending = false;
+          if (ack.timestamp) myLocalMsg.timestamp = ack.timestamp;
+
+          setMessages(prev => {
+            const currentMsgs = prev[activeChatId] || [];
+            return {
+              ...prev,
+              [activeChatId]: currentMsgs.map(m => m.clientMsgId === clientMsgId ? { ...m, id: ack.id, _isPending: false, timestamp: ack.timestamp || m.timestamp } : m)
+            };
+          });
+
+          if (myKeysRef.current) {
+            LocalDB.saveMessage(`${user?.id}_${activeChatId}`, myLocalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
+          }
+        }
+      });
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err) {
+      console.error("Erreur lors de l'envoi du fichier:", err);
+      alert("Une erreur est survenue lors du chiffrement ou de l'envoi du fichier.");
     }
   };
 
@@ -1933,7 +2074,7 @@ const App: React.FC = () => {
 
             {/* Barre d'actions du chat (Haut) */}
             <div className="chat-top-actions">
-              <span>Fichiers</span>
+              <span onClick={() => fileInputRef.current?.click()} style={{cursor:'pointer'}} title="Envoyer un fichier chiffré de bout en bout (4h max)">Fichiers</span>
               <span onClick={() => setShowBgModal(true)} style={{cursor:'pointer'}}>Arrière-plan</span>
               <span onClick={() => handleStartCall(false)} style={{cursor:'pointer'}}>Vidéo</span>
               <span onClick={() => handleStartCall(true)} style={{cursor:'pointer'}}>Appeler</span>
@@ -1989,7 +2130,17 @@ const App: React.FC = () => {
                        ) : (
                          <>
                            <div className={`msg-name ${m.sender === myNickname ? 'me' : ''}`}>{m.sender} dit :</div>
-                           {m.audio ? <VoiceClipPlayer src={m.audio} /> : renderMessageContent(m.text, m.style)}
+                           {m.fileData ? (
+                             <FileTransferCard 
+                               fileData={m.fileData} 
+                               myPrivateKey={myKeys?.privateKeyJwk} 
+                               isSender={m.sender_id === user?.id || m.senderId === user?.id} 
+                             />
+                           ) : m.audio ? (
+                             <VoiceClipPlayer src={m.audio} />
+                           ) : (
+                             renderMessageContent(m.text, m.style)
+                           )}
                          </>
                        )}
                     </div>
@@ -2056,6 +2207,19 @@ const App: React.FC = () => {
                         {isRecording && (
                           <span className="tool-icon" title="Annuler l'enregistrement" onClick={handleCancelVoiceClip} style={{ color: 'red', fontWeight: 'bold', fontSize: '20px' }}>✕</span>
                         )}
+
+                        <span className="tool-icon" title="Envoyer un fichier (Chiffré E2EE, 4h max)" onClick={() => fileInputRef.current?.click()} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg style={{width:'22px', height:'22px', cursor:'pointer'}} viewBox="0 0 24 24" fill="none" stroke="#004b8d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                          </svg>
+                        </span>
+
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          style={{ display: 'none' }} 
+                          onChange={handleFileSelect} 
+                        />
                         
                         <span className="tool-icon" title="Police" style={{ fontSize: '14px', fontWeight: 'bold', color: '#004b8d', cursor:'pointer' }} onClick={() => setShowFontModal(true)}>A/B</span>
                      </div>

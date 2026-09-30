@@ -8,6 +8,7 @@ import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import multer from 'multer';
 
 /**
  * CONFIGURATION ET INITIALISATION
@@ -15,6 +16,26 @@ import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const UPLOADS_DIR = path.join(__dirname, '../uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const fileStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = crypto.randomBytes(16).toString('hex');
+    cb(null, `enc_${uniqueSuffix}.bin`);
+  }
+});
+
+const upload = multer({
+  storage: fileStorage,
+  limits: { fileSize: 50 * 1024 * 1024 } // Limite 50 Mo
+});
 
 const app = express();
 const httpServer = createServer(app);
@@ -131,7 +152,46 @@ db.exec(`
     type TEXT DEFAULT 'text',
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS shared_files (
+    id TEXT PRIMARY KEY,
+    sender_id INTEGER,
+    receiver_id INTEGER,
+    filename TEXT,
+    original_name TEXT,
+    file_size INTEGER,
+    file_type TEXT,
+    token TEXT UNIQUE,
+    expires_at INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(sender_id) REFERENCES users(id),
+    FOREIGN KEY(receiver_id) REFERENCES users(id)
+  );
 `);
+
+/**
+ * Nettoyage automatique des fichiers expirés (validité 4H max)
+ */
+const cleanupExpiredFiles = () => {
+  try {
+    const now = Date.now();
+    const expiredFiles = db.prepare('SELECT id, filename FROM shared_files WHERE expires_at <= ?').all(now);
+    for (const f of expiredFiles) {
+      const filePath = path.join(UPLOADS_DIR, f.filename);
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) { console.error("Erreur suppression fichier disque:", e); }
+      }
+    }
+    const result = db.prepare('DELETE FROM shared_files WHERE expires_at <= ?').run(now);
+    if (result.changes > 0) {
+      console.log(`[Fichiers E2EE] Nettoyage : ${result.changes} fichier(s) expiré(s) purgé(s).`);
+    }
+  } catch (err) {
+    console.error("Erreur nettoyage fichiers expirés:", err);
+  }
+};
+cleanupExpiredFiles();
+setInterval(cleanupExpiredFiles, 10 * 60 * 1000); // Exécution toutes les 10 minutes
 
 // Reset all users to offline on server start to fix DB/RAM mismatch
 try {
@@ -705,6 +765,125 @@ app.post('/api/messages/clear', authenticateToken, (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "Erreur lors de la suppression de l'historique." });
   }
+});
+
+/**
+ * --- ENVOI ET TÉLÉCHARGEMENT DE FICHIERS CHIFFRÉS (E2EE) ---
+ */
+
+/**
+ * Upload d'un fichier chiffré de bout en bout
+ * Le serveur reçoit uniquement des octets chiffrés avec AES-GCM (Zero-Knowledge)
+ * Validité : 4 heures maximum
+ */
+app.post('/api/files/upload', authenticateToken, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "Aucun fichier reçu." });
+  }
+
+  const senderId = req.user.id;
+  const receiverId = parseInt(req.body.receiverId);
+  const originalName = req.body.originalName || 'fichier_chiffre.bin';
+  const fileType = req.body.fileType || 'application/octet-stream';
+  const fileSize = req.file.size;
+
+  if (!receiverId) {
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: "Destinataire manquant." });
+  }
+
+  const fileId = crypto.randomUUID();
+  const token = crypto.randomBytes(24).toString('hex');
+  const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+  const expiresAt = Date.now() + FOUR_HOURS_MS;
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO shared_files (id, sender_id, receiver_id, filename, original_name, file_size, file_type, token, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(fileId, senderId, receiverId, req.file.filename, originalName, fileSize, fileType, token, expiresAt);
+
+    res.json({
+      success: true,
+      fileId,
+      token,
+      downloadUrl: `/api/files/download/${fileId}?token=${token}`,
+      expiresAt,
+      originalName,
+      fileSize
+    });
+  } catch (err) {
+    console.error("Erreur enregistrement fichier:", err);
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ error: "Erreur lors de l'enregistrement du fichier." });
+  }
+});
+
+/**
+ * Téléchargement d'un fichier chiffré
+ * Vérifie le token d'accès et l'expiration (4h max)
+ */
+app.get('/api/files/download/:fileId', (req, res) => {
+  const { fileId } = req.params;
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(401).json({ error: "Token d'accès manquant." });
+  }
+
+  const fileRecord = db.prepare('SELECT * FROM shared_files WHERE id = ?').get(fileId);
+  if (!fileRecord) {
+    return res.status(404).json({ error: "Fichier introuvable ou supprimé." });
+  }
+
+  if (fileRecord.token !== token) {
+    return res.status(403).json({ error: "Token d'accès non valide." });
+  }
+
+  if (Date.now() > fileRecord.expires_at) {
+    // Purger le fichier car expiré
+    const filePath = path.join(UPLOADS_DIR, fileRecord.filename);
+    if (fs.existsSync(filePath)) {
+      try { fs.unlinkSync(filePath); } catch (e) {}
+    }
+    db.prepare('DELETE FROM shared_files WHERE id = ?').run(fileId);
+    return res.status(410).json({ error: "Ce lien de téléchargement a expiré (validité 4H max)." });
+  }
+
+  const filePath = path.join(UPLOADS_DIR, fileRecord.filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "Fichier physique introuvable sur le disque." });
+  }
+
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="encrypted_${fileRecord.id}.bin"`);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.sendFile(filePath);
+});
+
+/**
+ * Information sur l'état d'un fichier partagé (expiration, statut)
+ */
+app.get('/api/files/info/:fileId', (req, res) => {
+  const { fileId } = req.params;
+  const { token } = req.query;
+
+  const fileRecord = db.prepare('SELECT * FROM shared_files WHERE id = ?').get(fileId);
+  if (!fileRecord || fileRecord.token !== token) {
+    return res.status(404).json({ error: "Fichier introuvable." });
+  }
+
+  const isExpired = Date.now() > fileRecord.expires_at;
+  res.json({
+    fileId: fileRecord.id,
+    originalName: fileRecord.original_name,
+    fileSize: fileRecord.file_size,
+    fileType: fileRecord.file_type,
+    expiresAt: fileRecord.expires_at,
+    isExpired,
+    remainingSeconds: Math.max(0, Math.floor((fileRecord.expires_at - Date.now()) / 1000))
+  });
 });
 
   /**

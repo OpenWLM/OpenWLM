@@ -49,16 +49,39 @@ interface Contact {
 }
 
 interface Message {
+  id?: number | string;
+  sender_id?: number;
+  receiver_id?: number;
   senderId?: number;
   receiverId?: number;
   sender: string;
   text: string;
   time?: string;
+  timestamp?: string | number;
   style?: any;
   audio?: string | null;
   type?: string;
   isWink?: boolean;
+  _isPending?: boolean;
+  clientMsgId?: string;
 }
+
+const formatMessageTime = (rawTimestamp: string | number | undefined, fallbackTime?: string): string => {
+  if (!rawTimestamp) return fallbackTime || '';
+  try {
+    let dateStr = String(rawTimestamp).trim();
+    if (!dateStr.includes('T') && dateStr.includes(' ')) {
+      dateStr = dateStr.replace(' ', 'T') + 'Z';
+    } else if (dateStr.includes('T') && !dateStr.endsWith('Z')) {
+      dateStr += 'Z';
+    }
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return fallbackTime || '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return fallbackTime || '';
+  }
+};
 
 interface FontSettings {
   family: string;
@@ -180,7 +203,7 @@ const EMOTICON_MAP: Record<string, string> = {
   '(co)': 'computer.gif',
   '(e)': 'envelope.gif',
   '(f)': 'film.gif',
-  '(g)': 'gift.gif',
+  '(g)': 'present.gif',
   '(i)': 'lightbulb.gif',
   '(l)': 'Lightning.gif',
   '(m)': 'mobile.gif',
@@ -239,6 +262,24 @@ const VoiceClipPlayer: React.FC<{ src: string }> = ({ src }) => {
     const secs = Math.floor(time % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsPlaying(false);
+      setCurrentTime(0);
+    }
+  }, [src]);
 
   const togglePlay = () => {
     if (!audioRef.current) {
@@ -315,7 +356,7 @@ const App: React.FC = () => {
   const [isEditingPSM, setIsEditingPSM] = useState(false);
 
   // --- ÉTAT DE L'INACTIVITÉ (AUTO-AWAY) ---
-  const [lastActivity, setLastActivity] = useState(Date.now());
+  const [lastActivity, setLastActivity] = useState(() => Date.now());
   const [awayTimeout, setAwayTimeout] = useState(() => {
     const saved = localStorage.getItem('wlm_away_timeout');
     return saved ? parseInt(saved) : 5; // Défaut 5 minutes
@@ -526,6 +567,7 @@ const App: React.FC = () => {
 
   // --- AUTRES RÉFÉRENCES ---
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const loadingChatsRef = useRef<Set<number>>(new Set());
   const [contactEmail, setContactEmail] = useState('');
 
   // --- GESTION DE LA SESSION ET DES CLÉS ---
@@ -573,11 +615,11 @@ const App: React.FC = () => {
 
       // 2. Initialisation des clés E2E
       try {
-        let localPrivJwk = localStorage.getItem(`wlm_priv_${currentUser.id}`);
-        let localPubJwk = localStorage.getItem(`wlm_pub_${currentUser.id}`);
+        let localPrivJwk = sessionStorage.getItem(`wlm_priv_${currentUser.id}`) || localStorage.getItem(`wlm_priv_${currentUser.id}`);
+        let localPubJwk = sessionStorage.getItem(`wlm_pub_${currentUser.id}`) || localStorage.getItem(`wlm_pub_${currentUser.id}`);
 
         // Migration des anciennes clés (si présentes)
-        let legacyKeys = localStorage.getItem(`wlm_keys_${currentUser.id}`);
+        const legacyKeys = localStorage.getItem(`wlm_keys_${currentUser.id}`);
         if (legacyKeys && (!localPrivJwk || !localPubJwk)) {
           try {
             const parsed = JSON.parse(legacyKeys);
@@ -600,7 +642,7 @@ const App: React.FC = () => {
               console.warn("[E2E] Clés locales obsolètes (désynchronisées par rapport au serveur).");
               isStale = true;
             }
-          } catch(e) { isStale = true; }
+          } catch { isStale = true; }
         }
 
         // SÉCURITÉ : Vérifier si l'utilisateur veut être mémorisé
@@ -610,12 +652,16 @@ const App: React.FC = () => {
         if (localPrivJwk && localPubJwk && !isStale) {
           const keys = { publicKeyJwk: JSON.parse(localPubJwk), privateKeyJwk: JSON.parse(localPrivJwk) };
           setMyKeys(keys);
+          sessionStorage.setItem(`wlm_priv_${currentUser.id}`, localPrivJwk);
+          sessionStorage.setItem(`wlm_pub_${currentUser.id}`, localPubJwk);
 
-          // Si on a changé d'avis et qu'on ne veut plus être mémorisé : on purge le cache
+          // Si on a changé d'avis et qu'on ne veut plus être mémorisé : on purge de localStorage
           if (!shouldRemember) {
             localStorage.removeItem("wlm_priv_" + currentUser.id);
             localStorage.removeItem("wlm_pub_" + currentUser.id);
-            console.log("[E2E] Clés purgées du disque (Mode RAM-only).");
+          } else {
+            localStorage.setItem("wlm_priv_" + currentUser.id, localPrivJwk);
+            localStorage.setItem("wlm_pub_" + currentUser.id, localPubJwk);
           }
           
           // Si l'utilisateur n'a pas de backup sur le serveur (anomalie), on en crée un
@@ -642,6 +688,10 @@ const App: React.FC = () => {
           if (privJwk) {
             const pubJwk = typeof currentUser.public_key === 'string' ? JSON.parse(currentUser.public_key) : currentUser.public_key;
             
+            // Toujours conserver en session pour l'onglet actif
+            sessionStorage.setItem(`wlm_priv_${currentUser.id}`, JSON.stringify(privJwk));
+            sessionStorage.setItem(`wlm_pub_${currentUser.id}`, JSON.stringify(pubJwk));
+
             // On ne sauvegarde sur le disque QUE si l'utilisateur l'a demandé
             if (shouldRemember) {
               localStorage.setItem("wlm_priv_" + currentUser.id, JSON.stringify(privJwk));
@@ -649,7 +699,7 @@ const App: React.FC = () => {
             }
 
             setMyKeys({ publicKeyJwk: pubJwk, privateKeyJwk: privJwk });
-            console.log(shouldRemember ? "[E2E] Synchro réussie (Persistant)." : "[E2E] Synchro réussie (RAM-only).");
+            console.log(shouldRemember ? "[E2E] Synchro réussie (Persistant)." : "[E2E] Synchro réussie (Session-only).");
           } else {
             handleLogout('Echec déchiffrement Vault');
           }
@@ -661,6 +711,9 @@ const App: React.FC = () => {
           const vault = await encryptPrivateKeyVault(keys.privateKeyJwk, currentUser.plaintextPassword);
           await axios.post('/api/user/keys', { userId: currentUser.id, publicKey: keys.publicKeyJwk, encryptedPrivateKey: vault });
           
+          sessionStorage.setItem(`wlm_priv_${currentUser.id}`, JSON.stringify(keys.privateKeyJwk));
+          sessionStorage.setItem(`wlm_pub_${currentUser.id}`, JSON.stringify(keys.publicKeyJwk));
+
           if (shouldRemember) {
             localStorage.setItem("wlm_priv_" + currentUser.id, JSON.stringify(keys.privateKeyJwk));
             localStorage.setItem("wlm_pub_" + currentUser.id, JSON.stringify(keys.publicKeyJwk));
@@ -670,8 +723,8 @@ const App: React.FC = () => {
         else {
           // Si on est dans un état incohérent (ex: refresh F5 mais clés locales perdues ou stale)
           if (isStale || !localPrivJwk) {
-            console.error("[E2E] Session RAM-only expirée ou clés obsolètes.");
-            handleLogout('Session RAM-only expirée ou clés obsolètes');
+            console.error("[E2E] Session expirée ou clés obsolètes.");
+            handleLogout('Session expirée ou clés obsolètes');
           }
         }
       } catch (error) {
@@ -716,57 +769,117 @@ const App: React.FC = () => {
   }, [activeChatId]);
 
   /**
+   * DÉCHIFFREMENT D'UN TABLEAU DE MESSAGES
+   */
+  const decryptMessageArray = useCallback(async (msgs: any[], privateKey: any) => {
+    const results: Message[] = [];
+    for (const m of msgs) {
+      let decryptedText = m.text;
+      let decryptedAudio = m.audio;
+      let decryptedStyle = m.style;
+
+      try {
+        const potentialJson = JSON.parse(m.text);
+        if (potentialJson && (potentialJson.keyReceiver || potentialJson.keySender)) {
+           const isSender = m.sender_id === user?.id || m.senderId === user?.id;
+           const payload = await decryptMessagePayload(potentialJson, privateKey, isSender);
+           if (payload) {
+             decryptedText = payload.text;
+             if (payload.audio) decryptedAudio = payload.audio;
+             if (payload.style) decryptedStyle = payload.style;
+           } else {
+             decryptedText = "[!] Message illisible (E2E)";
+           }
+        }
+      } catch { /* Pas du JSON chiffré */ }
+
+      const isSender = m.sender_id === user?.id || m.senderId === user?.id;
+      const formattedTime = formatMessageTime(m.timestamp, m.time);
+
+      results.push({ 
+        ...m, 
+        id: m.id,
+        sender_id: m.sender_id || m.senderId,
+        receiver_id: m.receiver_id || m.receiverId,
+        text: decryptedText, 
+        audio: decryptedAudio,
+        style: decryptedStyle ? (typeof decryptedStyle === 'string' ? JSON.parse(decryptedStyle) : decryptedStyle) : null,
+        sender: isSender ? (myNickname || user?.nickname || 'Moi') : (m.sender || m.sender_name || 'Contact'),
+        time: formattedTime,
+        timestamp: m.timestamp
+      });
+    }
+    return results;
+  }, [user?.id, user?.nickname, myNickname]);
+
+  /**
+   * CHARGEMENT DE L'HISTORIQUE D'UNE CONVERSATION (UNIFIÉ SANS DOUBLON)
+   */
+  const loadChatHistory = useCallback(async (chatId: number) => {
+    const keys = myKeysRef.current;
+    if (!user || !keys || chatId === 0) return;
+    if (loadingChatsRef.current.has(chatId)) return;
+    loadingChatsRef.current.add(chatId);
+
+    try {
+      // 1. Préchargement du cache local rapide (IndexedDB)
+      try {
+        const cached = await LocalDB.getMessages<Message>(`${user.id}_${chatId}`, keys.privateKeyJwk);
+        if (cached && cached.length > 0) {
+          const decryptedCached = await decryptMessageArray(cached, keys.privateKeyJwk);
+          setMessages(prev => {
+            if (!prev[chatId] || prev[chatId].length === 0) {
+              return { ...prev, [chatId]: decryptedCached };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        console.warn("Erreur lecture cache local:", err);
+      }
+
+      // 2. Synchronisation avec l'historique officiel du serveur (source de vérité)
+      try {
+        const res = await axios.get(`/api/messages/${user.id}/${chatId}`);
+        if (Array.isArray(res.data)) {
+          const serverMsgs = await decryptMessageArray(res.data, keys.privateKeyJwk);
+          const validServerMsgs = serverMsgs.filter(m => m.text !== "[!] Message illisible (E2E)");
+
+          setMessages(prev => {
+            const currentMsgs = prev[chatId] || [];
+            const serverIds = new Set(validServerMsgs.map(m => m.id).filter(Boolean));
+            const serverClientIds = new Set(validServerMsgs.map(m => m.clientMsgId).filter(Boolean));
+            const pendingMsgs = currentMsgs.filter(m => 
+              m._isPending && 
+              (!m.id || !serverIds.has(m.id)) && 
+              (!m.clientMsgId || !serverClientIds.has(m.clientMsgId))
+            );
+            return { ...prev, [chatId]: [...validServerMsgs, ...pendingMsgs] };
+          });
+
+          // Remplacer le cache local avec l'historique officiel propre
+          await LocalDB.setHistory(`${user.id}_${chatId}`, validServerMsgs, keys.publicKeyJwk);
+        }
+      } catch (err) {
+        console.warn(`Erreur récupération messages serveur pour ${chatId}:`, err);
+      }
+    } catch (err) {
+      console.error(`Erreur chargement historique pour ${chatId}:`, err);
+    } finally {
+      loadingChatsRef.current.delete(chatId);
+    }
+  }, [user, decryptMessageArray]);
+
+  /**
    * CHARGEMENT AUTOMATIQUE DE L'HISTORIQUE AU DÉMARRAGE (POUR LES ONGLETS OUVERTS)
    */
   useEffect(() => {
-    let active = true;
-    const loadAllOpenHistories = async () => {
-      const keys = myKeysRef.current;
-      if (!keys || openChatIds.length === 0) return;
-
-      for (const id of openChatIds) {
-        try {
-          // Chargement depuis IndexedDB
-          let history = await LocalDB.getMessages(`${user?.id}_${id}`, keys.privateKeyJwk);
-          
-          if (history.length > 0) {
-            history = await decryptMessageArray(history, keys.privateKeyJwk);
-          }
-          
-          // On tente quand même de récupérer les nouveaux messages du serveur (publics)
-          try {
-            const res = await axios.get(`/api/messages/${user?.id}/${id}`);
-            if (res.data && res.data.length > 0) {
-              const serverMsgs = await decryptMessageArray(res.data, keys.privateKeyJwk);
-              
-              // Fusionner (éviter les doublons basés sur le contenu et l'heure)
-              // Note: On ignore les messages du serveur qui sont illisibles et absents du cache local
-              const existingKeys = new Set(history.map(m => m.text + m.time));
-              for (const sm of serverMsgs) {
-                const key = sm.text + sm.time;
-                if (!existingKeys.has(key)) {
-                  if (sm.text === "[!] Message illisible (E2E)") continue; // Évite d'ajouter les "fantômes"
-                  history.push(sm);
-                  await LocalDB.saveMessage(`${user?.id}_${id}`, sm, keys.publicKeyJwk);
-                }
-              }
-            }
-          } catch(e) { /* Pas grave si le serveur est injoignable */ }
-
-          if (active) {
-            setMessages(prev => ({ ...prev, [id]: history }));
-          }
-        } catch (err) {
-          console.error(`Erreur chargement auto historique pour ${id}:`, err);
-        }
-      }
-    };
-
-    if (user && myKeys) {
-      loadAllOpenHistories();
+    if (user && myKeys && openChatIds.length > 0) {
+      openChatIds.forEach(id => {
+        loadChatHistory(id);
+      });
     }
-    return () => { active = false; };
-  }, [user, !!myKeys, JSON.stringify(openChatIds)]);
+  }, [user, !!myKeys, JSON.stringify(openChatIds), loadChatHistory]);
 
   /**
    * AUTO-SCROLL DES MESSAGES
@@ -830,10 +943,24 @@ const App: React.FC = () => {
         setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
         setActiveChatId(prev => prev === 0 ? senderId : prev);
 
-        const finalMsg = { ...decryptedData, sender: decryptedData.sender || originalSenderName };
+        const formattedTime = formatMessageTime(decryptedData.timestamp, decryptedData.time);
+        const finalMsg: Message = { 
+          ...decryptedData, 
+          id: decryptedData.id,
+          sender_id: senderId,
+          senderId: senderId,
+          receiver_id: user?.id,
+          receiverId: user?.id,
+          sender: decryptedData.sender || originalSenderName,
+          time: formattedTime,
+          timestamp: decryptedData.timestamp || new Date().toISOString()
+        };
 
         setMessages(prev => {
           const currentMsgs = prev[senderId] || [];
+          if (finalMsg.id && currentMsgs.some(m => m.id === finalMsg.id)) {
+            return prev;
+          }
           return {
             ...prev,
             [senderId]: [...currentMsgs, finalMsg]
@@ -934,60 +1061,13 @@ const App: React.FC = () => {
   }, [user?.id]);
 
   /**
-   * RÉCUPÉRATION DE L'HISTORIQUE DES MESSAGES
+   * CHARGEMENT DE L'HISTORIQUE DU CHAT ACTIF SI NON CHARGÉ
    */
   useEffect(() => {
-    const fetchHistory = async () => {
-      // On ne récupère l'historique que si on a un utilisateur, des clés E2E et une discussion active vide
-      if (user && myKeys && activeChatId !== 0 && (!messages[activeChatId] || messages[activeChatId].length === 0)) {
-        try {
-          const res = await axios.get(`/api/messages/${user.id}/${activeChatId}`);
-          
-          if (!Array.isArray(res.data)) return;
-
-          const historyPromises = res.data.map(async (m: any) => {
-            let decryptedM = { ...m };
-            let isEncrypted = false;
-            let parsedE2e = null;
-            
-            try {
-               const potentialJson = JSON.parse(m.text);
-               if (potentialJson && potentialJson.keyReceiver) {
-                  isEncrypted = true;
-                  parsedE2e = potentialJson;
-               }
-            } catch(e) { /* Pas du JSON chiffré */ }
-
-            if (isEncrypted && myKeys) {
-              const isSender = m.sender_id === user.id;
-              try {
-                const payload = await decryptMessagePayload(parsedE2e, myKeys.privateKeyJwk, isSender);
-                if (payload) {
-                   decryptedM = { ...m, ...payload };
-                } else {
-                   decryptedM = { ...m, text: "[!] Message chiffré illisible", audio: null };
-                }
-              } catch (err) {
-                decryptedM = { ...m, text: "[!] Erreur de déchiffrement", audio: null };
-              }
-            }
-
-            return {
-              ...decryptedM,
-              sender: m.sender_id === user.id ? myNickname : (decryptedM.sender || m.sender_name || 'Contact'),
-              style: decryptedM.style ? (typeof decryptedM.style === 'string' ? JSON.parse(decryptedM.style) : decryptedM.style) : null
-            };
-          });
-
-          const history = await Promise.all(historyPromises);
-          setMessages(prev => ({ ...prev, [activeChatId]: history }));
-        } catch (err) { 
-          console.error("Erreur lors de la récupération de l'historique:", err); 
-        }
-      }
-    };
-    fetchHistory();
-  }, [activeChatId, user, myNickname, myKeys]);
+    if (user && myKeys && activeChatId !== 0 && (!messages[activeChatId] || messages[activeChatId].length === 0)) {
+      loadChatHistory(activeChatId);
+    }
+  }, [activeChatId, user, !!myKeys, loadChatHistory]);
 
   /**
    * RÉCUPÉRATION DE LA CLÉ PUBLIQUE D'UN CONTACT (Cache-first)
@@ -1080,13 +1160,23 @@ const App: React.FC = () => {
         isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
       };
       
-      socket.emit('send_message', msgData);
+      const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const nowIso = new Date().toISOString();
+      const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       // Ajout local immédiat pour la fluidité (optimistic UI)
-      const myLocalMsg = { 
+      const myLocalMsg: Message = { 
         ...unencryptedPayload, 
-        sender: myNickname, 
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+        id: clientMsgId,
+        clientMsgId,
+        senderId: user?.id,
+        sender_id: user?.id,
+        receiverId: activeChatId,
+        receiver_id: activeChatId,
+        sender: myNickname || user?.nickname || 'Moi', 
+        time: formattedTime,
+        timestamp: nowIso,
+        _isPending: true
       };
 
       setMessages(prev => ({ 
@@ -1094,12 +1184,27 @@ const App: React.FC = () => {
         [activeChatId]: [...(prev[activeChatId] || []), myLocalMsg] 
       }));
 
-      // Sauvegarde dans IndexedDB pour la persistance locale (Chiffré)
-      if (myKeysRef.current) {
-        LocalDB.saveMessage(`${user?.id}_${activeChatId}`, myLocalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
-      }
-
       setInputText('');
+
+      socket.emit('send_message', msgData, (ack?: { success?: boolean, id?: number | string, timestamp?: string }) => {
+        if (ack?.id) {
+          myLocalMsg.id = ack.id;
+          myLocalMsg._isPending = false;
+          if (ack.timestamp) myLocalMsg.timestamp = ack.timestamp;
+
+          setMessages(prev => {
+            const currentMsgs = prev[activeChatId] || [];
+            return {
+              ...prev,
+              [activeChatId]: currentMsgs.map(m => m.clientMsgId === clientMsgId ? { ...m, id: ack.id, _isPending: false, timestamp: ack.timestamp || m.timestamp } : m)
+            };
+          });
+
+          if (myKeysRef.current) {
+            LocalDB.saveMessage(`${user?.id}_${activeChatId}`, myLocalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
+          }
+        }
+      });
 
     } catch (e) {
       console.error("Échec du chiffrement:", e);
@@ -1196,6 +1301,9 @@ const App: React.FC = () => {
   const handleCancelVoiceClip = () => {
     cancelRecordingRef.current = true;
     if (mediaRecorder) {
+      if (mediaRecorder.stream) {
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+      }
       mediaRecorder.stop();
       setIsRecording(false);
       setMediaRecorder(null);
@@ -1217,6 +1325,7 @@ const App: React.FC = () => {
         recorder.ondataavailable = (e) => chunks.push(e.data);
         
         recorder.onstop = async () => {
+          stream.getTracks().forEach(t => t.stop());
           if (cancelRecordingRef.current) return;
           const blob = new Blob(chunks, { type: recorder.mimeType });
           const reader = new FileReader();
@@ -1252,12 +1361,22 @@ const App: React.FC = () => {
                 isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
               };
 
-              if (socket) socket.emit('send_message', msgData);
+              const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+              const nowIso = new Date().toISOString();
+              const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-              const myLocalMsg = {
+              const myLocalMsg: Message = {
                 ...unencryptedPayload,
-                sender: myNickname,
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                id: clientMsgId,
+                clientMsgId,
+                senderId: user?.id,
+                sender_id: user?.id,
+                receiverId: activeChatId,
+                receiver_id: activeChatId,
+                sender: myNickname || user?.nickname || 'Moi',
+                time: formattedTime,
+                timestamp: nowIso,
+                _isPending: true
               };
 
               setMessages(prev => ({
@@ -1265,8 +1384,26 @@ const App: React.FC = () => {
                 [activeChatId]: [...(prev[activeChatId] || []), myLocalMsg]
               }));
 
-              if (myKeysRef.current) {
-                LocalDB.saveMessage(`${user?.id}_${activeChatId}`, myLocalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
+              if (socket) {
+                socket.emit('send_message', msgData, (ack?: { success?: boolean, id?: number | string, timestamp?: string }) => {
+                  if (ack?.id) {
+                    myLocalMsg.id = ack.id;
+                    myLocalMsg._isPending = false;
+                    if (ack.timestamp) myLocalMsg.timestamp = ack.timestamp;
+
+                    setMessages(prev => {
+                      const currentMsgs = prev[activeChatId] || [];
+                      return {
+                        ...prev,
+                        [activeChatId]: currentMsgs.map(m => m.clientMsgId === clientMsgId ? { ...m, id: ack.id, _isPending: false, timestamp: ack.timestamp || m.timestamp } : m)
+                      };
+                    });
+
+                    if (myKeysRef.current) {
+                      LocalDB.saveMessage(`${user?.id}_${activeChatId}`, myLocalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
+                    }
+                  }
+                });
               }
             } catch (err) {
               console.error("Échec chiffrement clip vocal:", err);
@@ -1277,10 +1414,13 @@ const App: React.FC = () => {
         recorder.start();
         setMediaRecorder(recorder);
         setIsRecording(true);
-      } catch (err) { 
+      } catch { 
         alert("Impossible d'accéder au microphone."); 
       }
     } else {
+      if (mediaRecorder?.stream) {
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+      }
       mediaRecorder?.stop();
       setIsRecording(false);
       setMediaRecorder(null);
@@ -1336,51 +1476,20 @@ const App: React.FC = () => {
    */
   const handleLogout = (reason?: string) => {
     if (reason) console.warn("[Session] Déconnexion forcée:", reason); 
+    if (socket) {
+      socket.emit('manual_disconnect');
+    }
+    if (user?.id) {
+      sessionStorage.removeItem(`wlm_priv_${user.id}`);
+      sessionStorage.removeItem(`wlm_pub_${user.id}`);
+      localStorage.removeItem(`wlm_priv_${user.id}`);
+      localStorage.removeItem(`wlm_pub_${user.id}`);
+      localStorage.removeItem(`wlm_keys_${user.id}`);
+    }
     localStorage.removeItem('wlm_user'); 
     localStorage.removeItem('wlm_open_chats');
     localStorage.removeItem('wlm_active_chat');
-    // On force le rechargement de la page pour vider TOUTE la mémoire vive (clés E2E, messages, contacts)
-    // et s'assurer qu'il n'y a aucune fuite d'état entre deux comptes.
     window.location.reload(); 
-  };
-
-  /**
-   * DÉCHIFFREMENT D'UN TABLEAU DE MESSAGES
-   */
-  const decryptMessageArray = async (msgs: any[], privateKey: any) => {
-    const results = [];
-    for (const m of msgs) {
-      let decryptedText = m.text;
-      let decryptedAudio = m.audio;
-
-      try {
-        const potentialJson = JSON.parse(m.text);
-        if (potentialJson && (potentialJson.keyReceiver || potentialJson.keySender)) {
-           const isSender = m.sender_id === user?.id || m.senderId === user?.id;
-           const payload = await decryptMessagePayload(potentialJson, privateKey, isSender);
-           if (payload) {
-             decryptedText = payload.text;
-             if (payload.audio) decryptedAudio = payload.audio;
-             if (payload.style) m.style = payload.style;
-           }
-           else decryptedText = "[!] Message illisible (E2E)";
-        }
-      } catch(e) { /* Pas du JSON chiffré */ }
-
-      // Normalisation pour l'affichage (Conversion des noms de champs serveur -> frontend)
-      const formattedTime = m.timestamp 
-        ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-        : (m.time || '');
-
-      results.push({ 
-        ...m, 
-        text: decryptedText, 
-        audio: decryptedAudio,
-        sender: m.sender || m.sender_name || 'Contact',
-        time: formattedTime
-      });
-    }
-    return results;
   };
 
   /**
@@ -1407,32 +1516,6 @@ const App: React.FC = () => {
     if (!openChatIds.includes(id)) {
       setOpenChatIds(prev => [...prev, id]);
 
-      // Chargement de l'historique local (IndexedDB) - DÉCHIFFRÉ
-      try {
-        const keys = myKeysRef.current;
-        if (keys) {
-          let localHistory = await LocalDB.getMessages(`${user?.id}_${id}`, keys.privateKeyJwk);
-          
-          if (localHistory.length > 0) {
-            // On déchiffre aussi la couche E2EE interne des messages chargés localement
-            localHistory = await decryptMessageArray(localHistory, keys.privateKeyJwk);
-            setMessages(prev => ({ ...prev, [id]: localHistory }));
-          } else {
-            // Si rien en local, on tente de charger depuis le serveur
-            const res = await axios.get(`/api/messages/${user?.id}/${id}`);
-            const serverMsgs = await decryptMessageArray(res.data, keys.privateKeyJwk);
-            setMessages(prev => ({ ...prev, [id]: serverMsgs }));
-
-            // On sauvegarde aussi l'historique serveur en local (chiffré) pour la prochaine fois
-            for (const m of res.data) {
-              await LocalDB.saveMessage(`${user?.id}_${id}`, m, keys.publicKeyJwk);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Erreur chargement historique local:", err);
-      }
-
       // Synchronisation automatique du mode privé si actif en local
       if ((globalPrivateMode || isPrivateMode[id]) && socket) {
         socket.emit('toggle_private_mode', {
@@ -1444,6 +1527,7 @@ const App: React.FC = () => {
       }
     }
     setActiveChatId(id);
+    loadChatHistory(id);
   };
   const closeChat = (e: React.MouseEvent, id: number) => {
     e.stopPropagation();

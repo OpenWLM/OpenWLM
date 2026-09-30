@@ -11,7 +11,12 @@ class SoundSynthesizer {
    */
   private getCtx() {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      } else {
+        throw new Error("AudioContext non supporté.");
+      }
     }
     return this.ctx;
   }

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
+import SoundManager from '../utils/SoundManager';
 
 interface VideoCallProps {
   socket: Socket | null;
@@ -8,9 +9,9 @@ interface VideoCallProps {
   contactName: string;
   callerName: string; // Nom de celui qui appelle
   isReceivingCall: boolean;
-  incomingSignal?: any;
+  incomingSignal?: unknown;
   audioOnly?: boolean;
-  iceCandidatesBuffer?: any[];
+  iceCandidatesBuffer?: RTCIceCandidateInit[];
   onEndCall: () => void;
 }
 
@@ -22,16 +23,24 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
-  const hasInitialized = useRef(false); // Empêche le double appel
+  const hasInitialized = useRef(false);
 
-  useEffect(() => {
-    // Si on initie l'appel, on lance la caméra tout de suite
-    if (!isReceivingCall && callStatus === 'calling' && !hasInitialized.current) {
-      initCall();
+  const handleEndCall = useCallback(() => {
+    setCallStatus('ended');
+    hasInitialized.current = false;
+    if (socket) socket.emit('end_call', { target: activeChatId, caller: myId });
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      setLocalStream(null);
     }
-  }, [isReceivingCall, callStatus]);
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    onEndCall();
+  }, [socket, activeChatId, myId, localStream, onEndCall]);
 
-  const initCall = async () => {
+  const initCall = useCallback(async () => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
 
@@ -56,12 +65,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         localVideoRef.current.srcObject = stream;
       }
 
-      const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+      const configuration: RTCConfiguration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
       console.log("[WebRTC] Création RTCPeerConnection...");
       const peerConnection = new RTCPeerConnection(configuration);
       peerConnectionRef.current = peerConnection;
 
-      // Gestion des candidats ICE (TRÈS IMPORTANT)
+      // Gestion des candidats ICE
       peerConnection.onicecandidate = (event) => {
         if (event.candidate && socket) {
           console.log("[WebRTC] Nouveau candidat ICE généré, envoi...");
@@ -94,7 +103,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
 
       if (isReceivingCall && incomingSignal) {
         console.log("[WebRTC] Mode RÉPONDEUR : Application de l'offre...");
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingSignal));
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingSignal as RTCSessionDescriptionInit));
         
         console.log("[WebRTC] Création de l'Answer...");
         const answer = await peerConnection.createAnswer();
@@ -133,12 +142,34 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         }
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[WebRTC] EXCEPTION :", err);
-      alert(`Erreur : ${err.message || 'Inconnue'}`);
+      const msg = err instanceof Error ? err.message : 'Inconnue';
+      alert(`Erreur : ${msg}`);
       handleEndCall();
     }
-  };
+  }, [audioOnly, activeChatId, myId, isReceivingCall, incomingSignal, socket, iceCandidatesBuffer, callerName, handleEndCall]);
+
+  // Sonnerie d'appel entrant
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (callStatus === 'ringing') {
+      SoundManager.play('phone');
+      interval = setInterval(() => {
+        SoundManager.play('phone');
+      }, 3500);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [callStatus]);
+
+  useEffect(() => {
+    // Si on initie l'appel, on lance la caméra tout de suite
+    if (!isReceivingCall && callStatus === 'calling' && !hasInitialized.current) {
+      initCall();
+    }
+  }, [isReceivingCall, callStatus, initCall]);
 
   const handleAcceptCall = () => {
     setCallStatus('connected');
@@ -148,18 +179,22 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   useEffect(() => {
     if (!socket) return;
 
-    const handleSignal = async (data: any) => {
+    const handleSignal = async (data: { caller: number; signal: string }) => {
       if (data.caller !== activeChatId) return;
       try {
-        let signal = data.signal;
-        try { signal = JSON.parse(decodeURIComponent(escape(window.atob(data.signal)))); } catch(e) {}
+        let signal: { type: string; candidate?: RTCIceCandidateInit } = { type: '' };
+        try { 
+          signal = JSON.parse(decodeURIComponent(escape(window.atob(data.signal)))); 
+        } catch {
+          signal = typeof data.signal === 'object' ? data.signal : JSON.parse(data.signal);
+        }
         
         if (signal.type === 'answer') {
           console.log("[WebRTC] Answer reçue, application...");
           if (peerConnectionRef.current) {
-            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal));
+            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal as unknown as RTCSessionDescriptionInit));
           }
-        } else if (signal.type === 'ice-candidate') {
+        } else if (signal.type === 'ice-candidate' && signal.candidate) {
           if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
             await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
           } else {
@@ -172,7 +207,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     };
 
     socket.on('webrtc_signal', handleSignal);
-    socket.on('call_ended', (data: any) => {
+    socket.on('call_ended', (data: { caller: number }) => {
       if (data.caller === activeChatId) handleEndCall();
     });
 
@@ -180,14 +215,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       socket.off('webrtc_signal', handleSignal);
       socket.off('call_ended');
     };
-  }, [socket, activeChatId]);
+  }, [socket, activeChatId, handleEndCall]);
 
-  const handleEndCall = () => {
-    setCallStatus('ended');
-    if (socket) socket.emit('end_call', { target: activeChatId, caller: myId });
-    if (localStream) localStream.getTracks().forEach(track => track.stop());
-    onEndCall();
-  };
+  // Nettoyage au démontage
+  useEffect(() => {
+    return () => {
+      hasInitialized.current = false;
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="wlm-video-modal" style={styles.overlay}>

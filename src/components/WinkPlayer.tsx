@@ -22,10 +22,13 @@ const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
     /**
      * Logique de reproduction sonore associée aux clins d'œil
      */
+    let t1: ReturnType<typeof setTimeout> | null = null;
+    let t2: ReturnType<typeof setTimeout> | null = null;
+
     if (winkId === 'frog') {
       // Séquence sonore spécifique pour la grenouille
-      setTimeout(() => Synthesis.playCatch(), 1800); // Capture de la mouche
-      setTimeout(() => Synthesis.playBurp(), 2500);  // Rot final
+      t1 = setTimeout(() => Synthesis.playCatch(), 1800); // Capture de la mouche
+      t2 = setTimeout(() => Synthesis.playBurp(), 2500);  // Rot final
     } else {
       // Mapping des sons standards
       const soundMap: Record<string, string> = {
@@ -45,7 +48,11 @@ const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
       onFinish();
     }, 5000);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (t1) clearTimeout(t1);
+      if (t2) clearTimeout(t2);
+    };
   }, [winkId, onFinish]);
 
   // Si le clin d'œil n'est plus visible, on ne rend rien

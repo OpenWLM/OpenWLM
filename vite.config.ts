@@ -10,11 +10,15 @@ export default defineConfig({
   server: {
     proxy: {
       // Redirige les appels API vers le serveur Express local
-      '/api': 'http://localhost:3001',
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true
+      },
       // Proxy pour les WebSockets (Socket.IO)
       '/socket.io': {
         target: 'ws://localhost:3001',
-        ws: true
+        ws: true,
+        changeOrigin: true
       }
     }
   }

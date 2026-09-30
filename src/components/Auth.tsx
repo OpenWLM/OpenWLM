@@ -5,7 +5,20 @@ import axios from 'axios';
  * Interface pour les propriétés du composant Auth
  */
 interface AuthProps {
-  onLogin: (user: any) => void;
+  onLogin: (user: {
+    id: number;
+    username: string;
+    token: string;
+    status: string;
+    plaintextPassword?: string;
+    rememberMe?: boolean;
+    nickname?: string;
+    avatar?: string;
+    scene?: string;
+    psm?: string;
+    public_key?: string;
+    encrypted_private_key?: string;
+  }) => void;
 }
 
 /**
@@ -32,7 +45,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       const res = await axios.get('/api/captcha');
       setCaptchaData(res.data);
       setCaptchaAnswer('');
-    } catch (e) {
+    } catch {
       console.error('Échec de la récupération du captcha');
       setError('Impossible de contacter le serveur pour le captcha.');
     }
@@ -100,9 +113,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         setIsLogin(true);
         alert('Compte créé avec succès ! Vous pouvez maintenant vous connecter.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Gestion des erreurs serveur
-      const serverError = err.response?.data?.error || 'Une erreur inattendue est survenue.';
+      const serverError = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Une erreur inattendue est survenue.';
       setError(serverError);
       
       // Rafraîchir le captcha en cas d'erreur d'inscription

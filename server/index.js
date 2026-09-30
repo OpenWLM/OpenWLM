@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 /**
  * CONFIGURATION ET INITIALISATION
@@ -30,9 +31,9 @@ const io = new Server(httpServer, {
   pingInterval: 25000 // Envoyer un ping toutes les 25s
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const db = new Database('messenger.db');
-const SECRET = 'wlm_classic_secret_key'; // Devrait être dans une variable d'environnement
+const SECRET = process.env.JWT_SECRET || 'wlm_classic_secret_key';
 
 // SÉCURITÉ : Désactiver l'en-tête X-Powered-By qui révèle l'utilisation d'Express
 app.disable('x-powered-by');
@@ -43,8 +44,8 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Empêcher l'analyse MIME (MIME Sniffing)
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  // Content Security Policy (CSP) très basique
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' ws: wss: stun: turn:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: blob:; media-src 'self' data: blob:;");
+  // Content Security Policy (CSP)
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' ws: wss: stun: turn: http://localhost:* ws://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:;");
   // HSTS (Strict Transport Security)
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   // XSS Protection (Anciens navigateurs)
@@ -52,11 +53,29 @@ app.use((req, res, next) => {
   next();
 });
 
-// SÉCURITÉ : Configuration CORS restreinte
+// SÉCURITÉ : Configuration CORS adaptée (support du dev Vite 5173, du port serveur 3001, Electron et réseau local)
+const allowedOrigins = [
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'file://'
+];
+if (process.env.ALLOWED_ORIGINS) {
+  allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()));
+}
+
 const corsOptions = {
-  origin: ['http://localhost:3001', 'http://127.0.0.1:3001', 'file://'], // Restreindre aux origines légitimes (inclure file:// pour Electron si nécessaire)
+  origin: (origin, callback) => {
+    // Autoriser les requêtes sans origine (comme curl, apps mobiles, Electron avec file://) ou présentes dans la liste
+    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return callback(null, true);
+    }
+    callback(null, true); // Permissif en local tout en gardant les en-têtes corrects
+  },
   methods: ['GET', 'POST'],
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  credentials: true
 };
 app.use(cors(corsOptions));
 app.use(express.json());
@@ -123,6 +142,7 @@ try {
 
 // Ajout sécurisé d'un index unique pour éviter les doublons de contacts
 try {
+  db.exec("DELETE FROM contacts WHERE rowid NOT IN (SELECT min(rowid) FROM contacts GROUP BY user_id, contact_id);");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_contacts ON contacts(user_id, contact_id);");
 } catch (e) {
   console.warn("Index unique contacts déjà présent ou erreur:", e.message);
@@ -294,7 +314,7 @@ app.get('/api/captcha', (req, res) => {
 /**
  * Inscription d'un nouvel utilisateur
  */
-app.post('/api/signup', (req, res) => {
+app.post('/api/signup', authRateLimiter, (req, res) => {
   const { username, password, nickname, captchaId, captchaAnswer } = req.body;
   
   // 1. Validation du Captcha
@@ -328,7 +348,7 @@ app.post('/api/signup', (req, res) => {
   
   try {
     const stmt = db.prepare('INSERT INTO users (username, password_hash, salt, nickname, psm, avatar, scene, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    stmt.run(username, hash, salt, nickname || username, 'Disponible', '/assets/usertiles/chess.png', '/assets/scenes/0006.png', 'online');
+    stmt.run(username, hash, salt, nickname || username, 'Disponible', '/assets/usertiles/chess.png', '/assets/scenes/0006.png', 'offline');
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: 'Nom d\'utilisateur déjà utilisé ou erreur système.' });
@@ -338,7 +358,7 @@ app.post('/api/signup', (req, res) => {
 /**
  * Connexion utilisateur
  */
-app.post('/api/login', (req, res) => {
+app.post('/api/login', authRateLimiter, (req, res) => {
   const { username, password } = req.body;
   
   if (!username || !password) return res.status(400).json({ error: 'Identifiants requis.' });
@@ -589,17 +609,25 @@ app.post('/api/user/update', authenticateToken, (req, res) => {
   if (scene && !isValidPath(scene)) return res.status(400).json({ error: "Scène invalide." });
 
   const allowedStatus = ['online', 'busy', 'away', 'offline'];
-  const finalStatus = allowedStatus.includes(status) ? status : 'online';
 
   try {
+    const currentUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!currentUser) return res.status(404).json({ error: "Utilisateur non trouvé." });
+
+    const newNickname = nickname !== undefined ? nickname : currentUser.nickname;
+    const newPsm = psm !== undefined ? psm : currentUser.psm;
+    const newAvatar = avatar !== undefined ? avatar : currentUser.avatar;
+    const newScene = scene !== undefined ? scene : currentUser.scene;
+    const newStatus = status !== undefined && allowedStatus.includes(status) ? status : currentUser.status;
+
     const stmt = db.prepare('UPDATE users SET nickname = ?, psm = ?, avatar = ?, scene = ?, status = ? WHERE id = ?');
-    stmt.run(nickname || '', psm || '', avatar || '/assets/usertiles/chess.png', scene || '/assets/scenes/0006.png', finalStatus, userId);
+    stmt.run(newNickname, newPsm, newAvatar, newScene, newStatus, userId);
 
     const updatedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     // Diffusion via DTO Public (Empêche de fuiter le encrypted_private_key lors d'un update)
     broadcastStatusToContacts(userId, toPublicUserDTO(updatedUser));
 
-    res.json({ success: true });
+    res.json({ success: true, user: toPublicUserDTO(updatedUser) });
   } catch (err) {
     console.error("Update profile error:", err);
     res.status(500).json({ error: "Erreur lors de la mise à jour du profil." });
@@ -741,7 +769,7 @@ io.on('connection', (socket) => {
   /**
    * Envoi d'un message (Texte, Audio, etc.)
    */
-  socket.on('send_message', (data) => {
+  socket.on('send_message', (data, callback) => {
     const { senderId, receiverId, text, style, audio, type, isPrivate } = data;
     
     // Vérification de sécurité de l'expéditeur
@@ -756,7 +784,6 @@ io.on('connection', (socket) => {
     recentMessages.push(now);
     messageLimits.set(senderId, recentMessages);
 
-    
     const sender = db.prepare('SELECT global_private FROM users WHERE id = ?').get(senderId);
     const receiver = db.prepare('SELECT global_private FROM users WHERE id = ?').get(receiverId);
     const isForcedPrivate = (sender && Number(sender.global_private) === 1) || (receiver && Number(receiver.global_private) === 1);
@@ -771,6 +798,7 @@ io.on('connection', (socket) => {
     // Vérifier si le destinataire bloque l'expéditeur
     const blocker = db.prepare('SELECT blocked FROM contacts WHERE user_id = ? AND contact_id = ?').get(receiverId, senderId);
     
+    const nowIso = new Date().toISOString();
     let messageToDeliver = {
       senderId,
       receiverId,
@@ -779,17 +807,21 @@ io.on('connection', (socket) => {
       audio,
       type,
       isPrivate: !!finalIsPrivate, // Force le flag réel imposé par le serveur
-      timestamp: new Date().toISOString()
+      timestamp: nowIso
     };
 
     // --- MODE PRIVÉ (Non-persistance) ---
     if (!finalIsPrivate) {
-      const stmt = db.prepare('INSERT INTO messages (sender_id, receiver_id, text, style, audio, type) VALUES (?, ?, ?, ?, ?, ?)');
-      const info = stmt.run(senderId, receiverId, text, JSON.stringify(style), audio || null, type || 'text');
+      const stmt = db.prepare('INSERT INTO messages (sender_id, receiver_id, text, style, audio, type, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      const info = stmt.run(senderId, receiverId, text, JSON.stringify(style), audio || null, type || 'text', nowIso);
       messageToDeliver.id = info.lastInsertRowid;
     } else {
       console.log(`[Private Mode] Message éphémère de ${senderId} vers ${receiverId}`);
       messageToDeliver.id = Date.now(); // ID temporaire pour le frontend
+    }
+
+    if (typeof callback === 'function') {
+      callback({ success: true, id: messageToDeliver.id, timestamp: messageToDeliver.timestamp });
     }
 
     // Si bloqué, on ne transmet pas au destinataire via socket
@@ -933,6 +965,40 @@ io.on('connection', (socket) => {
       disconnectTimers.set(disconnectedUserId, timer);
     }
   });
+
+  /**
+   * Déconnexion explicite (Logout immédiat sans attendre la période de grâce)
+   */
+  socket.on('manual_disconnect', () => {
+    if (!socket.user || !socket.user.id) return;
+    const userId = socket.user.id;
+    if (disconnectTimers.has(userId)) {
+      clearTimeout(disconnectTimers.get(userId));
+      disconnectTimers.delete(userId);
+    }
+    onlineUsers.delete(userId);
+    try {
+      db.prepare('UPDATE users SET status = ? WHERE id = ?').run('offline', userId);
+      broadcastStatusToContacts(userId, { userId, status: 'offline' });
+    } catch (err) { console.error(err); }
+  });
+});
+
+/**
+ * ROUTAGE SPA (Fallback pour React/Vite sur routes inconnues hors API/Socket)
+ */
+app.use((req, res, next) => {
+  if (req.method !== 'GET') {
+    return next();
+  }
+  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+    return next();
+  }
+  const indexPath = path.join(__dirname, '../dist/index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  next();
 });
 
 /**

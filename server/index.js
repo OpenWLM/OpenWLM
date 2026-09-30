@@ -961,6 +961,12 @@ const onlineUsers = new Map();     // userId -> socketId
 const disconnectTimers = new Map(); // userId -> Timeout (pour gérer les rafraîchissements)
 const wizzLimits = new Map();      // userId -> timestamps[]
 const messageLimits = new Map();   // userId -> timestamps[]
+const activeGames = new Map();     // gameKey -> session de jeu sécurisée (anti-usurpation et vérification de tour)
+
+const getGameKey = (id1, id2) => {
+  const [min, max] = Number(id1) < Number(id2) ? [id1, id2] : [id2, id1];
+  return `${min}_${max}`;
+};
 
 /**
  * Middleware Socket.IO pour authentifier via Token
@@ -1209,7 +1215,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 2. Acceptation de l'invitation
+  // 2. Acceptation de l'invitation (Création sécurisée de la session de jeu)
   socket.on('game_accept', (data) => {
     if (!socket.user || !socket.user.id) return;
     const { target, gameType } = data;
@@ -1219,6 +1225,16 @@ io.on('connection', (socket) => {
     const targetUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(target);
 
     if (targetSocketId && acceptorUser && targetUser) {
+      const gameKey = getGameKey(target, socket.user.id);
+      activeGames.set(gameKey, {
+        playerX: target,         // L'initiateur joue 'X'
+        playerO: socket.user.id, // L'accepteur joue 'O'
+        turn: target,            // 'X' commence toujours
+        board: Array(9).fill(null),
+        status: 'playing',
+        scores: { [target]: 0, [socket.user.id]: 0 }
+      });
+
       // L'initiateur joue 'X' et a le premier tour
       io.to(targetSocketId).emit('game_started', {
         opponentId: socket.user.id,
@@ -1253,28 +1269,112 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 4. Transmission d'un coup joué sur la grille
+  // 4. Transmission et validation stricte d'un coup joué sur la grille (Anti-triche & Anti-usurpation)
   socket.on('game_move', (data) => {
     if (!socket.user || !socket.user.id) return;
-    const { target, index, symbol } = data;
+    const userId = socket.user.id;
+    const { target, index } = data;
+
+    const gameKey = getGameKey(userId, target);
+    const game = activeGames.get(gameKey);
+
+    // SÉCURITÉ 1 : Vérifier qu'une session de jeu active existe
+    if (!game || game.status !== 'playing') {
+      return socket.emit('game_error', { message: "Aucune partie active trouvée avec ce contact." });
+    }
+
+    // SÉCURITÉ 2 : Vérifier que c'est bien le tour du joueur connecté (interdiction de jouer hors-tour)
+    if (game.turn !== userId) {
+      return socket.emit('game_error', { message: "Ce n'est pas votre tour de jouer !" });
+    }
+
+    // SÉCURITÉ 3 : Vérifier la validité arithmétique de la case (entier entre 0 et 8)
+    const cellIndex = parseInt(index, 10);
+    if (isNaN(cellIndex) || cellIndex < 0 || cellIndex > 8) {
+      return socket.emit('game_error', { message: "Coup invalide : case hors limites." });
+    }
+
+    // SÉCURITÉ 4 (ANTI-USURPATION) : Vérifier que la case N'EST PAS DÉJÀ OCCUPÉE !
+    if (game.board[cellIndex] !== null) {
+      return socket.emit('game_error', { message: "Coup invalide : cette case est déjà occupée !" });
+    }
+
+    // SÉCURITÉ 5 : Déterminer le symbole légitime depuis l'état du serveur (ignore tout symbole envoyé par le client)
+    const legitSymbol = (game.playerX === userId) ? 'X' : 'O';
+    const nextTurnUserId = (userId === game.playerX) ? game.playerO : game.playerX;
+
+    // Enregistrement autoritaire sur la grille serveur
+    game.board[cellIndex] = legitSymbol;
+    game.turn = nextTurnUserId;
+
+    // Vérification des conditions de victoire côté serveur
+    const WINNING_COMBOS = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8],
+      [0, 3, 6], [1, 4, 7], [2, 5, 8],
+      [0, 4, 8], [2, 4, 6]
+    ];
+    let winner = null;
+    let winningCombo = null;
+
+    for (const combo of WINNING_COMBOS) {
+      const [a, b, c] = combo;
+      if (game.board[a] && game.board[a] === game.board[b] && game.board[a] === game.board[c]) {
+        winner = game.board[a];
+        winningCombo = combo;
+        break;
+      }
+    }
+
+    if (!winner && game.board.every(cell => cell !== null)) {
+      winner = 'draw';
+    }
+
+    if (winner) {
+      game.status = 'finished';
+      if (winner === 'X') game.scores[game.playerX]++;
+      if (winner === 'O') game.scores[game.playerO]++;
+    }
+
+    // Transmission du coup validé à l'adversaire
     const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
       io.to(targetSocketId).emit('game_move', {
-        from: socket.user.id,
-        index,
-        symbol
+        from: userId,
+        index: cellIndex,
+        symbol: legitSymbol,
+        winner,
+        winningCombo
       });
     }
+
+    // Confirmation au joueur qui a joué
+    socket.emit('game_move_confirmed', {
+      index: cellIndex,
+      symbol: legitSymbol,
+      winner,
+      winningCombo
+    });
   });
 
   // 5. Demande de nouvelle manche / Recommencer
   socket.on('game_restart', (data) => {
     if (!socket.user || !socket.user.id) return;
+    const userId = socket.user.id;
     const { target } = data;
+
+    const gameKey = getGameKey(userId, target);
+    const game = activeGames.get(gameKey);
+    if (game) {
+      game.board = Array(9).fill(null);
+      game.status = 'playing';
+      // Le joueur qui relance prend le premier tour
+      game.turn = userId;
+    }
+
     const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
       io.to(targetSocketId).emit('game_restart', {
-        from: socket.user.id
+        from: userId
       });
     }
   });
@@ -1282,11 +1382,16 @@ io.on('connection', (socket) => {
   // 6. Quitter / Abandonner la partie
   socket.on('game_quit', (data) => {
     if (!socket.user || !socket.user.id) return;
+    const userId = socket.user.id;
     const { target } = data;
+
+    const gameKey = getGameKey(userId, target);
+    activeGames.delete(gameKey);
+
     const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
       io.to(targetSocketId).emit('game_quit', {
-        from: socket.user.id
+        from: userId
       });
     }
   });
@@ -1305,6 +1410,18 @@ io.on('connection', (socket) => {
     }
 
     if (disconnectedUserId) {
+      // Nettoyer les sessions de jeu actives de cet utilisateur
+      for (const [key, game] of activeGames.entries()) {
+        if (game.playerX === disconnectedUserId || game.playerO === disconnectedUserId) {
+          const opponentUserId = (game.playerX === disconnectedUserId) ? game.playerO : game.playerX;
+          const opponentSocketId = onlineUsers.get(opponentUserId);
+          if (opponentSocketId) {
+            io.to(opponentSocketId).emit('game_quit', { from: disconnectedUserId });
+          }
+          activeGames.delete(key);
+        }
+      }
+
       // Période de grâce de 60 secondes avant de passer en 'offline' 
       // (Plus adapté au mobile où le navigateur suspend l'onglet en arrière-plan)
       const timer = setTimeout(() => {

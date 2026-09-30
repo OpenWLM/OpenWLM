@@ -130,11 +130,23 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
     if (!socket) return;
 
     const onGameMove = (data: { from: number; index: number; symbol: string }) => {
+      // SÉCURITÉ 1 : Vérifier que le coup provient bien de l'adversaire de la partie
       if (data.from !== opponentId) return;
 
+      // SÉCURITÉ 2 : Vérifier que l'index de la case est valide
+      if (!Number.isInteger(data.index) || data.index < 0 || data.index > 8) return;
+
       setBoard(prevBoard => {
+        // SÉCURITÉ 3 (ANTI-USURPATION) : Si la case est DÉJÀ occupée, REFUSER le coup !
+        // Impossible pour l'adversaire d'écraser un choix déjà fait
+        if (prevBoard[data.index] !== null) {
+          console.warn("[Sécurité] Tentative d'écrasement d'une case déjà occupée rejetée :", data.index);
+          return prevBoard;
+        }
+
         const nextBoard = [...prevBoard];
-        nextBoard[data.index] = data.symbol;
+        // SÉCURITÉ 4 : Utiliser impérativement le symbole légitime de l'adversaire (ignore tout symbole forgé)
+        nextBoard[data.index] = opponentSymbol;
 
         const result = checkWinner(nextBoard);
         if (result) {
@@ -172,14 +184,21 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
       onClose();
     };
 
+    const onGameError = (data: { message: string }) => {
+      setStatusMessage(data.message);
+      setTimeout(() => setStatusMessage(''), 4000);
+    };
+
     socket.on('game_move', onGameMove);
     socket.on('game_restart', onGameRestart);
     socket.on('game_quit', onGameQuit);
+    socket.on('game_error', onGameError);
 
     return () => {
       socket.off('game_move', onGameMove);
       socket.off('game_restart', onGameRestart);
       socket.off('game_quit', onGameQuit);
+      socket.off('game_error', onGameError);
     };
   }, [socket, opponentId, opponentName, opponentSymbol, handleRestart, onClose]);
 

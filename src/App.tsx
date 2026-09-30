@@ -2168,7 +2168,7 @@ const App: React.FC = () => {
                     className={`chat-tab status-${contact?.status || 'online'} ${activeChatId === id ? 'active' : ''}`} 
                     onClick={() => setActiveChatId(id)}
                   >
-                    <span className="tab-name">{contact?.nickname || contact?.username || 'Discussion'}</span>
+                    <span className="tab-name">{contact?.nickname || contact?.username || 'Discussion'}{activeGame?.opponentId === id ? ' 🎮' : ''}</span>
                     <span className="chat-tab-close" onClick={(e) => closeChat(e, id)}>✕</span>
                   </div>
                 );
@@ -2185,7 +2185,7 @@ const App: React.FC = () => {
                 <span 
                   onClick={() => setShowGamesMenu(prev => !prev)} 
                   style={{ cursor: 'pointer', fontWeight: showGamesMenu ? 'bold' : 'normal' }}
-                  title="Jouer à un jeu MSN avec ce contact"
+                  title="Jouer à un jeu avec ce contact"
                 >
                   Jeux ▾
                 </span>
@@ -2219,8 +2219,11 @@ const App: React.FC = () => {
               </span>
               </div>
 
-            {/* Zone principale de discussion */}
-            <div className="chat-main-area" style={convBg ? { backgroundImage: `url(/assets/backgrounds/${convBg})`, backgroundSize: 'cover' } : {}}>
+            {/* Vue scindée : Chat à gauche, Jeu Morpion à droite */}
+            <div className="conversation-split-view">
+              <div className="conversation-chat-column">
+                {/* Zone principale de discussion */}
+                <div className="chat-main-area" style={convBg ? { backgroundImage: `url(/assets/backgrounds/${convBg})`, backgroundSize: 'cover' } : {}}>
                
                {/* En-tête de la discussion (Avatar & PSM du contact) */}
                <div className="conv-header-area" style={{ backgroundImage: `url(${activeContact.scene})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
@@ -2382,7 +2385,27 @@ const App: React.FC = () => {
                   </div>
                </div>
             </div>
-          </>
+          </div>
+
+          {/* Colonne latérale de jeu Morpion (jeu et conversation en simultané) */}
+          {activeGame && activeGame.opponentId === activeChatId && (
+            <div className="conversation-game-column">
+              <MorpionGame
+                socket={socket}
+                opponentId={activeGame.opponentId}
+                opponentName={activeGame.opponentName}
+                opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                myId={user?.id || 0}
+                myName={myNickname || user?.nickname || 'Moi'}
+                myAvatar={myAvatar}
+                initialSymbol={activeGame.mySymbol}
+                initialIsMyTurn={activeGame.isMyTurn}
+                onClose={() => setActiveGame(null)}
+              />
+            </div>
+          )}
+        </div>
+      </>
         )}
       </div>
 
@@ -2620,22 +2643,6 @@ const App: React.FC = () => {
           audioOnly={isAudioOnly}
           iceCandidatesBuffer={iceCandidatesBuffer}
           onEndCall={handleEndCall}
-        />
-      )}
-
-      {/* Interface de jeu Morpion (Multi-joueurs) */}
-      {activeGame && (
-        <MorpionGame
-          socket={socket}
-          opponentId={activeGame.opponentId}
-          opponentName={activeGame.opponentName}
-          opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar}
-          myId={user?.id || 0}
-          myName={myNickname || user?.nickname || 'Moi'}
-          myAvatar={myAvatar}
-          initialSymbol={activeGame.mySymbol}
-          initialIsMyTurn={activeGame.isMyTurn}
-          onClose={() => setActiveGame(null)}
         />
       )}
 

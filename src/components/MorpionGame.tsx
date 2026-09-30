@@ -180,105 +180,102 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
   }, [socket, opponentId, opponentName, opponentSymbol, handleRestart, onClose]);
 
   return (
-    <div className="wlm-game-modal-overlay" onClick={handleQuit}>
-      <div className="wlm-game-window" onClick={e => e.stopPropagation()}>
-        
-        {/* En-tête de fenêtre Aero MSN */}
-        <div className="wlm-game-header">
-          <div className="wlm-game-title">
-            <span className="msn-game-icon">🎮</span>
-            <span>Morpion MSN — Partie contre {opponentName}</span>
-          </div>
-          <button className="win-close-btn" onClick={handleQuit} title="Quitter le jeu">✕</button>
+    <div className="wlm-game-side-panel">
+      {/* En-tête de panneau Aero */}
+      <div className="wlm-game-header">
+        <div className="wlm-game-title">
+          <span className="wlm-game-icon">🎮</span>
+          <span>Morpion — Partie contre {opponentName}</span>
         </div>
-
-        {/* Tableau des scores et avatars */}
-        <div className="wlm-game-scoreboard">
-          {/* Joueur 1 (Moi) */}
-          <div className={`player-card ${isMyTurn && !winner ? 'active-turn' : ''}`}>
-            <div className="player-avatar-wrap">
-              <img src={myAvatar} alt={myName} className="player-avatar" />
-              <span className={`player-symbol-badge symbol-${mySymbol}`}>{mySymbol}</span>
-            </div>
-            <div className="player-details">
-              <span className="player-name">{myName} (Moi)</span>
-              <span className="player-score-badge">{myScore} {myScore > 1 ? 'victoires' : 'victoire'}</span>
-            </div>
-          </div>
-
-          {/* Versus et Score central */}
-          <div className="game-vs-badge">
-            <div className="vs-label">VS</div>
-            <div className="score-numbers">{myScore} - {opponentScore}</div>
-            {draws > 0 && <div className="draws-count">{draws} nul{draws > 1 ? 's' : ''}</div>}
-          </div>
-
-          {/* Joueur 2 (Adversaire) */}
-          <div className={`player-card ${!isMyTurn && !winner ? 'active-turn' : ''}`}>
-            <div className="player-avatar-wrap">
-              <img src={opponentAvatar} alt={opponentName} className="player-avatar" />
-              <span className={`player-symbol-badge symbol-${opponentSymbol}`}>{opponentSymbol}</span>
-            </div>
-            <div className="player-details">
-              <span className="player-name">{opponentName}</span>
-              <span className="player-score-badge">{opponentScore} {opponentScore > 1 ? 'victoires' : 'victoire'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Bannière de statut de jeu */}
-        <div className={`game-turn-banner ${winner ? `banner-${winner}` : isMyTurn ? 'banner-my-turn' : 'banner-wait'}`}>
-          {statusMessage ? (
-            <span>{statusMessage}</span>
-          ) : winner === 'me' ? (
-            <span>🎉 Bravo ! Vous remportez cette manche !</span>
-          ) : winner === 'opponent' ? (
-            <span>{opponentName} a remporté cette manche !</span>
-          ) : winner === 'draw' ? (
-            <span>🤝 Match nul ! Personne ne marque de point.</span>
-          ) : isMyTurn ? (
-            <span>👉 C'est à votre tour de jouer ({mySymbol})</span>
-          ) : (
-            <span>⏳ En attente du coup de {opponentName}...</span>
-          )}
-        </div>
-
-        {/* Grille 3x3 de Morpion */}
-        <div className="wlm-morpion-board">
-          {board.map((cell, idx) => {
-            const isWinningCell = winningLine?.includes(idx);
-            return (
-              <button
-                key={idx}
-                className={`morpion-cell ${cell ? `cell-${cell}` : ''} ${isWinningCell ? 'cell-winning' : ''} ${!cell && isMyTurn && !winner ? 'cell-clickable' : ''}`}
-                onClick={() => handleCellClick(idx)}
-                disabled={!isMyTurn || cell !== null || winner !== null}
-                title={!cell && isMyTurn ? `Placer ${mySymbol}` : undefined}
-              >
-                {cell === 'X' && (
-                  <span className="symbol-x">✕</span>
-                )}
-                {cell === 'O' && (
-                  <span className="symbol-o">◯</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Barre d'action inférieure */}
-        <div className="wlm-game-footer">
-          {winner && (
-            <button className="win-btn primary-btn" onClick={() => handleRestart(true)}>
-              🔄 Rejouer une manche
-            </button>
-          )}
-          <button className="win-btn" onClick={handleQuit}>
-            Quitter le jeu
-          </button>
-        </div>
-
+        <button className="win-close-btn" onClick={handleQuit} title="Quitter le jeu">✕</button>
       </div>
+
+      {/* Tableau des scores et avatars */}
+      <div className="wlm-game-scoreboard">
+        {/* Joueur 1 (Moi) */}
+        <div className={`player-card ${isMyTurn && !winner ? 'active-turn' : ''}`}>
+          <div className="player-avatar-wrap">
+            <img src={myAvatar} alt={myName} className="player-avatar" />
+            <span className={`player-symbol-badge symbol-${mySymbol}`}>{mySymbol}</span>
+          </div>
+          <div className="player-details">
+            <span className="player-name">{myName} (Moi)</span>
+            <span className="player-score-badge">{myScore} {myScore > 1 ? 'victoires' : 'victoire'}</span>
+          </div>
+        </div>
+
+        {/* Versus et Score central */}
+        <div className="game-vs-badge">
+          <div className="vs-label">VS</div>
+          <div className="score-numbers">{myScore} - {opponentScore}</div>
+          {draws > 0 && <div className="draws-count">{draws} nul{draws > 1 ? 's' : ''}</div>}
+        </div>
+
+        {/* Joueur 2 (Adversaire) */}
+        <div className={`player-card ${!isMyTurn && !winner ? 'active-turn' : ''}`}>
+          <div className="player-avatar-wrap">
+            <img src={opponentAvatar} alt={opponentName} className="player-avatar" />
+            <span className={`player-symbol-badge symbol-${opponentSymbol}`}>{opponentSymbol}</span>
+          </div>
+          <div className="player-details">
+            <span className="player-name">{opponentName}</span>
+            <span className="player-score-badge">{opponentScore} {opponentScore > 1 ? 'victoires' : 'victoire'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Bannière de statut de jeu */}
+      <div className={`game-turn-banner ${winner ? `banner-${winner}` : isMyTurn ? 'banner-my-turn' : 'banner-wait'}`}>
+        {statusMessage ? (
+          <span>{statusMessage}</span>
+        ) : winner === 'me' ? (
+          <span>🎉 Bravo ! Vous remportez cette manche !</span>
+        ) : winner === 'opponent' ? (
+          <span>{opponentName} a remporté cette manche !</span>
+        ) : winner === 'draw' ? (
+          <span>🤝 Match nul ! Personne ne marque de point.</span>
+        ) : isMyTurn ? (
+          <span>👉 C'est à votre tour de jouer ({mySymbol})</span>
+        ) : (
+          <span>⏳ En attente du coup de {opponentName}...</span>
+        )}
+      </div>
+
+      {/* Grille 3x3 de Morpion */}
+      <div className="wlm-morpion-board">
+        {board.map((cell, idx) => {
+          const isWinningCell = winningLine?.includes(idx);
+          return (
+            <button
+              key={idx}
+              className={`morpion-cell ${cell ? `cell-${cell}` : ''} ${isWinningCell ? 'cell-winning' : ''} ${!cell && isMyTurn && !winner ? 'cell-clickable' : ''}`}
+              onClick={() => handleCellClick(idx)}
+              disabled={!isMyTurn || cell !== null || winner !== null}
+              title={!cell && isMyTurn ? `Placer ${mySymbol}` : undefined}
+            >
+              {cell === 'X' && (
+                <span className="symbol-x">✕</span>
+              )}
+              {cell === 'O' && (
+                <span className="symbol-o">◯</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Barre d'action inférieure */}
+      <div className="wlm-game-footer">
+        {winner && (
+          <button className="win-btn primary-btn" onClick={() => handleRestart(true)}>
+            🔄 Rejouer une manche
+          </button>
+        )}
+        <button className="win-btn" onClick={handleQuit}>
+          Quitter le jeu
+        </button>
+      </div>
+
     </div>
   );
 };

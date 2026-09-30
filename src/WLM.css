@@ -1253,28 +1253,63 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
    MINI-JEUX MSN / ACTIVITÉS : MORPION (TIC-TAC-TOE)
    ========================================================================== */
 
-.wlm-game-modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 20, 45, 0.45);
-  backdrop-filter: blur(3px);
+/* Vue scindée pour permettre le jeu et la conversation en simultané */
+.conversation-split-view {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  animation: fadeIn 0.2s ease-out;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
 }
 
-.wlm-game-window {
-  width: 360px;
-  background: linear-gradient(to bottom, #fcfdfe, #e8f3fa);
-  border: 1px solid #7eb4ea;
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(0, 35, 75, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+.conversation-chat-column {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 0;
+  min-width: 0;
+}
+
+.conversation-game-column {
+  width: 330px;
+  flex-shrink: 0;
+  border-left: 1px solid #a3cbee;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(to bottom, #fcfdfe, #e8f3fa);
+  z-index: 10;
+  box-shadow: -3px 0 10px rgba(0, 40, 80, 0.08);
+  animation: slideInRight 0.2s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .conversation-game-column {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    z-index: 50;
+  }
+}
+
+.wlm-game-side-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
   user-select: none;
 }
 
@@ -1298,6 +1333,7 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
+.wlm-game-icon,
 .msn-game-icon {
   font-size: 14px;
 }

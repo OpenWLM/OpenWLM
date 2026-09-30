@@ -1333,6 +1333,195 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
+.wlm-game-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.win-title-control {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  width: 22px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  cursor: pointer;
+  color: #335577;
+  transition: all 0.15s ease;
+}
+
+.win-title-control.win-minimize-btn:hover {
+  background: #cde4f7;
+  border-color: #7eb4ea;
+  color: #003366;
+}
+
+.win-title-control.win-close-btn:hover {
+  background: #e81123;
+  border-color: #b50e1b;
+  color: #ffffff;
+}
+
+.wlm-game-quick-return-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: linear-gradient(to bottom, #ebf4fb, #d4e7f8);
+  border-bottom: 1px solid #a8cce8;
+  font-size: 11px;
+  font-weight: 600;
+  color: #004b8d;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wlm-game-quick-return-bar:hover {
+  background: linear-gradient(to bottom, #d8ebfa, #bfdef6);
+}
+
+.quick-return-arrow {
+  font-size: 12px;
+  color: #0066cc;
+}
+
+/* Bannière de jeu réduite dans la discussion */
+.wlm-game-docked-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(to bottom, #f2f8fd, #d8ebf9);
+  border-bottom: 1px solid #99c7ee;
+  padding: 7px 12px;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 30, 60, 0.06);
+  z-index: 15;
+  transition: all 0.2s ease;
+}
+
+.wlm-game-docked-pill:hover {
+  background: linear-gradient(to bottom, #e5f2fc, #cce4f7);
+}
+
+.wlm-game-docked-pill.docked-pill-my-turn {
+  background: linear-gradient(to bottom, #f0fff4, #d7f7de);
+  border-bottom-color: #6ed188;
+  animation: myTurnGlow 2s infinite ease-in-out;
+}
+
+@keyframes myTurnGlow {
+  0% { box-shadow: 0 0 0 rgba(76, 175, 80, 0); }
+  50% { box-shadow: 0 0 10px rgba(76, 175, 80, 0.4); }
+  100% { box-shadow: 0 0 0 rgba(76, 175, 80, 0); }
+}
+
+.docked-pill-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.docked-pill-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.docked-pill-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.docked-pill-title {
+  font-size: 12px;
+  color: #003366;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docked-pill-score {
+  font-size: 11px;
+  color: #446688;
+}
+
+.docked-pill-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.docked-pill-badge.badge-my-turn {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.docked-pill-badge.badge-wait {
+  background: #e9ecef;
+  color: #495057;
+  border: 1px solid #ced4da;
+}
+
+.docked-pill-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-docked-restore {
+  padding: 4px 10px;
+  background: linear-gradient(to bottom, #ffffff, #e1effa);
+  border: 1px solid #7eb4ea;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #004b8d;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  transition: all 0.15s ease;
+}
+
+.btn-docked-restore:hover {
+  background: linear-gradient(to bottom, #eef6fd, #c9e3f8);
+  border-color: #3b88d4;
+  box-shadow: 0 1px 4px rgba(0, 75, 141, 0.2);
+}
+
+.btn-docked-quit {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid #dcdcdc;
+  background: #fdfdfd;
+  color: #888888;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-docked-quit:hover {
+  background: #e81123;
+  border-color: #b50e1b;
+  color: #ffffff;
+}
+
 .wlm-game-icon,
 .msn-game-icon {
   font-size: 14px;

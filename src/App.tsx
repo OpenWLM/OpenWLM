@@ -536,6 +536,18 @@ const App: React.FC = () => {
     targetName: string;
   } | null>(null);
   const [showGamesMenu, setShowGamesMenu] = useState(false);
+  const [isGameMinimized, setIsGameMinimized] = useState<boolean>(false);
+  const [gameSummary, setGameSummary] = useState<{
+    isMyTurn: boolean;
+    myScore: number;
+    opponentScore: number;
+    winner: 'me' | 'opponent' | 'draw' | null;
+  }>({
+    isMyTurn: false,
+    myScore: 0,
+    opponentScore: 0,
+    winner: null
+  });
 
   // --- ÉTAT DES CONTACTS & MESSAGES ---
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -1106,6 +1118,13 @@ const App: React.FC = () => {
         setIncomingGameInvite(null);
         setOutgoingGameInvite(null);
         setActiveGame(data);
+        setIsGameMinimized(false);
+        setGameSummary({
+          isMyTurn: data.isMyTurn,
+          myScore: 0,
+          opponentScore: 0,
+          winner: null
+        });
       });
 
       newSocket.on('game_declined', (data: { from: number; fromName: string }) => {
@@ -1744,6 +1763,14 @@ const App: React.FC = () => {
     setOutgoingGameInvite(null);
   };
 
+  const handleQuitActiveGame = () => {
+    if (activeGame && socket) {
+      socket.emit('game_quit', { target: activeGame.opponentId });
+    }
+    setActiveGame(null);
+    setIsGameMinimized(false);
+  };
+
   /**
    * GESTION DES DISCUSSIONS OUVERTES
    */
@@ -2203,6 +2230,15 @@ const App: React.FC = () => {
                 )}
               </div>
               <span onClick={() => handleInviteGame('morpion')} style={{cursor:'pointer'}} title="Lancer une partie de Morpion">Activités</span>
+              {activeGame && activeGame.opponentId === activeChatId && isGameMinimized && (
+                <span 
+                  onClick={() => setIsGameMinimized(false)} 
+                  style={{ cursor: 'pointer', color: '#0055aa', fontWeight: 'bold' }}
+                  title="Agrandir et reprendre la partie de Morpion"
+                >
+                  🎮 Reprendre le Morpion
+                </span>
+              )}
 
               <span
                 onClick={() => {
@@ -2276,6 +2312,47 @@ const App: React.FC = () => {
                     </div>
                     <div className="wlm-game-invite-actions">
                       <button className="btn-game-decline" onClick={handleCancelOutgoingInvite}>Annuler</button>
+                    </div>
+                  </div>
+                )}
+                {/* Barre de jeu Morpion réduite (permet de discuter tout en suivant la partie) */}
+                {activeGame && activeGame.opponentId === activeChatId && isGameMinimized && (
+                  <div 
+                    className={`wlm-game-docked-pill ${gameSummary.isMyTurn ? 'docked-pill-my-turn' : ''}`}
+                    onClick={() => setIsGameMinimized(false)}
+                    title="Cliquer pour afficher la fenêtre de jeu"
+                  >
+                    <div className="docked-pill-info">
+                      <span className="docked-pill-icon">🎮</span>
+                      <div className="docked-pill-texts">
+                        <span className="docked-pill-title">
+                          Morpion en cours vs <strong>{activeGame.opponentName}</strong>
+                        </span>
+                        <span className="docked-pill-score">
+                          Score : <strong>{gameSummary.myScore}</strong> - <strong>{gameSummary.opponentScore}</strong>
+                        </span>
+                      </div>
+                      <span className={`docked-pill-badge ${gameSummary.isMyTurn ? 'badge-my-turn' : 'badge-wait'}`}>
+                        {gameSummary.winner 
+                          ? (gameSummary.winner === 'me' ? '🏆 Manche gagnée !' : gameSummary.winner === 'opponent' ? 'Manche perdue' : '🤝 Match nul')
+                          : (gameSummary.isMyTurn ? '👉 À vous de jouer !' : `⏳ Tour de ${activeGame.opponentName}`)}
+                      </span>
+                    </div>
+                    <div className="docked-pill-actions" onClick={e => e.stopPropagation()}>
+                      <button 
+                        className="btn-docked-restore" 
+                        onClick={() => setIsGameMinimized(false)}
+                        title="Agrandir la fenêtre de jeu"
+                      >
+                        🗖 Agrandir le jeu
+                      </button>
+                      <button 
+                        className="btn-docked-quit" 
+                        onClick={handleQuitActiveGame}
+                        title="Quitter la partie"
+                      >
+                        ✕
+                      </button>
                     </div>
                   </div>
                 )}
@@ -2387,9 +2464,14 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Colonne latérale de jeu Morpion (jeu et conversation en simultané) */}
-          {activeGame && activeGame.opponentId === activeChatId && (
-            <div className="conversation-game-column">
+          {/* Colonne latérale de jeu Morpion (jeu et conversation en simultané ou réduit) */}
+          {activeGame && (
+            <div 
+              className={`conversation-game-column ${isGameMinimized ? 'minimized' : ''}`}
+              style={{
+                display: (activeGame.opponentId === activeChatId && !isGameMinimized) ? 'flex' : 'none'
+              }}
+            >
               <MorpionGame
                 socket={socket}
                 opponentId={activeGame.opponentId}
@@ -2400,7 +2482,12 @@ const App: React.FC = () => {
                 myAvatar={myAvatar}
                 initialSymbol={activeGame.mySymbol}
                 initialIsMyTurn={activeGame.isMyTurn}
-                onClose={() => setActiveGame(null)}
+                onClose={() => {
+                  setActiveGame(null);
+                  setIsGameMinimized(false);
+                }}
+                onMinimize={() => setIsGameMinimized(true)}
+                onGameStateChange={(summary) => setGameSummary(summary)}
               />
             </div>
           )}

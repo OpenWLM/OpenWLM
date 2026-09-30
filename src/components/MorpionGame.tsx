@@ -13,6 +13,8 @@ interface MorpionGameProps {
   initialSymbol: 'X' | 'O';
   initialIsMyTurn: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
+  onGameStateChange?: (state: { isMyTurn: boolean; myScore: number; opponentScore: number; winner: 'me' | 'opponent' | 'draw' | null }) => void;
 }
 
 const WINNING_COMBOS = [
@@ -36,7 +38,9 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
   myAvatar = '/assets/usertiles/chess.png',
   initialSymbol,
   initialIsMyTurn,
-  onClose
+  onClose,
+  onMinimize,
+  onGameStateChange
 }) => {
   const [board, setBoard] = useState<(string | null)[]>(Array(9).fill(null));
   const [mySymbol] = useState<'X' | 'O'>(initialSymbol);
@@ -179,6 +183,11 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
     };
   }, [socket, opponentId, opponentName, opponentSymbol, handleRestart, onClose]);
 
+  // Synchronisation de l'état du jeu avec le parent pour affichage en mode réduit
+  useEffect(() => {
+    onGameStateChange?.({ isMyTurn, myScore, opponentScore, winner });
+  }, [isMyTurn, myScore, opponentScore, winner, onGameStateChange]);
+
   return (
     <div className="wlm-game-side-panel">
       {/* En-tête de panneau Aero */}
@@ -187,8 +196,33 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
           <span className="wlm-game-icon">🎮</span>
           <span>Morpion — Partie contre {opponentName}</span>
         </div>
-        <button className="win-close-btn" onClick={handleQuit} title="Quitter le jeu">✕</button>
+        <div className="wlm-game-header-controls">
+          {onMinimize && (
+            <button 
+              className="win-title-control win-minimize-btn" 
+              onClick={onMinimize} 
+              title="Réduire le jeu (continuer la discussion)"
+            >
+              _
+            </button>
+          )}
+          <button 
+            className="win-title-control win-close-btn" 
+            onClick={handleQuit} 
+            title="Quitter la partie"
+          >
+            ✕
+          </button>
+        </div>
       </div>
+
+      {/* Barre de retour rapide à la discussion (pratique sur petits écrans et pour réduire) */}
+      {onMinimize && (
+        <div className="wlm-game-quick-return-bar" onClick={onMinimize} title="Réduire pour voir la conversation">
+          <span>💬 Réduire le jeu pour discuter</span>
+          <span className="quick-return-arrow">◀</span>
+        </div>
+      )}
 
       {/* Tableau des scores et avatars */}
       <div className="wlm-game-scoreboard">

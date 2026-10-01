@@ -1872,4 +1872,154 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   background: #d8e2eb;
 }
 
+/* ==========================================================================
+   JEU DE DAMES (CHECKERS) - STYLE MSN GAMES / ZONE.COM
+   ========================================================================== */
+
+.checkers-color-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.checkers-color-dot.dot-white {
+  background: radial-gradient(circle at 35% 35%, #ffffff, #dcdcdc);
+}
+
+.checkers-color-dot.dot-black {
+  background: radial-gradient(circle at 35% 35%, #555555, #111111);
+}
+
+.checkers-board-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 8px;
+}
+
+.checkers-board {
+  display: flex;
+  flex-direction: column;
+  width: 296px;
+  height: 296px;
+  border: 4px solid #4a3321;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 0 4px rgba(0, 0, 0, 0.4);
+  background-color: #4a3321;
+  overflow: hidden;
+  user-select: none;
+}
+
+.checkers-row {
+  display: flex;
+  flex: 1;
+}
+
+.checkers-cell {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: background-color 0.15s ease;
+}
+
+.checkers-cell.cell-light {
+  background-color: #edd9b8;
+}
+
+.checkers-cell.cell-dark {
+  background-color: #8c5a36;
+}
+
+.checkers-cell.cell-selected {
+  background-color: #e59866 !important;
+  box-shadow: inset 0 0 6px rgba(186, 74, 0, 0.8);
+}
+
+.checkers-cell.cell-target {
+  cursor: pointer;
+  background-color: #7dcea0 !important;
+  box-shadow: inset 0 0 6px rgba(30, 132, 73, 0.8);
+}
+
+.checkers-cell.cell-last-move {
+  filter: brightness(1.1);
+}
+
+.checkers-piece {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.piece-white {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #dedede 60%, #b8b8b8);
+  border: 1.5px solid #a8a8a8;
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.35), inset 0 1px 1px #ffffff;
+}
+
+.piece-black {
+  background: radial-gradient(circle at 35% 30%, #555555, #222222 65%, #050505);
+  border: 1.5px solid #111111;
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.5), inset 0 1px 1px #888888;
+}
+
+.checkers-piece.piece-playable {
+  cursor: pointer;
+}
+
+.checkers-piece.piece-playable:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 8px rgba(0, 120, 215, 0.5);
+}
+
+.king-crown {
+  font-size: 14px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+  animation: crownShine 2s infinite alternate;
+}
+
+@keyframes crownShine {
+  0% { transform: scale(0.95); opacity: 0.9; }
+  100% { transform: scale(1.05); opacity: 1; }
+}
+
+.move-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(39, 174, 96, 0.85);
+  box-shadow: 0 0 6px rgba(39, 174, 96, 0.9);
+  pointer-events: none;
+  animation: pulseTarget 1s infinite alternate;
+}
+
+@keyframes pulseTarget {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  100% { transform: scale(1.15); opacity: 1; }
+}
+
+.checkers-rule-note {
+  font-size: 10px;
+  color: #557799;
+  text-align: center;
+  padding: 4px 12px 8px 12px;
+  font-style: italic;
+}
+
+
 

@@ -19,6 +19,7 @@ import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
 import FileTransferCard, { type FileDataPayload } from './components/FileTransferCard';
 import MorpionGame from './components/MorpionGame';
+import CheckersGame from './components/CheckersGame';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 
 /**
@@ -517,11 +518,12 @@ const App: React.FC = () => {
   const [isAudioOnly, setIsAudioOnly] = useState(false);
   const [iceCandidatesBuffer, setIceCandidatesBuffer] = useState<any[]>([]);
 
-  // --- ÉTAT DU JEU MORPION (ACTIVITÉS MSN) ---
+  // --- ÉTAT DES JEUX (ACTIVITÉS MSN : MORPION & JEU DE DAMES) ---
   const [activeGame, setActiveGame] = useState<{
     opponentId: number;
     opponentName: string;
-    mySymbol: 'X' | 'O';
+    mySymbol?: string;
+    myColor?: 'white' | 'black';
     isMyTurn: boolean;
     gameType: string;
   } | null>(null);
@@ -533,6 +535,7 @@ const App: React.FC = () => {
   const [outgoingGameInvite, setOutgoingGameInvite] = useState<{
     target: number;
     targetName: string;
+    gameType?: string;
   } | null>(null);
   const [showGamesMenu, setShowGamesMenu] = useState(false);
   const [isGameMinimized, setIsGameMinimized] = useState<boolean>(false);
@@ -1056,7 +1059,7 @@ const App: React.FC = () => {
         try { SoundManager.play('ONLINE'); } catch {}
       });
 
-      newSocket.on('game_started', (data: { opponentId: number; opponentName: string; mySymbol: 'X' | 'O'; isMyTurn: boolean; gameType: string }) => {
+      newSocket.on('game_started', (data: { opponentId: number; opponentName: string; mySymbol?: string; myColor?: 'white' | 'black'; isMyTurn: boolean; gameType: string }) => {
         setIncomingGameInvite(null);
         setOutgoingGameInvite(null);
         setActiveGame(data);
@@ -1710,18 +1713,19 @@ const App: React.FC = () => {
   };
 
   /**
-   * GESTION DES JEUX MULTI-JOUEURS (MORPION)
+   * GESTION DES JEUX MULTI-JOUEURS (MORPION & JEU DE DAMES)
    */
-  const handleInviteGame = (gameType: string = 'morpion') => {
+  const handleInviteGame = (gameType: string = 'checkers') => {
     if (!activeChatId || !socket || !user) return;
     const contact = contacts.find(c => c.id === activeChatId);
     if (!contact || contact.status === 'offline') {
-      alert("Ce contact doit être en ligne pour jouer au Morpion.");
+      const gameLabel = gameType === 'checkers' ? 'au Jeu de dames' : 'au Morpion';
+      alert(`Ce contact doit être en ligne pour jouer ${gameLabel}.`);
       return;
     }
 
     socket.emit('game_invite', { target: activeChatId, gameType });
-    setOutgoingGameInvite({ target: activeChatId, targetName: contact.nickname || contact.username });
+    setOutgoingGameInvite({ target: activeChatId, targetName: contact.nickname || contact.username, gameType });
     setShowGamesMenu(false);
   };
 
@@ -2202,6 +2206,14 @@ const App: React.FC = () => {
                   <div className="wlm-games-dropdown" onClick={e => e.stopPropagation()}>
                     <div 
                       className="wlm-game-menu-item" 
+                      onClick={() => handleInviteGame('checkers')}
+                      title="Lancer une partie de Jeu de dames multijoueur"
+                    >
+                      <span className="msn-game-icon">⚪</span>
+                      <span>Jeu de dames</span>
+                    </div>
+                    <div 
+                      className="wlm-game-menu-item" 
                       onClick={() => handleInviteGame('morpion')}
                       title="Lancer une partie de Morpion multijoueur"
                     >
@@ -2211,14 +2223,14 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
-              <span onClick={() => handleInviteGame('morpion')} style={{cursor:'pointer'}} title="Lancer une partie de Morpion">Activités</span>
+              <span onClick={() => handleInviteGame('checkers')} style={{cursor:'pointer'}} title="Lancer une partie de Jeu de dames">Activités</span>
               {activeGame && activeGame.opponentId === activeChatId && isGameMinimized && (
                 <span 
                   onClick={() => setIsGameMinimized(false)} 
                   style={{ cursor: 'pointer', color: '#0055aa', fontWeight: 'bold' }}
-                  title="Agrandir et reprendre la partie de Morpion"
+                  title={`Agrandir et reprendre la partie de ${activeGame.gameType === 'checkers' ? 'Jeu de dames' : 'Morpion'}`}
                 >
-                  🎮 Reprendre le Morpion
+                  {activeGame.gameType === 'checkers' ? '⚪ Reprendre les Dames' : '🎮 Reprendre le Morpion'}
                 </span>
               )}
 
@@ -2237,7 +2249,7 @@ const App: React.FC = () => {
               </span>
               </div>
 
-            {/* Vue scindée : Chat à gauche, Jeu Morpion à droite */}
+            {/* Vue scindée : Chat à gauche, Jeu à droite */}
             <div className="conversation-split-view">
               <div className="conversation-chat-column">
                 {/* Zone principale de discussion */}
@@ -2269,9 +2281,11 @@ const App: React.FC = () => {
                 {incomingGameInvite && incomingGameInvite.from === activeChatId && (
                   <div className="wlm-game-invite-banner">
                     <div className="wlm-game-invite-info">
-                      <span className="wlm-game-invite-icon">🎮</span>
+                      <span className="wlm-game-invite-icon">{incomingGameInvite.gameType === 'checkers' ? '⚪' : '🎮'}</span>
                       <div className="wlm-game-invite-text">
-                        <span className="wlm-game-invite-title">Invitation au Morpion !</span>
+                        <span className="wlm-game-invite-title">
+                          {incomingGameInvite.gameType === 'checkers' ? 'Invitation au Jeu de dames !' : 'Invitation au Morpion !'}
+                        </span>
                         <span className="wlm-game-invite-sub">{incomingGameInvite.fromName} vous invite à une partie en direct.</span>
                       </div>
                     </div>
@@ -2288,7 +2302,9 @@ const App: React.FC = () => {
                     <div className="wlm-game-invite-info">
                       <span className="wlm-game-invite-icon">⏳</span>
                       <div className="wlm-game-invite-text">
-                        <span className="wlm-game-invite-title">Partie de Morpion en attente...</span>
+                        <span className="wlm-game-invite-title">
+                          {outgoingGameInvite.gameType === 'checkers' ? 'Partie de Jeu de dames en attente...' : 'Partie de Morpion en attente...'}
+                        </span>
                         <span className="wlm-game-invite-sub">Invitation envoyée à {outgoingGameInvite.targetName}. En attente de réponse...</span>
                       </div>
                     </div>
@@ -2297,7 +2313,7 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {/* Barre de jeu Morpion réduite (permet de discuter tout en suivant la partie) */}
+                {/* Barre de jeu réduite (permet de discuter tout en suivant la partie) */}
                 {activeGame && activeGame.opponentId === activeChatId && isGameMinimized && (
                   <div 
                     className={`wlm-game-docked-pill ${gameSummary.isMyTurn ? 'docked-pill-my-turn' : ''}`}
@@ -2305,10 +2321,10 @@ const App: React.FC = () => {
                     title="Cliquer pour afficher la fenêtre de jeu"
                   >
                     <div className="docked-pill-info">
-                      <span className="docked-pill-icon">🎮</span>
+                      <span className="docked-pill-icon">{activeGame.gameType === 'checkers' ? '⚪' : '🎮'}</span>
                       <div className="docked-pill-texts">
                         <span className="docked-pill-title">
-                          Morpion en cours vs <strong>{activeGame.opponentName}</strong>
+                          {activeGame.gameType === 'checkers' ? 'Jeu de dames' : 'Morpion'} en cours vs <strong>{activeGame.opponentName}</strong>
                         </span>
                         <span className="docked-pill-score">
                           Score : <strong>{gameSummary.myScore}</strong> - <strong>{gameSummary.opponentScore}</strong>
@@ -2446,7 +2462,7 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Colonne latérale de jeu Morpion (jeu et conversation en simultané ou réduit) */}
+          {/* Colonne latérale de jeu (Morpion ou Jeu de dames) */}
           {activeGame && (
             <div 
               className={`conversation-game-column ${isGameMinimized ? 'minimized' : ''}`}
@@ -2454,23 +2470,43 @@ const App: React.FC = () => {
                 display: (activeGame.opponentId === activeChatId && !isGameMinimized) ? 'flex' : 'none'
               }}
             >
-              <MorpionGame
-                socket={socket}
-                opponentId={activeGame.opponentId}
-                opponentName={activeGame.opponentName}
-                opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar}
-                myId={user?.id || 0}
-                myName={myNickname || user?.nickname || 'Moi'}
-                myAvatar={myAvatar}
-                initialSymbol={activeGame.mySymbol}
-                initialIsMyTurn={activeGame.isMyTurn}
-                onClose={() => {
-                  setActiveGame(null);
-                  setIsGameMinimized(false);
-                }}
-                onMinimize={() => setIsGameMinimized(true)}
-                onGameStateChange={(summary) => setGameSummary(summary)}
-              />
+              {activeGame.gameType === 'checkers' ? (
+                <CheckersGame
+                  socket={socket}
+                  opponentId={activeGame.opponentId}
+                  opponentName={activeGame.opponentName}
+                  opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                  myId={user?.id || 0}
+                  myName={myNickname || user?.nickname || 'Moi'}
+                  myAvatar={myAvatar}
+                  myColor={activeGame.myColor || (activeGame.mySymbol === 'W' ? 'white' : 'black')}
+                  initialIsMyTurn={activeGame.isMyTurn}
+                  onClose={() => {
+                    setActiveGame(null);
+                    setIsGameMinimized(false);
+                  }}
+                  onMinimize={() => setIsGameMinimized(true)}
+                  onGameStateChange={(summary) => setGameSummary(summary)}
+                />
+              ) : (
+                <MorpionGame
+                  socket={socket}
+                  opponentId={activeGame.opponentId}
+                  opponentName={activeGame.opponentName}
+                  opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                  myId={user?.id || 0}
+                  myName={myNickname || user?.nickname || 'Moi'}
+                  myAvatar={myAvatar}
+                  initialSymbol={(activeGame.mySymbol as 'X' | 'O') || 'X'}
+                  initialIsMyTurn={activeGame.isMyTurn}
+                  onClose={() => {
+                    setActiveGame(null);
+                    setIsGameMinimized(false);
+                  }}
+                  onMinimize={() => setIsGameMinimized(true)}
+                  onGameStateChange={(summary) => setGameSummary(summary)}
+                />
+              )}
             </div>
           )}
         </div>

@@ -1027,6 +1027,23 @@ const getGameKey = (id1, id2) => {
   return `${min}_${max}`;
 };
 
+const createInitialCheckersBoard = () => {
+  const b = Array(8).fill(null).map(() => Array(8).fill(null));
+  // Noirs (b) en haut : rangées 0, 1, 2 sur cases sombres
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 8; c++) {
+      if ((r + c) % 2 === 1) b[r][c] = 'b';
+    }
+  }
+  // Blancs (w) en bas : rangées 5, 6, 7 sur cases sombres
+  for (let r = 5; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if ((r + c) % 2 === 1) b[r][c] = 'w';
+    }
+  }
+  return b;
+};
+
 /**
  * Middleware Socket.IO pour authentifier via Token
  */
@@ -1285,32 +1302,69 @@ io.on('connection', (socket) => {
 
     if (targetSocketId && acceptorUser && targetUser) {
       const gameKey = getGameKey(target, socket.user.id);
-      activeGames.set(gameKey, {
-        playerX: target,         // L'initiateur joue 'X'
-        playerO: socket.user.id, // L'accepteur joue 'O'
-        turn: target,            // 'X' commence toujours
-        board: Array(9).fill(null),
-        status: 'playing',
-        scores: { [target]: 0, [socket.user.id]: 0 }
-      });
+      const chosenGameType = gameType || 'morpion';
 
-      // L'initiateur joue 'X' et a le premier tour
-      io.to(targetSocketId).emit('game_started', {
-        opponentId: socket.user.id,
-        opponentName: acceptorUser.nickname || acceptorUser.username,
-        mySymbol: 'X',
-        isMyTurn: true,
-        gameType: gameType || 'morpion'
-      });
+      if (chosenGameType === 'checkers') {
+        const initialBoard = createInitialCheckersBoard();
+        activeGames.set(gameKey, {
+          gameType: 'checkers',
+          playerWhite: target,         // L'initiateur a les Blancs
+          playerBlack: socket.user.id, // L'accepteur a les Noirs
+          turn: target,                // Les Blancs commencent
+          board: initialBoard,
+          status: 'playing',
+          scores: { [target]: 0, [socket.user.id]: 0 }
+        });
 
-      // L'accepteur joue 'O' et attend son tour
-      socket.emit('game_started', {
-        opponentId: target,
-        opponentName: targetUser.nickname || targetUser.username,
-        mySymbol: 'O',
-        isMyTurn: false,
-        gameType: gameType || 'morpion'
-      });
+        // L'initiateur a les Blancs et a le premier tour
+        io.to(targetSocketId).emit('game_started', {
+          opponentId: socket.user.id,
+          opponentName: acceptorUser.nickname || acceptorUser.username,
+          myColor: 'white',
+          mySymbol: 'W',
+          isMyTurn: true,
+          gameType: 'checkers'
+        });
+
+        // L'accepteur a les Noirs et attend son tour
+        socket.emit('game_started', {
+          opponentId: target,
+          opponentName: targetUser.nickname || targetUser.username,
+          myColor: 'black',
+          mySymbol: 'B',
+          isMyTurn: false,
+          gameType: 'checkers'
+        });
+      } else {
+        // Morpion
+        activeGames.set(gameKey, {
+          gameType: 'morpion',
+          playerX: target,         // L'initiateur joue 'X'
+          playerO: socket.user.id, // L'accepteur joue 'O'
+          turn: target,            // 'X' commence toujours
+          board: Array(9).fill(null),
+          status: 'playing',
+          scores: { [target]: 0, [socket.user.id]: 0 }
+        });
+
+        // L'initiateur joue 'X' et a le premier tour
+        io.to(targetSocketId).emit('game_started', {
+          opponentId: socket.user.id,
+          opponentName: acceptorUser.nickname || acceptorUser.username,
+          mySymbol: 'X',
+          isMyTurn: true,
+          gameType: 'morpion'
+        });
+
+        // L'accepteur joue 'O' et attend son tour
+        socket.emit('game_started', {
+          opponentId: target,
+          opponentName: targetUser.nickname || targetUser.username,
+          mySymbol: 'O',
+          isMyTurn: false,
+          gameType: 'morpion'
+        });
+      }
     }
   });
 
@@ -1328,7 +1382,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 4. Transmission et validation stricte d'un coup joué sur la grille (Anti-triche & Anti-usurpation)
+  // 4a. Transmission et validation d'un coup de Morpion
   socket.on('game_move', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
@@ -1415,25 +1469,112 @@ io.on('connection', (socket) => {
     });
   });
 
+  // 4b. Transmission et validation d'un coup de Jeu de dames (Checkers)
+  socket.on('checkers_move', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const userId = socket.user.id;
+    const { target, from, to, isJump, captured, isPromotion } = data;
+
+    const gameKey = getGameKey(userId, target);
+    const game = activeGames.get(gameKey);
+
+    if (!game || game.status !== 'playing' || game.gameType !== 'checkers') {
+      return socket.emit('game_error', { message: "Aucune partie de dames active avec ce contact." });
+    }
+
+    if (game.turn !== userId) {
+      return socket.emit('game_error', { message: "Ce n'est pas votre tour de jouer !" });
+    }
+
+    const isValidCoord = (pos) => pos && Number.isInteger(pos.row) && Number.isInteger(pos.col) &&
+                                  pos.row >= 0 && pos.row < 8 && pos.col >= 0 && pos.col < 8;
+
+    if (!isValidCoord(from) || !isValidCoord(to)) {
+      return socket.emit('game_error', { message: "Coordonnées de coup invalides." });
+    }
+
+    const currentPiece = game.board[from.row][from.col];
+    if (!currentPiece) {
+      return socket.emit('game_error', { message: "Aucune pièce sur la case de départ." });
+    }
+
+    // Vérifier la propriété de la pièce
+    const isWhite = (game.playerWhite === userId);
+    const expectedPrefix = isWhite ? 'w' : 'b';
+    if (currentPiece.toLowerCase() !== expectedPrefix) {
+      return socket.emit('game_error', { message: "Vous ne pouvez déplacer que vos propres pièces." });
+    }
+
+    // Vérifier que la destination est libre
+    if (game.board[to.row][to.col] !== null) {
+      return socket.emit('game_error', { message: "La case d'arrivée est déjà occupée." });
+    }
+
+    // Retirer de la position de départ
+    game.board[from.row][from.col] = null;
+
+    // Si saut, retirer la pièce capturée
+    if (isJump && captured && isValidCoord(captured)) {
+      game.board[captured.row][captured.col] = null;
+    }
+
+    // Promotion Dame si arrivée sur la dernière rangée opposée
+    let finalPiece = currentPiece;
+    if (isWhite && to.row === 0) finalPiece = 'W';
+    else if (!isWhite && to.row === 7) finalPiece = 'B';
+
+    game.board[to.row][to.col] = finalPiece;
+
+    // Tour suivant
+    const nextTurn = (userId === game.playerWhite) ? game.playerBlack : game.playerWhite;
+    game.turn = nextTurn;
+
+    // Transmettre à l'adversaire
+    const targetSocketId = onlineUsers.get(target);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('checkers_move', {
+        from,
+        to,
+        isJump,
+        captured,
+        isPromotion: finalPiece === 'W' || finalPiece === 'B'
+      });
+    }
+
+    socket.emit('checkers_move_confirmed', {
+      from,
+      to,
+      isJump,
+      captured,
+      isPromotion: finalPiece === 'W' || finalPiece === 'B'
+    });
+  });
+
   // 5. Demande de nouvelle manche / Recommencer
   socket.on('game_restart', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
-    const { target } = data;
+    const { target, gameType } = data || {};
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
     if (game) {
-      game.board = Array(9).fill(null);
-      game.status = 'playing';
-      // Le joueur qui relance prend le premier tour
-      game.turn = userId;
+      if (game.gameType === 'checkers' || gameType === 'checkers') {
+        game.board = createInitialCheckersBoard();
+        game.status = 'playing';
+        game.turn = game.playerWhite; // Les Blancs reprennent le premier tour
+      } else {
+        game.board = Array(9).fill(null);
+        game.status = 'playing';
+        game.turn = userId;
+      }
     }
 
     const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
       io.to(targetSocketId).emit('game_restart', {
-        from: userId
+        from: userId,
+        gameType: game ? game.gameType : gameType
       });
     }
   });
@@ -1469,10 +1610,16 @@ io.on('connection', (socket) => {
     }
 
     if (disconnectedUserId) {
-      // Nettoyer les sessions de jeu actives de cet utilisateur
+      // Nettoyer les sessions de jeu actives de cet utilisateur (Morpion ou Dames)
       for (const [key, game] of activeGames.entries()) {
-        if (game.playerX === disconnectedUserId || game.playerO === disconnectedUserId) {
-          const opponentUserId = (game.playerX === disconnectedUserId) ? game.playerO : game.playerX;
+        const isPlayer = game.gameType === 'checkers'
+          ? (game.playerWhite === disconnectedUserId || game.playerBlack === disconnectedUserId)
+          : (game.playerX === disconnectedUserId || game.playerO === disconnectedUserId);
+
+        if (isPlayer) {
+          const opponentUserId = game.gameType === 'checkers'
+            ? (game.playerWhite === disconnectedUserId ? game.playerBlack : game.playerWhite)
+            : (game.playerX === disconnectedUserId ? game.playerO : game.playerX);
           const opponentSocketId = onlineUsers.get(opponentUserId);
           if (opponentSocketId) {
             io.to(opponentSocketId).emit('game_quit', { from: disconnectedUserId });

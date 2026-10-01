@@ -66,21 +66,64 @@ const PORT = process.env.PORT || 3001;
 const db = new Database('messenger.db');
 const SECRET = process.env.JWT_SECRET || 'wlm_classic_secret_key';
 
-// SÉCURITÉ : Désactiver l'en-tête X-Powered-By qui révèle l'utilisation d'Express
+// SÉCURITÉ : Indispensable derrière Cloudflare Tunnel pour lire correctement l'en-tête X-Forwarded-Proto
+app.set('trust proxy', 1);
+
+// SÉCURITÉ : Masquer l'empreinte logicielle d'Express
 app.disable('x-powered-by');
 
-// SÉCURITÉ : Middleware pour les en-têtes HTTP de sécurité
+const isProd = process.env.NODE_ENV === 'production';
+
+// SÉCURITÉ : Middleware global des en-têtes HTTP et de la Content-Security-Policy
 app.use((req, res, next) => {
-  // Anti Clickjacking
+  // Détection du protocole HTTPS sécurisé (fourni par Cloudflare via x-forwarded-proto ou req.secure)
+  const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+
+  // Directives CSP adaptées au contexte réel d'exécution
+  // Note : La variante nonce n’est pas retenue ici car elle n’est pas nécessaire avec le build prod observé.
+  const cspDirectives = [
+    "default-src 'self'",
+    // En production : aucun script inline ('self' uniquement). En dev : toléré pour le HMR de Vite
+    isProd ? "script-src 'self'" : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    // Compromis résiduel : 'unsafe-inline' nécessaire pour les attributs style dynamiques de React
+    "style-src 'self' 'unsafe-inline'",
+    // Réseau navigateur : en prod, uniquement l'origine ('self'), WebSocket sécurisé (wss:) et STUN WebRTC
+    // Note : TURN n’est pas requis actuellement d’après le code observé.
+    // En dev : ajout de ws: et localhost pour le serveur de développement Vite
+    isProd
+      ? "connect-src 'self' wss: stun:"
+      : "connect-src 'self' ws: wss: stun: http://localhost:* ws://localhost:*",
+    "img-src 'self' data: blob:",
+    "media-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'"
+  ];
+
+  res.setHeader('Content-Security-Policy', cspDirectives.join('; '));
+
+  // Anti-Clickjacking de secours pour navigateurs anciens (doublon de frame-ancestors 'none')
   res.setHeader('X-Frame-Options', 'DENY');
-  // Empêcher l'analyse MIME (MIME Sniffing)
+
+  // Protection contre le reniflage de type MIME
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  // Content Security Policy (CSP)
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' ws: wss: stun: turn: http://localhost:* ws://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:;");
-  // HSTS (Strict Transport Security)
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  // XSS Protection (Anciens navigateurs)
-  res.setHeader('X-XSS-Protection', '1; mode=block');
+
+  // Limitation stricte des fuites de Referrer vers l'extérieur
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // Restreint le micro et la caméra à notre domaine (WebRTC) et bloque les capteurs inutiles
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), payment=(), usb=()');
+
+  // Isolation du contexte d'ouverture de fenêtres contre les fuites mémoire
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+
+  // HSTS : Actif UNIQUEMENT en production réelle et sur une connexion HTTPS vérifiée
+  if (isProd && isHttps) {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
+
   next();
 });
 

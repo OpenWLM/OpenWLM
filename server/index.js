@@ -72,25 +72,29 @@ app.set('trust proxy', 1);
 // SÉCURITÉ : Masquer l'empreinte logicielle d'Express
 app.disable('x-powered-by');
 
-const isProd = process.env.NODE_ENV === 'production';
+const isDev = process.env.NODE_ENV === 'development';
+const isProd = process.env.NODE_ENV === 'production' || !isDev;
 
 // SÉCURITÉ : Middleware global des en-têtes HTTP et de la Content-Security-Policy
 app.use((req, res, next) => {
   // Détection du protocole HTTPS sécurisé (fourni par Cloudflare via x-forwarded-proto ou req.secure)
   const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  // Détection du passage par Cloudflare Tunnel ou origine distante
+  const isCloudflare = Boolean(req.headers['cf-ray'] || isHttps);
+  const isProductionMode = isProd || isCloudflare;
 
   // Directives CSP adaptées au contexte réel d'exécution
   // Note : La variante nonce n’est pas retenue ici car elle n’est pas nécessaire avec le build prod observé.
   const cspDirectives = [
     "default-src 'self'",
     // En production : aucun script inline ('self' uniquement). En dev : toléré pour le HMR de Vite
-    isProd ? "script-src 'self'" : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    isProductionMode ? "script-src 'self'" : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     // Compromis résiduel : 'unsafe-inline' nécessaire pour les attributs style dynamiques de React
     "style-src 'self' 'unsafe-inline'",
     // Réseau navigateur : en prod, uniquement l'origine ('self'), WebSocket sécurisé (wss:) et STUN WebRTC
     // Note : TURN n’est pas requis actuellement d’après le code observé.
     // En dev : ajout de ws: et localhost pour le serveur de développement Vite
-    isProd
+    isProductionMode
       ? "connect-src 'self' wss: stun:"
       : "connect-src 'self' ws: wss: stun: http://localhost:* ws://localhost:*",
     "img-src 'self' data: blob:",
@@ -120,7 +124,7 @@ app.use((req, res, next) => {
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
 
   // HSTS : Actif UNIQUEMENT en production réelle et sur une connexion HTTPS vérifiée
-  if (isProd && isHttps) {
+  if (isProductionMode && isHttps) {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
 

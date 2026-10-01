@@ -550,6 +550,9 @@ const App: React.FC = () => {
 
   // --- ÉTAT DES CONTACTS & MESSAGES ---
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const contactsRef = useRef<Contact[]>([]);
+  useEffect(() => { contactsRef.current = contacts; }, [contacts]);
+  const isInitialContactsLoadRef = useRef(true);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, contactId: number } | null>(null);
@@ -1016,19 +1019,29 @@ const App: React.FC = () => {
       });
       // Changement de statut d'un contact
       newSocket.on('user_status_changed', (data) => {
+        const contactId = Number(data.userId ?? data.id);
+        if (!contactId) return;
+
+        // Ne pas jouer le son pour la session de l'utilisateur connecté lui-même
+        if (contactId === user?.id) {
+          if (data.status) setMyStatus(data.status);
+          return;
+        }
+
         setContacts(prev => {
-          const prevContact = prev.find(c => c.id === data.userId);
+          const prevContact = prev.find(c => c.id === contactId);
           if (prevContact) {
-            const isNowOnline = data.status !== 'offline';
+            const isNowOnline = data.status && data.status !== 'offline';
             const wasOffline = prevContact.status === 'offline';
             if (isNowOnline && wasOffline) {
+              console.log(`[Audio] Contact connecté (${prevContact.nickname || prevContact.username}) -> online.mp3`);
               SoundManager.play('ONLINE');
             }
             if (data.global_private !== undefined) {
                prevContact.global_private = data.global_private;
             }
           }
-          return prev.map(c => c.id === data.userId ? { ...c, ...data } : c);
+          return prev.map(c => c.id === contactId ? { ...c, ...data, id: contactId } : c);
         });
       });
 
@@ -1109,6 +1122,19 @@ const App: React.FC = () => {
       ]);
       
       if (Array.isArray(resContacts.data)) {
+        if (!isInitialContactsLoadRef.current) {
+          // Détection d'un contact qui vient de se connecter lors d'une synchronisation périodique
+          resContacts.data.forEach((newC: any) => {
+            const oldC = contactsRef.current.find(c => c.id === newC.id);
+            if (oldC && oldC.status === 'offline' && newC.status && newC.status !== 'offline') {
+              console.log(`[Audio] Contact ${newC.nickname || newC.username} devenu en ligne via refreshData -> online.mp3`);
+              SoundManager.play('ONLINE');
+            }
+          });
+        } else {
+          isInitialContactsLoadRef.current = false;
+        }
+
         setContacts(resContacts.data);
         // Synchroniser le cache des clés publiques pour éviter les messages illisibles
         const newKeys: Record<number, any> = {};

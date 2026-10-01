@@ -19,9 +19,28 @@ const SOUND_PATHS: Record<string, string> = {
 
 class SoundManager {
   private static instance: SoundManager;
-  private audioCache: Map<string, HTMLAudioElement> = new Map();
+  private audioUnlocked = false;
 
-  private constructor() {}
+  private constructor() {
+    // Débloque l'audio sur la première interaction de l'utilisateur (Autoplay Policy)
+    if (typeof window !== 'undefined') {
+      const unlock = () => {
+        if (this.audioUnlocked) return;
+        this.audioUnlocked = true;
+        try {
+          const silentAudio = new Audio();
+          silentAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+          silentAudio.play().catch(() => {});
+        } catch {}
+        window.removeEventListener('click', unlock);
+        window.removeEventListener('keydown', unlock);
+        window.removeEventListener('touchstart', unlock);
+      };
+      window.addEventListener('click', unlock, { once: true });
+      window.addEventListener('keydown', unlock, { once: true });
+      window.addEventListener('touchstart', unlock, { once: true });
+    }
+  }
 
   /**
    * Récupère l'instance unique (Singleton) du SoundManager
@@ -44,23 +63,14 @@ class SoundManager {
     console.log(`[SoundManager] Reproduction : ${key} (${path})`);
 
     try {
-      // On tente de réutiliser l'élément Audio s'il est déjà en cache
-      let audio = this.audioCache.get(path);
-      
-      if (!audio) {
-        audio = new Audio(path);
-        this.audioCache.set(path, audio);
-      }
-      
-      // Réinitialiser le curseur de lecture pour permettre une répétition immédiate
-      audio.currentTime = 0;
+      // Instancier un nouvel objet Audio pour éviter les conflits d'état ou coupures
+      const audio = new Audio(path);
+      audio.volume = 1.0;
       
       const playPromise = audio.play();
-      
       if (playPromise !== undefined) {
         playPromise.catch(error => {
-          // Les navigateurs bloquent souvent la lecture automatique sans interaction utilisateur préalable
-          console.warn(`[SoundManager] Lecture bloquée ou échec :`, error);
+          console.warn(`[SoundManager] Lecture bloquée ou échec (${key}) :`, error);
         });
       }
     } catch (e) {

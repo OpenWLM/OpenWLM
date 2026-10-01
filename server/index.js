@@ -259,6 +259,7 @@ const toPublicUserDTO = (user) => {
   if (!user) return null;
   return {
     id: user.id,
+    userId: user.id,
     username: user.username,
     nickname: user.nickname,
     psm: user.psm,
@@ -1438,7 +1439,7 @@ io.on('connection', (socket) => {
       const timer = setTimeout(() => {
         try {
           db.prepare('UPDATE users SET status = ? WHERE id = ?').run('offline', disconnectedUserId);
-          broadcastStatusToContacts(disconnectedUserId, { userId: disconnectedUserId, status: 'offline' });
+          broadcastStatusToContacts(disconnectedUserId, { id: disconnectedUserId, userId: disconnectedUserId, status: 'offline' });
         } catch (err) { console.error(err); }
         disconnectTimers.delete(disconnectedUserId);
       }, 60000);
@@ -1459,7 +1460,7 @@ io.on('connection', (socket) => {
     onlineUsers.delete(userId);
     try {
       db.prepare('UPDATE users SET status = ? WHERE id = ?').run('offline', userId);
-      broadcastStatusToContacts(userId, { userId, status: 'offline' });
+      broadcastStatusToContacts(userId, { id: userId, userId, status: 'offline' });
     } catch (err) { console.error(err); }
   });
 });

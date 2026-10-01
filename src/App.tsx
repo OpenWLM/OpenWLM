@@ -12,6 +12,7 @@ import {
   decryptMessagePayload, 
   encryptPrivateKeyVault, 
   decryptPrivateKeyVault,
+  deriveZeroKnowledgeKeys,
   encryptFileBinary 
 } from './utils/Security';
 import WinkPlayer from './components/WinkPlayer';
@@ -35,7 +36,6 @@ interface User {
   token: string;
   encrypted_private_key?: string;
   public_key?: string;
-  plaintextPassword?: string; // Utilisé temporairement lors de la connexion pour le coffre-fort E2E
   global_private?: number;
   rememberMe?: boolean;
 }
@@ -453,10 +453,9 @@ const App: React.FC = () => {
       const newUser = { ...user, ...updates };
       setUser(newUser);
 
-      // SÉCURITÉ : Ne jamais persister le mot de passe sur le disque
-      const userToSave = { ...newUser };
-      delete userToSave.plaintextPassword;
-      localStorage.setItem('wlm_user', JSON.stringify(userToSave));
+      if (newUser.rememberMe) {
+        localStorage.setItem('wlm_user', JSON.stringify(newUser));
+      }
     } catch (err) { 
       console.error("Échec de synchronisation du profil:", err); 
     }
@@ -614,192 +613,122 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [contactEmail, setContactEmail] = useState('');
 
-  // --- GESTION DE LA SESSION ET DES CLÉS ---
+  // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
+  useEffect(() => {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('wlm_priv_') || k.startsWith('wlm_keys_') || k.startsWith('wlm_pub_'))) {
+          localStorage.removeItem(k);
+        }
+      }
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && (k.startsWith('wlm_priv_') || k.startsWith('wlm_keys_') || k.startsWith('wlm_pub_'))) {
+          sessionStorage.removeItem(k);
+        }
+      }
+    } catch (e) {
+      console.warn("[Sécurité] Nettoyage stockage résiduel:", e);
+    }
+  }, []);
+
+  /**
+   * INITIALISATION ZERO-KNOWLEDGE LORS DE LA CONNEXION
+   * 1. Reçoit loggedInUser et vaultKey (CryptoKey AES-GCM 256 bits non exportable).
+   * 2. Si le coffre existe : déchiffre la clé privée RSA avec vaultKey.
+   * 3. Si premier login : génère les clés RSA, chiffre la clé privée avec vaultKey et envoie le coffre au serveur.
+   * 4. Stocke la clé privée RSA UNIQUEMENT en RAM (useState/useRef).
+   */
+  const handleUserLogin = async (loggedInUser: any, vaultKey: CryptoKey) => {
+    if (loggedInUser.token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${loggedInUser.token}`;
+    }
+
+    try {
+      let keys: { publicKeyJwk: any; privateKeyJwk: any } | null = null;
+
+      if (loggedInUser.encrypted_private_key) {
+        console.log("[Zero-Knowledge] Déchiffrement du coffre de clés privées...");
+        const vault = typeof loggedInUser.encrypted_private_key === 'string'
+          ? JSON.parse(loggedInUser.encrypted_private_key)
+          : loggedInUser.encrypted_private_key;
+
+        const privJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
+        if (!privJwk) {
+          alert("Échec du déchiffrement du coffre de clés privées. Mot de passe incorrect ou coffre altéré.");
+          return;
+        }
+
+        const pubJwk = typeof loggedInUser.public_key === 'string'
+          ? JSON.parse(loggedInUser.public_key)
+          : loggedInUser.public_key;
+
+        keys = { publicKeyJwk: pubJwk, privateKeyJwk: privJwk };
+      } else {
+        console.log("[Zero-Knowledge] Génération de la première paire de clés RSA...");
+        keys = await generateKeyPair();
+        const vault = await encryptPrivateKeyVault(keys.privateKeyJwk, vaultKey);
+        await axios.post('/api/user/keys', {
+          userId: loggedInUser.id,
+          publicKey: keys.publicKeyJwk,
+          encryptedPrivateKey: vault
+        });
+        loggedInUser.public_key = keys.publicKeyJwk;
+        loggedInUser.encrypted_private_key = vault;
+      }
+
+      setMyKeys(keys);
+      setUser(loggedInUser);
+
+      if (loggedInUser.rememberMe) {
+        localStorage.setItem('wlm_user', JSON.stringify(loggedInUser));
+      } else {
+        localStorage.removeItem('wlm_user');
+      }
+    } catch (err) {
+      console.error("[Zero-Knowledge] Erreur initialisation clés:", err);
+      alert("Erreur lors de l'initialisation des clés de sécurité.");
+    }
+  };
+
+  // --- GESTION DE LA SESSION UTILISATEUR ---
   useEffect(() => {
     const syncAndInit = async () => {
-      console.log("[Session] Démarrage synchronisation...");
-      if (!user) { console.warn("[Session] Pas d'utilisateur en mémoire."); return; }
+      if (!user || !myKeys) return;
       
       let currentUser = user;
-      console.log("[Session] Utilisateur actuel:", currentUser.username, "ID:", currentUser.id, "RememberMe:", currentUser.rememberMe);
-
-      // SÉCURITÉ & RÉSEAU : Configurer immédiatement le token pour les requêtes
-      // Cela évite l'erreur 401 (Unauthorized) lors de la synchronisation initiale.
       if (currentUser.token) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${currentUser.token}`;
       }
 
       try {
-        // 1. Toujours synchroniser le profil avec le serveur pour avoir les dernières clés E2E
         const res = await axios.get(`/api/user/me`);
         if (res.data && res.data.user) {
           currentUser = { ...user, ...res.data.user };
           setUser(currentUser);
           
-          // Mise à jour de l'état du mode privé global depuis le serveur
           if (currentUser.global_private !== undefined) {
             setGlobalPrivateMode(currentUser.global_private === 1);
           }
 
-          // SÉCURITÉ : Ne jamais persister le mot de passe sur le disque
-          const userToSave = { ...currentUser };
-          delete userToSave.plaintextPassword;
-          localStorage.setItem('wlm_user', JSON.stringify(userToSave));
+          if (currentUser.rememberMe) {
+            localStorage.setItem('wlm_user', JSON.stringify(currentUser));
+          }
         }
       } catch (err) {
-        console.warn("[E2E] Impossible de synchroniser le profil, utilisation du cache local.", err);
+        console.warn("[Session] Impossible de synchroniser le profil:", err);
       }
 
-      // Chargement des préférences utilisateur
       setMyNickname(currentUser.nickname || currentUser.username || 'Utilisateur');
       setMyPSM(currentUser.psm || 'Disponible');
       setMyAvatar(currentUser.avatar || '/assets/usertiles/chess.png');
       setMyScene(currentUser.scene || '/assets/scenes/0006.png');
       setMyStatus(currentUser.status || 'online');
-
-      // 2. Initialisation des clés E2E
-      try {
-        let localPrivJwk = sessionStorage.getItem(`wlm_priv_${currentUser.id}`) || localStorage.getItem(`wlm_priv_${currentUser.id}`);
-        let localPubJwk = sessionStorage.getItem(`wlm_pub_${currentUser.id}`) || localStorage.getItem(`wlm_pub_${currentUser.id}`);
-
-        // Migration des anciennes clés (si présentes)
-        const legacyKeys = localStorage.getItem(`wlm_keys_${currentUser.id}`);
-        if (legacyKeys && (!localPrivJwk || !localPubJwk)) {
-          try {
-            const parsed = JSON.parse(legacyKeys);
-            localPrivJwk = JSON.stringify(parsed.privateKeyJwk);
-            localPubJwk = JSON.stringify(parsed.publicKeyJwk);
-            localStorage.setItem(`wlm_priv_${currentUser.id}`, localPrivJwk);
-            localStorage.setItem(`wlm_pub_${currentUser.id}`, localPubJwk);
-            localStorage.removeItem(`wlm_keys_${currentUser.id}`);
-          } catch(e) { console.error("Échec migration clés legacy", e); }
-        }
-
-        // Vérifier si les clés locales correspondent à ce que le serveur attend
-        const serverPubJwkStr = currentUser.public_key;
-        let isStale = false;
-        if (localPubJwk && serverPubJwkStr) {
-          try {
-            const localObj = JSON.parse(localPubJwk);
-            const serverObj = typeof serverPubJwkStr === 'string' ? JSON.parse(serverPubJwkStr) : serverPubJwkStr;
-            if (JSON.stringify(localObj) !== JSON.stringify(serverObj)) {
-              console.warn("[E2E] Clés locales obsolètes (désynchronisées par rapport au serveur).");
-              isStale = true;
-            }
-          } catch { isStale = true; }
-        }
-
-        // SÉCURITÉ : Vérifier si l'utilisateur veut être mémorisé
-        const shouldRemember = currentUser.rememberMe;
-
-        // Cas 1 : Clés locales présentes et à jour
-        if (localPrivJwk && localPubJwk && !isStale) {
-          const keys = { publicKeyJwk: JSON.parse(localPubJwk), privateKeyJwk: JSON.parse(localPrivJwk) };
-          setMyKeys(keys);
-          sessionStorage.setItem(`wlm_priv_${currentUser.id}`, localPrivJwk);
-          sessionStorage.setItem(`wlm_pub_${currentUser.id}`, localPubJwk);
-
-          // Si on a changé d'avis et qu'on ne veut plus être mémorisé : on purge de localStorage
-          if (!shouldRemember) {
-            localStorage.removeItem("wlm_priv_" + currentUser.id);
-            localStorage.removeItem("wlm_pub_" + currentUser.id);
-          } else {
-            localStorage.setItem("wlm_priv_" + currentUser.id, localPrivJwk);
-            localStorage.setItem("wlm_pub_" + currentUser.id, localPubJwk);
-          }
-          
-          // Si l'utilisateur n'a pas de backup sur le serveur (anomalie), on en crée un
-          if (!currentUser.encrypted_private_key && currentUser.plaintextPassword) {
-            const vault = await encryptPrivateKeyVault(JSON.parse(localPrivJwk), currentUser.plaintextPassword);
-            await axios.post('/api/user/keys', { 
-              userId: currentUser.id, 
-              publicKey: keys.publicKeyJwk, 
-              encryptedPrivateKey: vault 
-            }).catch(e => console.warn("Échec backup clés vers serveur", e));
-          }
-          return;
-        }
-
-        // Cas 2 : Restauration depuis le serveur (Vault)
-        // Indispensable lors d'une reconnexion sur une nouvelle machine
-        if (currentUser.encrypted_private_key && currentUser.plaintextPassword) {
-          console.log("[E2E] Restauration depuis le coffre-fort serveur...");
-          const vaultStr = currentUser.encrypted_private_key;
-          const vault = typeof vaultStr === 'string' ? JSON.parse(vaultStr) : vaultStr;
-          
-          const privJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.saltBase64, vault.ivBase64, currentUser.plaintextPassword);
-          
-          if (privJwk) {
-            const pubJwk = typeof currentUser.public_key === 'string' ? JSON.parse(currentUser.public_key) : currentUser.public_key;
-            
-            // Toujours conserver en session pour l'onglet actif
-            sessionStorage.setItem(`wlm_priv_${currentUser.id}`, JSON.stringify(privJwk));
-            sessionStorage.setItem(`wlm_pub_${currentUser.id}`, JSON.stringify(pubJwk));
-
-            // On ne sauvegarde sur le disque QUE si l'utilisateur l'a demandé
-            if (shouldRemember) {
-              localStorage.setItem("wlm_priv_" + currentUser.id, JSON.stringify(privJwk));
-              localStorage.setItem("wlm_pub_" + currentUser.id, JSON.stringify(pubJwk));
-            }
-
-            setMyKeys({ publicKeyJwk: pubJwk, privateKeyJwk: privJwk });
-            console.log(shouldRemember ? "[E2E] Synchro réussie (Persistant)." : "[E2E] Synchro réussie (Session-only).");
-          } else {
-            handleLogout('Echec déchiffrement Vault');
-          }
-        } 
-        // Cas 3 : Nouvel utilisateur sans clés du tout
-        else if (!currentUser.encrypted_private_key && currentUser.plaintextPassword) {
-          console.log("[E2E] Génération de nouvelles clés...");
-          const keys = await generateKeyPair();
-          const vault = await encryptPrivateKeyVault(keys.privateKeyJwk, currentUser.plaintextPassword);
-          await axios.post('/api/user/keys', { userId: currentUser.id, publicKey: keys.publicKeyJwk, encryptedPrivateKey: vault });
-          
-          sessionStorage.setItem(`wlm_priv_${currentUser.id}`, JSON.stringify(keys.privateKeyJwk));
-          sessionStorage.setItem(`wlm_pub_${currentUser.id}`, JSON.stringify(keys.publicKeyJwk));
-
-          if (shouldRemember) {
-            localStorage.setItem("wlm_priv_" + currentUser.id, JSON.stringify(keys.privateKeyJwk));
-            localStorage.setItem("wlm_pub_" + currentUser.id, JSON.stringify(keys.publicKeyJwk));
-          }
-          setMyKeys(keys);
-        } 
-        else {
-          // Si on est dans un état incohérent (ex: refresh F5 mais clés locales perdues ou stale)
-          if (isStale || !localPrivJwk) {
-            console.error("[E2E] Session expirée ou clés obsolètes.");
-            handleLogout('Session expirée ou clés obsolètes');
-          }
-        }
-      } catch (error) {
-        console.error("[E2E] Erreur fatale lors de l'initialisation:", error);
-        handleLogout('Erreur fatale initialisation');
-            } finally {
-        // PURGE DE SÉCURITÉ : On efface le mot de passe de la RAM et du DISQUE
-        setUser(prev => {
-          if (!prev) return null;
-          const clean = { ...prev };
-          delete clean.plaintextPassword;
-          
-          // On s'assure que localStorage est aussi purgé du mot de passe
-          const saved = localStorage.getItem('wlm_user');
-          if (saved) {
-            try {
-               const parsed = JSON.parse(saved);
-               delete parsed.plaintextPassword;
-               localStorage.setItem('wlm_user', JSON.stringify(parsed));
-            } catch(e) {}
-          }
-          
-          return clean;
-        });
-        console.log("[E2E] Mot de passe purgé de la mémoire vive et du cache.");
-      }
-
     };
 
     syncAndInit();
-  }, [user?.id]);
+  }, [user?.id, !!myKeys]);
 
     /**
    * PERSISTENCE DE LA NAVIGATION
@@ -1648,26 +1577,61 @@ const App: React.FC = () => {
   };
 
   /**
-   * CHANGEMENT DE MOT DE PASSE
+   * CHANGEMENT DE MOT DE PASSE (ZERO-KNOWLEDGE STRICT)
+   * 1. Dérive oldAuthKeyHex et oldVaultKey depuis l'ancien mot de passe
+   * 2. Déchiffre la clé privée RSA avec oldVaultKey (si nécessaire)
+   * 3. Dérive newAuthKeyHex et newVaultKey depuis le nouveau mot de passe
+   * 4. Re-chiffre la clé privée RSA avec newVaultKey -> newEncryptedPrivateKey
+   * 5. Envoie { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey }
    */
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const oldP = (document.getElementById('old-password') as HTMLInputElement).value;
-    const newP = (document.getElementById('new-password') as HTMLInputElement).value;
+    if (!user) return;
+    const oldPInput = document.getElementById('old-password') as HTMLInputElement;
+    const newPInput = document.getElementById('new-password') as HTMLInputElement;
+    const oldP = oldPInput ? oldPInput.value : '';
+    const newP = newPInput ? newPInput.value : '';
     
+    if (!oldP || !newP) {
+      alert("Veuillez renseigner l'ancien et le nouveau mot de passe.");
+      return;
+    }
+
     try {
-      let newVault = null;
-      if (myKeysRef.current) {
-         // On rechiffre la clé privée avec le nouveau mot de passe pour le coffre-fort
-         newVault = await encryptPrivateKeyVault(myKeysRef.current.privateKeyJwk, newP);
+      // 1. Dériver oldAuthKeyHex et oldVaultKey depuis l'ancien mot de passe
+      const { authKeyHex: oldAuthKeyHex, vaultKey: oldVaultKey } = await deriveZeroKnowledgeKeys(user.username, oldP);
+
+      // 2. Déchiffrer la clé privée RSA existante
+      let privateKeyJwk = myKeysRef.current?.privateKeyJwk;
+      if (!privateKeyJwk && user.encrypted_private_key) {
+        const vault = typeof user.encrypted_private_key === 'string'
+          ? JSON.parse(user.encrypted_private_key)
+          : user.encrypted_private_key;
+        privateKeyJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, oldVaultKey);
       }
+
+      if (!privateKeyJwk) {
+        alert("Impossible de déchiffrer votre clé privée actuelle. Vérifiez l'ancien mot de passe.");
+        return;
+      }
+
+      // 3. Dériver newAuthKeyHex et newVaultKey depuis le nouveau mot de passe
+      const { authKeyHex: newAuthKeyHex, vaultKey: newVaultKey } = await deriveZeroKnowledgeKeys(user.username, newP);
+
+      // 4. Re-chiffrer la clé privée RSA avec newVaultKey
+      const newEncryptedPrivateKey = await encryptPrivateKeyVault(privateKeyJwk, newVaultKey);
+
+      // 5. Envoyer { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey }
       const res = await axios.post('/api/user/change-password', {
-        userId: user?.id,
-        oldPassword: oldP,
-        newPassword: newP,
-        newVault
+        oldAuthKeyHex,
+        newAuthKeyHex,
+        newEncryptedPrivateKey
       });
+
       if (res.data && res.data.success) {
+        setUser(prev => prev ? { ...prev, encrypted_private_key: JSON.stringify(newEncryptedPrivateKey) } : null);
+        if (oldPInput) oldPInput.value = '';
+        if (newPInput) newPInput.value = '';
         alert('Mot de passe changé avec succès !');
         setShowPasswordModal(false);
       }
@@ -1678,37 +1642,27 @@ const App: React.FC = () => {
   };
 
   /**
-   * RÉINITIALISATION DES CLÉS E2E
+   * RÉINITIALISATION DE LA SESSION
    */
   const handleResetE2EKeys = async () => {
-    if (window.confirm("Attention : cela va supprimer vos clés de chiffrement actuelles. Vos anciens messages deviendront illisibles. Continuer ?")) {
-      if (user) {
-        localStorage.removeItem(`wlm_priv_${user.id}`);
-        localStorage.removeItem(`wlm_pub_${user.id}`);
-        localStorage.removeItem(`wlm_keys_${user.id}`);
-      }
-      window.location.reload();
+    if (window.confirm("Attention : cela va fermer votre session. Vos anciens messages nécessiteront votre mot de passe pour être déchiffrés. Continuer ?")) {
+      handleLogout('Réinitialisation manuelle de la session');
     }
   };
 
   /**
-   * DÉCONNEXION
+   * DÉCONNEXION (PURGE COMPLÈTE DE LA MÉMOIRE VIVE)
    */
   const handleLogout = (reason?: string) => {
-    if (reason) console.warn("[Session] Déconnexion forcée:", reason); 
+    if (reason) console.warn("[Session] Déconnexion:", reason); 
     if (socket) {
       socket.emit('manual_disconnect');
-    }
-    if (user?.id) {
-      sessionStorage.removeItem(`wlm_priv_${user.id}`);
-      sessionStorage.removeItem(`wlm_pub_${user.id}`);
-      localStorage.removeItem(`wlm_priv_${user.id}`);
-      localStorage.removeItem(`wlm_pub_${user.id}`);
-      localStorage.removeItem(`wlm_keys_${user.id}`);
     }
     localStorage.removeItem('wlm_user'); 
     localStorage.removeItem('wlm_open_chats');
     localStorage.removeItem('wlm_active_chat');
+    setMyKeys(null);
+    setUser(null);
     window.location.reload(); 
   };
 
@@ -1958,8 +1912,10 @@ const App: React.FC = () => {
    * RENDU DU COMPOSANT
    */
 
-  // Redirection vers l'authentification si aucun utilisateur n'est connecté
-  if (!user) return <Auth onLogin={setUser} />;
+  // Redirection vers l'authentification si aucun utilisateur n'est connecté ou si les clés ne sont pas en mémoire
+  if (!user || !myKeys) {
+    return <Auth onLogin={handleUserLogin} initialUsername={user?.username || ''} />;
+  }
 
   // Détermination du contact actif pour l'affichage de la discussion
   const activeContact = contacts.find(c => c.id === activeChatId) || { 

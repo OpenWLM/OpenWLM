@@ -44,8 +44,13 @@ export interface EncryptedMessagePayload {
 
 export interface VaultData {
   encryptedKeyBase64: string;
-  saltBase64: string;
   ivBase64: string;
+  saltBase64?: string;
+}
+
+export interface ZeroKnowledgeKeys {
+  authKeyHex: string;
+  vaultKey: CryptoKey;
 }
 
 export interface LocalEncryptedData {
@@ -165,75 +170,121 @@ export const sanitize = (str: string) => {
 };
 
 /**
- * Dérive une clé AES à partir d'un mot de passe utilisateur (PBKDF2)
- * Utilisé pour protéger le coffre-fort de clés privées.
+ * DÉRIVATION STRICTEMENT ZERO-KNOWLEDGE (Web Crypto API native)
+ * Le mot de passe brut NE QUITTE JAMAIS le navigateur de l'utilisateur.
+ * - PBKDF2-HMAC-SHA256 (600 000 itérations) -> MasterKey (256 bits)
+ * - HKDF-SHA256 (RFC 5869, sel fixe 32 octets de zéros) :
+ *   * info: 'openwlm-auth-key-v1' -> authKeyHex (256 bits en hex pour transport HTTP)
+ *   * info: 'openwlm-vault-encryption-key-v1' -> vaultKey (CryptoKey AES-GCM 256 bits non exportable)
  */
-export const deriveKeyFromPassword = async (password: string, salt: Uint8Array): Promise<CryptoKey> => {
+export const deriveZeroKnowledgeKeys = async (
+  username: string, 
+  masterPassword: string
+): Promise<ZeroKnowledgeKeys> => {
   const enc = new TextEncoder();
-  const keyMaterial = await window.crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    { name: "PBKDF2" },
+  const salt = enc.encode('openwlm-salt:' + username.trim().toLowerCase());
+
+  // 1. Importation du mot de passe brut en tant que matériel de clé PBKDF2
+  const passwordMaterial = await window.crypto.subtle.importKey(
+    'raw',
+    enc.encode(masterPassword),
+    { name: 'PBKDF2' },
     false,
-    ["deriveBits", "deriveKey"]
+    ['deriveBits', 'deriveKey']
   );
-  
-  return window.crypto.subtle.deriveKey(
+
+  // 2. Dérivation de la MasterKey (600 000 itérations PBKDF2-HMAC-SHA256)
+  const masterKeyBits = await window.crypto.subtle.deriveBits(
     {
-      name: "PBKDF2",
-      salt: salt as BufferSource,
-      iterations: 100000, // Nombre d'itérations élevé pour la sécurité
-      hash: "SHA-256"
+      name: 'PBKDF2',
+      salt,
+      iterations: 600000,
+      hash: 'SHA-256'
     },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
+    passwordMaterial,
+    256 // 32 octets (256 bits)
   );
+
+  // 3. Importation de la MasterKey pour HKDF
+  const masterCryptoKey = await window.crypto.subtle.importKey(
+    'raw',
+    masterKeyBits,
+    { name: 'HKDF' },
+    false,
+    ['deriveBits', 'deriveKey']
+  );
+
+  const fixedHkdfSalt = new Uint8Array(32); // Sel fixe 32 octets à zéro (RFC 5869)
+
+  // 4. Dérivation de authKeyHex (pour transport HTTP)
+  const authKeyBits = await window.crypto.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: fixedHkdfSalt,
+      info: enc.encode('openwlm-auth-key-v1')
+    },
+    masterCryptoKey,
+    256
+  );
+
+  const authKeyHex = Array.from(new Uint8Array(authKeyBits))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  // 5. Dérivation de vaultKey (CryptoKey AES-GCM 256 bits non exportable)
+  const vaultKey = await window.crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: fixedHkdfSalt,
+      info: enc.encode('openwlm-vault-encryption-key-v1')
+    },
+    masterCryptoKey,
+    { name: 'AES-GCM', length: 256 },
+    false, // NON EXPORTABLE pour une sécurité maximale en mémoire
+    ['encrypt', 'decrypt']
+  );
+
+  return { authKeyHex, vaultKey };
 };
 
 /**
- * Chiffre la clé privée E2EE avec le mot de passe utilisateur
- * pour un stockage sécurisé sur le serveur (Vault)
+ * Chiffre la clé privée RSA avec vaultKey en AES-GCM 256 bits (IV 12 octets aléatoires)
  */
-export const encryptPrivateKeyVault = async (privateKeyJwk: JsonWebKey, password: string): Promise<VaultData> => {
-  const salt = window.crypto.getRandomValues(new Uint8Array(16));
+export const encryptPrivateKeyVault = async (
+  privateKeyJwk: JsonWebKey, 
+  vaultKey: CryptoKey
+): Promise<VaultData> => {
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
-  const aesKey = await deriveKeyFromPassword(password, salt);
-
   const enc = new TextEncoder();
   const encodedJwk = enc.encode(JSON.stringify(privateKeyJwk));
 
-  const encrypted = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, encodedJwk);
+  const encrypted = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, vaultKey, encodedJwk);
 
   return {
     encryptedKeyBase64: arrayBufferToBase64(encrypted),
-    saltBase64: arrayBufferToBase64(salt.buffer),
     ivBase64: arrayBufferToBase64(iv.buffer)
   };
 };
 
 /**
- * Déchiffre la clé privée à partir du mot de passe
+ * Déchiffre la clé privée RSA à partir de vaultKey en AES-GCM
  */
 export const decryptPrivateKeyVault = async (
   encryptedKeyBase64: string, 
-  saltBase64: string, 
   ivBase64: string, 
-  password: string
+  vaultKey: CryptoKey
 ): Promise<JsonWebKey | null> => {
   try {
-    const salt = new Uint8Array(base64ToArrayBuffer(saltBase64));
     const iv = new Uint8Array(base64ToArrayBuffer(ivBase64));
     const encryptedKey = base64ToArrayBuffer(encryptedKeyBase64);
 
-    const aesKey = await deriveKeyFromPassword(password, salt);
-    const decrypted = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, encryptedKey);
-
+    const decrypted = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, vaultKey, encryptedKey);
     const dec = new TextDecoder();
     return JSON.parse(dec.decode(decrypted)) as JsonWebKey;
   } catch (e) {
-    console.error("Échec du déchiffrement du coffre-fort (Vault)", e);
+    console.error("Échec du déchiffrement du coffre-fort (Vault) : clé incorrecte ou données altérées.", e);
     return null;
   }
 };

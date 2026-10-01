@@ -305,10 +305,11 @@ const broadcastStatusToContacts = (userId, payload) => {
 };
 
 /**
- * Hachage sécurisé du mot de passe avec PBKDF2
+ * Hachage sécurisé de l'AuthKey avec PBKDF2 (210 000 itérations, SHA-512)
+ * Conforme aux recommandations strictes OWASP
  */
-const hashPassword = (password, salt) => {
-  return crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+const hashPassword = (authKeyHex, salt) => {
+  return crypto.pbkdf2Sync(authKeyHex, salt, 210000, 64, 'sha512').toString('hex');
 };
 
 /**
@@ -431,13 +432,12 @@ app.post('/api/signup', authRateLimiter, (req, res) => {
     return res.status(400).json({ error: 'Adresse de messagerie invalide (3-100 caractères, sans espaces).' });
   }
 
-  // 3. Validation de la complexité du mot de passe
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{12,}$/;
-  if (!passwordRegex.test(password)) {
-    return res.status(400).json({ error: 'Le mot de passe doit faire 12 caractères et inclure Maj, Min, Chiffre et Caractère spécial.' });
+  // 3. Validation de la clé d'authentification (Zero-Knowledge hex 256 bits)
+  if (!password || typeof password !== 'string' || !/^[a-fA-F0-9]{64}$/.test(password)) {
+    return res.status(400).json({ error: "Clé d'authentification invalide (format hex 256 bits requis)." });
   }
 
-  // 4. Hachage et insertion
+  // 4. Hachage sécurisé PBKDF2 (210 000 itérations) et insertion
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = hashPassword(password, salt);
   
@@ -451,12 +451,16 @@ app.post('/api/signup', authRateLimiter, (req, res) => {
 });
 
 /**
- * Connexion utilisateur
+ * Connexion utilisateur (Zero-Knowledge)
  */
 app.post('/api/login', authRateLimiter, (req, res) => {
   const { username, password } = req.body;
   
   if (!username || !password) return res.status(400).json({ error: 'Identifiants requis.' });
+
+  if (typeof password !== 'string' || !/^[a-fA-F0-9]{64}$/.test(password)) {
+    return res.status(400).json({ error: "Format de clé d'authentification invalide." });
+  }
 
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   
@@ -730,37 +734,44 @@ app.post('/api/user/update', authenticateToken, (req, res) => {
 });
 
 /**
- * Changement de mot de passe
+ * Changement de mot de passe (Zero-Knowledge)
+ * Ne reçoit jamais de mot de passe brut : valide oldAuthKeyHex et met à jour
+ * le hash et encryptedPrivateKey de manière atomique.
  */
 app.post('/api/user/change-password', authenticateToken, (req, res) => {
-  const { oldPassword, newPassword, newVault } = req.body;
+  const { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey } = req.body;
+  const oldKey = oldAuthKeyHex || req.body.oldPassword;
+  const newKey = newAuthKeyHex || req.body.newPassword;
+  const newVault = newEncryptedPrivateKey || req.body.newVault;
   const userId = req.user.id;
 
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{12,}$/;
-  if (!passwordRegex.test(newPassword)) {
-    return res.status(400).json({ error: 'Le nouveau mot de passe doit respecter les critères de sécurité.' });
+  if (!oldKey || !newKey || !/^[a-fA-F0-9]{64}$/.test(oldKey) || !/^[a-fA-F0-9]{64}$/.test(newKey)) {
+    return res.status(400).json({ error: "Format des clés d'authentification invalide (hex 256 bits requis)." });
   }
 
   const user = db.prepare('SELECT password_hash, salt FROM users WHERE id = ?').get(userId);
   if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
 
-  if (hashPassword(oldPassword, user.salt) !== user.password_hash) {
+  if (hashPassword(oldKey, user.salt) !== user.password_hash) {
     return res.status(401).json({ error: 'Ancien mot de passe incorrect.' });
   }
 
   const newSalt = crypto.randomBytes(16).toString('hex');
-  const newHash = hashPassword(newPassword, newSalt);
+  const newHash = hashPassword(newKey, newSalt);
 
   try {
-    if (newVault) {
-      db.prepare('UPDATE users SET password_hash = ?, salt = ?, encrypted_private_key = ? WHERE id = ?')
-        .run(newHash, newSalt, JSON.stringify(newVault), userId);
-    } else {
-      db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?')
-        .run(newHash, newSalt, userId);
-    }
+    db.transaction(() => {
+      if (newVault) {
+        db.prepare('UPDATE users SET password_hash = ?, salt = ?, encrypted_private_key = ? WHERE id = ?')
+          .run(newHash, newSalt, JSON.stringify(newVault), userId);
+      } else {
+        db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?')
+          .run(newHash, newSalt, userId);
+      }
+    })();
     res.json({ success: true });
   } catch (err) {
+    console.error("Change password error:", err);
     res.status(500).json({ error: 'Erreur lors du changement de mot de passe.' });
   }
 });

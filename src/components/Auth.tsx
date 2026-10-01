@@ -1,39 +1,44 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { deriveZeroKnowledgeKeys } from '../utils/Security';
 
 /**
  * Interface pour les propriétés du composant Auth
  */
 interface AuthProps {
-  onLogin: (user: {
-    id: number;
-    username: string;
-    token: string;
-    status: string;
-    plaintextPassword?: string;
-    rememberMe?: boolean;
-    nickname?: string;
-    avatar?: string;
-    scene?: string;
-    psm?: string;
-    public_key?: string;
-    encrypted_private_key?: string;
-  }) => void;
+  onLogin: (
+    user: {
+      id: number;
+      username: string;
+      token: string;
+      status: string;
+      rememberMe?: boolean;
+      nickname?: string;
+      avatar?: string;
+      scene?: string;
+      psm?: string;
+      public_key?: string;
+      encrypted_private_key?: string;
+    },
+    vaultKey: CryptoKey
+  ) => void;
+  initialUsername?: string;
 }
 
 /**
  * Composant d'authentification (Connexion / Inscription)
- * Gère l'interface OpenWLM classique pour l'accès au service
+ * Architecture Zero-Knowledge stricte : le mot de passe maître ne quitte JAMAIS le navigateur
  */
-const Auth: React.FC<AuthProps> = ({ onLogin }) => {
+const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
   // États locaux
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(initialUsername);
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [status, setStatus] = useState('online');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+  const [isDeriving, setIsDeriving] = useState(false);
   const [captchaData, setCaptchaData] = useState<{ id: string, text: string } | null>(null);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
 
@@ -75,23 +80,33 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
-    try {
-      if (isLogin) {
-        // Tentative de connexion
-        const res = await axios.post('/api/login', { username, password });
+    if (!isLogin) {
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{12,}$/;
+      if (!passwordRegex.test(password)) {
+        setError('Le mot de passe doit comporter au moins 12 caractères et inclure majuscule, minuscule, chiffre et caractère spécial.');
+        return;
+      }
+    }
 
-        // VÉRIFICATION DE SÉCURITÉ : Ne pas faire confiance aveuglément à la réponse.
-        // On s'assure que le serveur a bien renvoyé un token JWT valide et un objet utilisateur.
+    try {
+      setIsDeriving(true);
+
+      // DÉRIVATION ZERO-KNOWLEDGE STRICTE :
+      // PBKDF2 (600 000 itérations) + HKDF-SHA256
+      // Le mot de passe maître NE QUITTE JAMAIS le navigateur
+      const { authKeyHex, vaultKey } = await deriveZeroKnowledgeKeys(username, password);
+
+      if (isLogin) {
+        // Envoi uniquement de authKeyHex (jamais le mot de passe brut)
+        const res = await axios.post('/api/login', { username, password: authKeyHex });
+
         if (res.data && res.data.success && typeof res.data.token === 'string' && res.data.user && res.data.user.id) {
-          // On passe les infos utilisateur au parent, incluant le mot de passe en clair
-          // nécessaire pour déchiffrer la clé privée E2EE localement.
           onLogin({ 
             ...res.data.user, 
             token: res.data.token, 
             status, 
-            plaintextPassword: password,
             rememberMe: rememberMe
-          });
+          }, vaultKey);
         } else {
           setError("Réponse du serveur invalide ou altérée.");
         }
@@ -104,7 +119,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
         await axios.post('/api/signup', { 
           username, 
-          password, 
+          password: authKeyHex, 
           nickname, 
           captchaId: captchaData.id, 
           captchaAnswer 
@@ -120,6 +135,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       
       // Rafraîchir le captcha en cas d'erreur d'inscription
       if (!isLogin) fetchCaptcha();
+    } finally {
+      setIsDeriving(false);
     }
   };
 
@@ -228,9 +245,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <button 
               type="submit" 
               className="wlm-btn-auth" 
-              disabled={!isLogin && !captchaData}
+              disabled={isDeriving || (!isLogin && !captchaData)}
             >
-              {isLogin ? 'Se connecter' : "S'inscrire"}
+              {isDeriving ? 'Chiffrement sécurisé...' : (isLogin ? 'Se connecter' : "S'inscrire")}
             </button>
             <span className="auth-toggle" onClick={toggleMode}>
               {isLogin ? "Pas de compte ? Créer-en un" : "Déjà un compte ? Se connecter"}

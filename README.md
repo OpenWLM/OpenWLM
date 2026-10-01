@@ -4,7 +4,7 @@
 
 # OpenWLM (Modern Web Stack)
 
-Une récréation moderne, open-source et sécurisée de l'expérience iconique de Windows Live Messenger 2009. Ce projet combine le design nostalgique des années 2000 avec les standards de sécurité et de performance de 2026.
+Une récréation moderne, open-source et sécurisée de l'expérience iconique de messagerie rétro OpenWLM. Ce projet combine le design nostalgique des années 2000 avec les standards de sécurité et de performance de 2026.
 
 ⚠️ **Disclaimer & Security Notice**: 
 OpenWLM is an independent, open-source educational project and a nostalgic tribute. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Microsoft Corporation or any of its subsidiaries.

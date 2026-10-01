@@ -1,5 +1,5 @@
 /**
- * Service Worker pour OpenWLM (Windows Live Messenger Web Edition)
+ * Service Worker pour OpenWLM (Web Edition)
  * Fournit le support hors-ligne de la coquille d'application (App Shell)
  * et la mise en cache haute-performance des sons et icônes rétro.
  */

@@ -1957,7 +1957,7 @@ const App: React.FC = () => {
             <button 
               className="pwa-install-btn" 
               onClick={() => promptPWAInstall()}
-              title="Installer Windows Live Messenger sur votre ordinateur ou mobile"
+              title="Installer OpenWLM sur votre ordinateur ou mobile"
             >
               📥 Installer
             </button>

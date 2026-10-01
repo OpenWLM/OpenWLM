@@ -1,7 +1,7 @@
 {
-  "name": "Windows Live Messenger",
+  "name": "OpenWLM",
   "short_name": "OpenWLM",
-  "description": "Windows Live Messenger 2009 Web Edition (Chiffrement E2EE & Rétro)",
+  "description": "OpenWLM Web Edition (Chiffrement E2EE & Rétro)",
   "start_url": "/",
   "id": "/",
   "display": "standalone",

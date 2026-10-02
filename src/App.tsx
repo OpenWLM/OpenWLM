@@ -757,6 +757,7 @@ const App: React.FC = () => {
       let decryptedAudio = m.audio;
       let decryptedStyle = m.style;
       let fileData: FileDataPayload | undefined = m.fileData;
+      let payloadSender: string | undefined = undefined;
 
       try {
         const potentialJson = JSON.parse(m.text);
@@ -770,6 +771,7 @@ const App: React.FC = () => {
              } else {
                decryptedText = payload.text;
              }
+             if (payload.sender) payloadSender = payload.sender;
              if (payload.audio) decryptedAudio = payload.audio;
              if (payload.style) decryptedStyle = payload.style;
            } else {
@@ -780,23 +782,31 @@ const App: React.FC = () => {
 
       const isSender = m.sender_id === user?.id || m.senderId === user?.id;
       const formattedTime = formatMessageTime(m.timestamp, m.time);
+      const contactObj = contactsRef.current.find(c => c.id === (m.sender_id || m.senderId));
+      const contactResolvedName = contactObj ? (contactObj.nickname || contactObj.username) : null;
+
+      const finalSender = isSender
+        ? (myNickname || user?.nickname || user?.username || 'Moi')
+        : (contactResolvedName || payloadSender || m.sender_name || (m.sender && m.sender !== 'Contact' ? m.sender : null) || 'Contact');
 
       results.push({ 
         ...m, 
         id: m.id,
         sender_id: m.sender_id || m.senderId,
+        senderId: m.sender_id || m.senderId,
         receiver_id: m.receiver_id || m.receiverId,
+        receiverId: m.receiver_id || m.receiverId,
         text: decryptedText, 
         audio: decryptedAudio,
         style: decryptedStyle ? (typeof decryptedStyle === 'string' ? JSON.parse(decryptedStyle) : decryptedStyle) : null,
-        sender: isSender ? (myNickname || user?.nickname || 'Moi') : (m.sender || m.sender_name || 'Contact'),
+        sender: finalSender,
         time: formattedTime,
         timestamp: m.timestamp,
         fileData: fileData
       });
     }
     return results;
-  }, [user?.id, user?.nickname, myNickname]);
+  }, [user?.id, user?.nickname, user?.username, myNickname]);
 
   /**
    * CHARGEMENT DE L'HISTORIQUE D'UNE CONVERSATION (UNIFIÉ SANS DOUBLON)
@@ -890,9 +900,11 @@ const App: React.FC = () => {
 
       // Réception d'un message (texte ou audio, éventuellement chiffré)
       newSocket.on('receive_message', async (data) => {
-        const senderId = data.senderId;
-        const originalSenderName = data.sender || data.sender_name || 'Contact';
+        const senderId = data.senderId || data.sender_id;
+        const isSender = senderId === user.id;
         let decryptedData = { ...data };
+        let fileData = data.fileData;
+        let payloadSender: string | undefined = undefined;
 
         // Tentative de détection si le message est chiffré de bout en bout
         let isEncrypted = false;
@@ -909,10 +921,14 @@ const App: React.FC = () => {
           const currentKeys = myKeysRef.current;
           if (currentKeys) {
             try {
-              const isSender = data.senderId === user.id;
-              const payload = await decryptMessagePayload(parsedE2e, currentKeys.privateKeyJwk, isSender);
+              const payload = await decryptMessagePayload<any>(parsedE2e, currentKeys.privateKeyJwk, isSender);
               if (payload) {
                  decryptedData = { ...data, ...payload };
+                 if (payload.type === 'file' && payload.fileId) {
+                   fileData = payload;
+                   decryptedData.text = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
+                 }
+                 if (payload.sender) payloadSender = payload.sender;
               } else {
                  decryptedData = { ...data, text: "[!] Message chiffré illisible", audio: null };
               }
@@ -925,12 +941,18 @@ const App: React.FC = () => {
           }
         }
 
+        // Résolution précise du nom réel de l'expéditeur (Carnet de contacts > Payload E2EE > Socket Server)
+        const contactFromList = contactsRef.current.find(c => c.id === senderId);
+        const contactResolvedName = contactFromList ? (contactFromList.nickname || contactFromList.username) : null;
+        const finalSenderName = isSender
+          ? (myNickname || user?.nickname || user?.username || 'Moi')
+          : (contactResolvedName || payloadSender || decryptedData.sender || data.sender || data.sender_name || 'Contact');
+
         // Mise à jour de l'interface
         setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
         setActiveChatId(prev => prev === 0 ? senderId : prev);
 
         const formattedTime = formatMessageTime(decryptedData.timestamp, decryptedData.time);
-        const fileData = decryptedData.fileData || (decryptedData.type === 'file' && decryptedData.fileId ? decryptedData : undefined);
         const finalMsg: Message = { 
           ...decryptedData, 
           id: decryptedData.id,
@@ -938,10 +960,10 @@ const App: React.FC = () => {
           senderId: senderId,
           receiver_id: user?.id,
           receiverId: user?.id,
-          sender: decryptedData.sender || originalSenderName,
+          sender: finalSenderName,
           time: formattedTime,
           timestamp: decryptedData.timestamp || new Date().toISOString(),
-          fileData: fileData
+          fileData: fileData || (decryptedData.type === 'file' && decryptedData.fileId ? decryptedData : undefined)
         };
 
         setMessages(prev => {
@@ -1302,6 +1324,7 @@ const App: React.FC = () => {
       }
 
       // 4. Préparer le payload E2EE contenant les métadonnées et clés de déchiffrement
+      const senderDisplayName = myNickname || user?.nickname || user?.username || 'Moi';
       const filePayload: FileDataPayload = {
         type: 'file',
         fileId: res.data.fileId,
@@ -1311,7 +1334,9 @@ const App: React.FC = () => {
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type || 'application/octet-stream',
-        fileKeys
+        fileKeys,
+        sender: senderDisplayName,
+        senderId: user?.id
       };
 
       const e2eData = await encryptMessagePayload(filePayload, contactPubKey, myKeys.publicKeyJwk);
@@ -1337,7 +1362,7 @@ const App: React.FC = () => {
         sender_id: user?.id,
         receiverId: activeChatId,
         receiver_id: activeChatId,
-        sender: myNickname || user?.nickname || 'Moi',
+        sender: senderDisplayName,
         text: `[Fichier] ${file.name}`,
         type: 'file',
         fileData: filePayload,
@@ -2357,18 +2382,25 @@ const App: React.FC = () => {
 
                {/* Historique des messages (Scrollable) */}
                <div className="chat-log-scroll">
-                  {(messages[activeChatId] || []).map((m, i) => (
+                  {(messages[activeChatId] || []).map((m, i) => {
+                    const isSender = m.sender_id === user?.id || m.senderId === user?.id || m.sender === myNickname;
+                    const activeContact = contacts.find(c => c.id === activeChatId);
+                    const senderDisplayName = isSender 
+                      ? (myNickname || user?.nickname || user?.username || 'Moi')
+                      : (m.sender && m.sender !== 'Contact' ? m.sender : (activeContact?.nickname || activeContact?.username || m.sender || 'Contact'));
+
+                    return (
                     <div key={i} className="msg-line">
                        {m.sender === 'Système' ? (
                          <div className="msg-system">{m.text}</div>
                        ) : (
                          <>
-                           <div className={`msg-name ${m.sender === myNickname ? 'me' : ''}`}>{m.sender} dit :</div>
+                           <div className={`msg-name ${isSender ? 'me' : ''}`}>{senderDisplayName} dit :</div>
                            {m.fileData ? (
                              <FileTransferCard 
                                fileData={m.fileData} 
                                myPrivateKey={myKeys?.privateKeyJwk} 
-                               isSender={m.sender_id === user?.id || m.senderId === user?.id} 
+                               isSender={isSender} 
                              />
                            ) : m.audio ? (
                              <VoiceClipPlayer src={m.audio} />
@@ -2378,7 +2410,8 @@ const App: React.FC = () => {
                          </>
                        )}
                     </div>
-                  ))}
+                  );
+                  })}
                   <div ref={chatEndRef} />
                </div>
 

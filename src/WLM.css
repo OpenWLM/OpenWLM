@@ -1206,6 +1206,25 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   border: 1px solid #fad2cf;
 }
 
+.wlm-file-badge-direction {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.wlm-file-badge-direction.outgoing {
+  background: #fde8e8;
+  color: #a82020;
+  border: 1px solid #f9c2c2;
+}
+
+.wlm-file-badge-direction.incoming {
+  background: #edf5fc;
+  color: #1a5286;
+  border: 1px solid #c8e1f5;
+}
+
 .wlm-file-actions {
   display: flex;
   align-items: center;

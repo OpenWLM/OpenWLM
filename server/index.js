@@ -832,7 +832,7 @@ app.get('/api/messages/:userId/:contactId', authenticateToken, (req, res) => {
   if (req.user.id !== parseInt(userId)) return res.status(403).json({ error: "Accès refusé." });
 
   const history = db.prepare(`
-    SELECT messages.*, users.nickname as sender_name 
+    SELECT messages.*, COALESCE(NULLIF(users.nickname, ''), users.username) as sender_name 
     FROM messages 
     JOIN users ON messages.sender_id = users.id
     WHERE (sender_id = ? AND receiver_id = ?) 
@@ -1112,10 +1112,11 @@ io.on('connection', (socket) => {
     recentMessages.push(now);
     messageLimits.set(senderId, recentMessages);
 
-    const sender = db.prepare('SELECT global_private FROM users WHERE id = ?').get(senderId);
+    const sender = db.prepare('SELECT id, username, nickname, global_private FROM users WHERE id = ?').get(senderId);
     const receiver = db.prepare('SELECT global_private FROM users WHERE id = ?').get(receiverId);
     const isForcedPrivate = (sender && Number(sender.global_private) === 1) || (receiver && Number(receiver.global_private) === 1);
     const finalIsPrivate = isPrivate || isForcedPrivate;
+    const senderDisplayName = sender ? (sender.nickname || sender.username) : null;
 
     console.log(`[Message Security] From:${senderId} To:${receiverId} ClientPrivate:${isPrivate} ForcedPrivate:${isForcedPrivate} Final:${finalIsPrivate}`);
 
@@ -1129,7 +1130,11 @@ io.on('connection', (socket) => {
     const nowIso = new Date().toISOString();
     let messageToDeliver = {
       senderId,
+      sender_id: senderId,
       receiverId,
+      receiver_id: receiverId,
+      sender: senderDisplayName,
+      sender_name: senderDisplayName,
       text,
       style,
       audio,

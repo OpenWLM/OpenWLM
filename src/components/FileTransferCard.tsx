@@ -12,6 +12,8 @@ export interface FileDataPayload {
   fileSize: number;
   fileType: string;
   fileKeys: EncryptedFileKeys;
+  sender?: string;
+  senderId?: number;
 }
 
 interface FileTransferCardProps {
@@ -141,6 +143,9 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
           </div>
           <div className="wlm-file-meta">
             <span>{formatBytes(fileData.fileSize)}</span>
+            <span className={`wlm-file-badge-direction ${isSender ? 'outgoing' : 'incoming'}`}>
+              {isSender ? '📤 Envoyé' : '📥 Reçu'}
+            </span>
             <span className="wlm-file-badge-e2ee" title="Chiffré de bout en bout avec AES-256 et RSA">🔒 E2EE</span>
             {remaining.expired ? (
               <span className="wlm-file-badge-expired">Expiré</span>

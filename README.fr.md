@@ -24,12 +24,12 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgi
 ### 💬 Communication & Expérience Rétro
 - **Interface Authentique** : Design rétro fidèle aux messageries de l'époque (Aero glass, onglets, scènes de fond, usertiles, sons d'origine).
 - **Application Web Progressive (PWA)** : Totalement installable en tant qu'application autonome sur ordinateur ou mobile avec mise en cache hors-ligne des assets via Service Worker, manifeste web et intégration d'icônes rétro Aero dans la barre des tâches.
-- **Assistant de test intégré ("OpenWLM")** : Contact système virtuel (ID `-1`) avec état d'accueil central, permettant de tester immédiatement le chat, les émoticônes, les sons, le Wizz et le Morpion sans second compte.
+- **Assistant de test intégré ("OpenWLM")** : Contact système virtuel (ID `-1`) avec état d'accueil central, permettant de tester immédiatement le chat, les émoticônes, les sons, le Wizz, le Morpion et le Puissance 4 (`/p4`) sans second compte.
 - **Messagerie Instantanée Sécurisée** : Texte riche, émoticônes classiques d'origine et émoticônes personnalisées E2EE.
 - **Audio & Vidéo (WebRTC)** : Appels vocaux et vidéo en direct avec signalisation chiffrée.
 - **Messages Vocaux** : Enregistrement et lecture de clips vocaux chiffrés.
 - **Winks & Wizz** : Clins d'œil animés et Wizz secouant la fenêtre.
-- **Activités & Jeux 1v1** : Morpion (Tic-Tac-Toe) et Jeu de dames (Checkers) en temps réel avec validation autoritaire anti-triche côté serveur.
+- **Activités & Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers) et Puissance 4 (Connect Four sur grille 7x6) en temps réel avec validation autoritaire anti-triche côté serveur, animations de gravité et barre de jeu réductible.
 - **Transfert de fichiers chiffré E2EE** : Partage temporaire (expiration 4h) avec déchiffrement direct et prévisualisation d'images.
 - **Internationalisation Complète (FR / EN)** : Support bilingue natif Français et Anglais avec bascule réactive instantanée, détection automatique du navigateur et zéro régression visuelle sur le rendu Aero.
 

@@ -24,12 +24,12 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 ### 💬 Communication & Authenticity
 - **Authentic Retro Interface**: Faithful replica of classic late-2000s instant messaging (Aero glass styling, tabs, background scenes, usertiles, retro audio sound effects).
 - **Progressive Web App (PWA)**: Fully installable as a standalone desktop or mobile application with offline Service Worker asset caching, web app manifest, and retro Aero taskbar icon integration.
-- **Built-in Assistant & Test Contact ("OpenWLM")**: Dedicated virtual system contact (ID `-1`) with an empty-state quickstart button, allowing new users to test chat, emoticons, sounds, Wizz/nudges, and Tic-Tac-Toe immediately without needing a second account.
+- **Built-in Assistant & Test Contact ("OpenWLM")**: Dedicated virtual system contact (ID `-1`) with an empty-state quickstart button, allowing new users to test chat, emoticons, sounds, Wizz/nudges, Tic-Tac-Toe, and Connect Four (`/p4`) immediately without needing a second account.
 - **Secure Instant Messaging**: Rich text support, classic legacy emoticons, and custom end-to-end encrypted emoticons.
 - **Audio & Video Calls (WebRTC)**: Real-time peer-to-peer voice and video calls with encrypted signaling.
 - **Voice Clips**: Record and stream end-to-end encrypted audio messages.
 - **Winks & Nudges**: Animated full-screen winks and screen-shaking Wizz effects.
-- **1v1 Multiplayer Mini-Games**: Real-time Tic-Tac-Toe (Morpion) and Checkers (Jeu de dames) with authoritative server-side anti-cheat validation and collapsible game docks.
+- **1v1 Multiplayer Mini-Games**: Real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), and Connect Four (Puissance 4 on a classic 7x6 board) with authoritative server-side anti-cheat validation, gravity animations, and collapsible game docks.
 - **Encrypted File Transfer**: Temporary peer file sharing (4-hour TTL) with on-the-fly decryption and image lightbox previews.
 - **Full Bilingual Internationalization (EN / FR)**: Native English and French support with instant reactive switching, browser language autodetection, and zero UI overflow preserving the classic retro Aero layout.
 

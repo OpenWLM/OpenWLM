@@ -2389,13 +2389,19 @@ const App: React.FC = () => {
                       ? (myNickname || user?.nickname || user?.username || 'Moi')
                       : (m.sender && m.sender !== 'Contact' ? m.sender : (activeContact?.nickname || activeContact?.username || m.sender || 'Contact'));
 
+                    const fileHeaderLabel = isSender
+                      ? 'Vous avez envoyé un fichier :'
+                      : `${senderDisplayName} vous a envoyé un fichier :`;
+
                     return (
                     <div key={i} className="msg-line">
                        {m.sender === 'Système' ? (
                          <div className="msg-system">{m.text}</div>
                        ) : (
                          <>
-                           <div className={`msg-name ${isSender ? 'me' : ''}`}>{senderDisplayName} dit :</div>
+                           <div className={`msg-name ${isSender ? 'me' : ''}`}>
+                             {m.fileData ? fileHeaderLabel : `${senderDisplayName} dit :`}
+                           </div>
                            {m.fileData ? (
                              <FileTransferCard 
                                fileData={m.fileData} 

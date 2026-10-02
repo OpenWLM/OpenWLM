@@ -86,7 +86,49 @@ const io = new Server(httpServer, {
 
 const PORT = process.env.PORT || 3001;
 const db = new Database('messenger.db');
-const SECRET = process.env.JWT_SECRET || 'wlm_classic_secret_key';
+
+/**
+ * SÉCURITÉ JWT STRICTE :
+ * Suppression totale du fallback statique faible ('wlm_classic_secret_key').
+ * 1. Si process.env.JWT_SECRET est fourni : validation stricte de sa force (>= 32 car, interdiction des secrets faibles).
+ * 2. Si non fourni : génération automatique d'une clé cryptographique forte de 256 bits (64 hex),
+ *    persistée dans .jwt_secret (chmod 0600) pour garantir la continuité des sessions lors des redémarrages.
+ */
+const getJwtSecret = () => {
+  const envSecret = process.env.JWT_SECRET ? process.env.JWT_SECRET.trim() : null;
+  const FORBIDDEN_SECRETS = ['wlm_classic_secret_key', 'secret', 'jwt_secret', 'password', '123456', 'changeme'];
+
+  if (envSecret) {
+    if (FORBIDDEN_SECRETS.includes(envSecret) || envSecret.length < 32) {
+      console.error("[FATAL SECURITY] Le secret JWT fourni dans JWT_SECRET est trop faible ou interdit (minimum 32 caractères requis).");
+      process.exit(1);
+    }
+    return envSecret;
+  }
+
+  const secretPath = path.join(__dirname, '../.jwt_secret');
+  if (fs.existsSync(secretPath)) {
+    try {
+      const savedSecret = fs.readFileSync(secretPath, 'utf8').trim();
+      if (savedSecret && savedSecret.length >= 64 && !FORBIDDEN_SECRETS.includes(savedSecret)) {
+        return savedSecret;
+      }
+    } catch (e) {
+      console.warn("[Security] Impossible de lire .jwt_secret existant:", e.message);
+    }
+  }
+
+  const generatedSecret = crypto.randomBytes(32).toString('hex');
+  try {
+    fs.writeFileSync(secretPath, generatedSecret, { mode: 0o600 });
+    console.log("[Security] Nouveau secret JWT fort (256 bits) généré et stocké dans .jwt_secret.");
+  } catch (err) {
+    console.warn("[Security] Impossible d'écrire .jwt_secret sur le disque, secret conservé en mémoire pour ce processus.");
+  }
+  return generatedSecret;
+};
+
+const SECRET = getJwtSecret();
 
 // SÉCURITÉ : Indispensable derrière Cloudflare Tunnel pour lire correctement l'en-tête X-Forwarded-Proto
 app.set('trust proxy', 1);
@@ -400,6 +442,51 @@ const hashPassword = (authKeyHex, salt) => {
 };
 
 /**
+ * SÉCURITÉ CENTRALISÉE (AUTORISATION & ANTI-USURPATION) :
+ * Vérifie si senderId a le droit d'interagir avec targetId :
+ * 1. Les deux identifiants doivent être des entiers strictement positifs et distincts.
+ * 2. targetId doit exister dans la table users.
+ * 3. Les deux utilisateurs doivent être en relation mutuelle acceptée dans contacts.
+ * 4. Aucun des deux ne doit avoir bloqué l'autre.
+ */
+const canInteract = (senderId, targetId) => {
+  const sId = parseInt(senderId, 10);
+  const tId = parseInt(targetId, 10);
+  if (isNaN(sId) || isNaN(tId) || sId <= 0 || tId <= 0) {
+    return { allowed: false, reason: "Identifiants invalides." };
+  }
+  if (sId === tId) {
+    return { allowed: false, reason: "Action impossible sur son propre compte." };
+  }
+
+  // Vérifier l'existence de la cible
+  const targetUser = db.prepare('SELECT id FROM users WHERE id = ?').get(tId);
+  if (!targetUser) {
+    return { allowed: false, reason: "Utilisateur destinataire introuvable." };
+  }
+
+  // Vérifier la relation dans contacts (target -> sender)
+  const targetRelation = db.prepare('SELECT status, blocked FROM contacts WHERE user_id = ? AND contact_id = ?').get(tId, sId);
+  if (!targetRelation) {
+    return { allowed: false, reason: "Ce contact n'est pas dans votre liste d'amis." };
+  }
+  if (Number(targetRelation.blocked) === 1) {
+    return { allowed: false, reason: "Vous ne pouvez pas interagir avec cet utilisateur (bloqué)." };
+  }
+
+  // Vérifier la relation dans contacts (sender -> target)
+  const senderRelation = db.prepare('SELECT status, blocked FROM contacts WHERE user_id = ? AND contact_id = ?').get(sId, tId);
+  if (!senderRelation) {
+    return { allowed: false, reason: "Ce contact n'est pas dans votre liste d'amis." };
+  }
+  if (Number(senderRelation.blocked) === 1) {
+    return { allowed: false, reason: "Vous avez bloqué ce contact." };
+  }
+
+  return { allowed: true };
+};
+
+/**
  * Middleware de limitation de débit (Rate Limiting)
  * Prévient les attaques par force brute sur la connexion et l'inscription.
  */
@@ -442,9 +529,14 @@ const authenticateToken = (req, res, next) => {
   
   if (!token) return res.status(401).json({ error: "Non autorisé. Token manquant." });
 
-  jwt.verify(token, SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: "Token invalide ou expiré." });
-    req.user = user;
+  jwt.verify(token, SECRET, (err, payload) => {
+    if (err || !payload || !payload.id) return res.status(403).json({ error: "Token invalide ou expiré." });
+    
+    // Vérifier que l'utilisateur existe toujours en base de données
+    const dbUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(payload.id);
+    if (!dbUser) return res.status(401).json({ error: "Compte utilisateur introuvable ou révoqué." });
+
+    req.user = dbUser;
     next();
   });
 };
@@ -1245,12 +1337,17 @@ const createInitialCheckersBoard = () => {
  * Middleware Socket.IO pour authentifier via Token
  */
 io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
+  const token = socket.handshake.auth?.token;
   if (!token) return next(new Error("Erreur d'authentification : Token manquant"));
 
-  jwt.verify(token, SECRET, (err, user) => {
-    if (err) return next(new Error("Erreur d'authentification : Token invalide"));
-    socket.user = user;
+  jwt.verify(token, SECRET, (err, payload) => {
+    if (err || !payload || !payload.id) return next(new Error("Erreur d'authentification : Token invalide ou expiré"));
+
+    // Vérifier que l'utilisateur existe toujours en base de données
+    const dbUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(payload.id);
+    if (!dbUser) return next(new Error("Erreur d'authentification : Compte utilisateur introuvable ou révoqué"));
+
+    socket.user = dbUser;
     next();
   });
 });
@@ -1295,16 +1392,30 @@ io.on('connection', (socket) => {
    * Envoi d'un message (Texte, Audio, etc.)
    */
   socket.on('send_message', (data, callback) => {
-    const { senderId, receiverId, text, style, audio, type, isPrivate } = data;
+    const { senderId, receiverId, text, style, audio, type, isPrivate } = data || {};
     
-    // Vérification de sécurité de l'expéditeur
-    if (socket.user.id !== senderId) return;
+    // 1. Vérification de sécurité de l'expéditeur (anti-usurpation)
+    if (socket.user.id !== senderId) {
+      if (typeof callback === 'function') callback({ success: false, error: "Non autorisé." });
+      return;
+    }
+
+    // 2. CONTRÔLE D'AUTORISATION STRICT : Relation de contact et absence de blocage
+    const check = canInteract(senderId, receiverId);
+    if (!check.allowed) {
+      console.warn(`[Security Alert] Tentative d'envoi non autorisée de ${senderId} vers ${receiverId}: ${check.reason}`);
+      if (typeof callback === 'function') callback({ success: false, error: check.reason });
+      return;
+    }
 
     // Limitation du débit (Rate Limiting) : max 20 messages par 10 secondes
     const now = Date.now();
     const timestamps = messageLimits.get(senderId) || [];
     const recentMessages = timestamps.filter(ts => now - ts < 10000);
-    if (recentMessages.length >= 20) return; 
+    if (recentMessages.length >= 20) {
+      if (typeof callback === 'function') callback({ success: false, error: "Trop de messages envoyés." });
+      return; 
+    }
     
     recentMessages.push(now);
     messageLimits.set(senderId, recentMessages);
@@ -1320,9 +1431,6 @@ io.on('connection', (socket) => {
     // Limites de taille des données (le texte peut contenir l'audio chiffré E2EE, on augmente la limite)
     if (text && text.length > 5000000) return; 
     if (audio && audio.length > 5000000) return; 
-
-    // Vérifier si le destinataire bloque l'expéditeur
-    const blocker = db.prepare('SELECT blocked FROM contacts WHERE user_id = ? AND contact_id = ?').get(receiverId, senderId);
     
     const nowIso = new Date().toISOString();
     let messageToDeliver = {
@@ -1354,9 +1462,6 @@ io.on('connection', (socket) => {
       callback({ success: true, id: messageToDeliver.id, timestamp: messageToDeliver.timestamp });
     }
 
-    // Si bloqué, on ne transmet pas au destinataire via socket
-    if (blocker && Number(blocker.blocked) === 1) return;
-
     // Livraison si le destinataire est en ligne
     const receiverSocketId = onlineUsers.get(receiverId);
     if (receiverSocketId) {
@@ -1368,8 +1473,15 @@ io.on('connection', (socket) => {
    * Envoi d'un "Wizz"
    */
   socket.on('send_wizz', (data) => {
-    const { senderId, receiverId } = data;
+    const { senderId, receiverId } = data || {};
     if (socket.user.id !== senderId) return;
+
+    // Contrôle d'autorisation strict
+    const check = canInteract(senderId, receiverId);
+    if (!check.allowed) {
+      console.warn(`[Security Alert] Tentative de Wizz non autorisée de ${senderId} vers ${receiverId}: ${check.reason}`);
+      return;
+    }
 
     // Rate limiting pour les Wizz (max 3 par minute)
     const now = Date.now();
@@ -1382,7 +1494,8 @@ io.on('connection', (socket) => {
 
     const receiverSocketId = onlineUsers.get(receiverId);
     if (receiverSocketId) {
-      io.to(receiverSocketId).emit('receive_wizz', data);
+      // SÉCURITÉ : Payload sain contrôlé
+      io.to(receiverSocketId).emit('receive_wizz', { senderId, receiverId });
     }
   });
 
@@ -1390,8 +1503,17 @@ io.on('connection', (socket) => {
    * Envoi d'un "Clin d'oeil" (Wink)
    */
   socket.on('send_wink', (data) => {
-    const { senderId, receiverId } = data;
+    const { senderId, receiverId, winkId } = data || {};
     if (socket.user.id !== senderId) return;
+
+    // Contrôle d'autorisation strict
+    const check = canInteract(senderId, receiverId);
+    if (!check.allowed) {
+      console.warn(`[Security Alert] Tentative de Wink non autorisée de ${senderId} vers ${receiverId}: ${check.reason}`);
+      return;
+    }
+
+    if (!winkId || typeof winkId !== 'string' || !/^[\w-]+$/.test(winkId)) return;
 
     // Rate limiting pour les Winks (max 7 par minute)
     const now = Date.now();
@@ -1404,7 +1526,8 @@ io.on('connection', (socket) => {
 
     const receiverSocketId = onlineUsers.get(receiverId);
     if (receiverSocketId) {
-      io.to(receiverSocketId).emit('receive_wink', data);
+      // SÉCURITÉ : Payload sain contrôlé
+      io.to(receiverSocketId).emit('receive_wink', { senderId, receiverId, winkId });
     }
   });
 
@@ -1412,15 +1535,26 @@ io.on('connection', (socket) => {
    * Synchronisation du Mode Privé (Bidirectionnel)
    */
   socket.on('toggle_private_mode', (data) => {
-    const { senderId, receiverId, isPrivate, senderNickname } = data;
+    const { senderId, receiverId, isPrivate } = data || {};
     if (socket.user.id !== senderId) return;
+
+    // Contrôle d'autorisation strict
+    const check = canInteract(senderId, receiverId);
+    if (!check.allowed) {
+      console.warn(`[Security Alert] Tentative de toggle_private_mode non autorisée de ${senderId} vers ${receiverId}: ${check.reason}`);
+      return;
+    }
+
+    // SÉCURITÉ : Recalcul obligatoire du pseudonyme depuis la base de données (jamais confiance au client)
+    const senderUser = db.prepare('SELECT nickname, username FROM users WHERE id = ?').get(senderId);
+    const safeNickname = senderUser ? (senderUser.nickname || senderUser.username) : 'Un contact';
 
     const receiverSocketId = onlineUsers.get(receiverId);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit('private_mode_changed', { 
         senderId, 
-        isPrivate,
-        senderNickname 
+        isPrivate: !!isPrivate,
+        senderNickname: safeNickname 
       });
     }
   });
@@ -1430,9 +1564,11 @@ io.on('connection', (socket) => {
    * Sécurisé : On utilise socket.user.id (token JWT) au lieu de faire confiance au client.
    */
   socket.on('call_request', (data) => {
-    const { target, signal, audioOnly } = data;
+    const { target, signal, audioOnly } = data || {};
+    const check = canInteract(socket.user.id, target);
+    if (!check.allowed) return;
+
     const targetSocketId = onlineUsers.get(target);
-    
     if (targetSocketId) {
       // Récupérer l'identité réelle de l'appelant depuis la session authentifiée
       const callerUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
@@ -1442,13 +1578,16 @@ io.on('connection', (socket) => {
         caller: socket.user.id, 
         callerName: callerUser.nickname || callerUser.username, 
         signal, 
-        audioOnly 
+        audioOnly: !!audioOnly 
       });
     }
   });
 
   socket.on('webrtc_signal', (data) => {
-    const { target, signal } = data; // target est le destinataire du signal
+    const { target, signal } = data || {};
+    const check = canInteract(socket.user.id, target);
+    if (!check.allowed) return;
+
     const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
       // On transmet le signal en précisant qui l'envoie (l'utilisateur du socket actuel)
@@ -1460,7 +1599,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('end_call', (data) => {
-    const { target } = data;
+    const { target } = data || {};
+    const check = canInteract(socket.user.id, target);
+    if (!check.allowed) return;
+
     const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
       io.to(targetSocketId).emit('call_ended', { 
@@ -1476,17 +1618,23 @@ io.on('connection', (socket) => {
   // 1. Envoi d'une invitation à jouer
   socket.on('game_invite', (data) => {
     if (!socket.user || !socket.user.id) return;
-    const { target, gameType } = data;
-    const targetSocketId = onlineUsers.get(target);
+    const { target, gameType } = data || {};
+    
+    const check = canInteract(socket.user.id, target);
+    if (!check.allowed) {
+      return socket.emit('game_error', { message: check.reason });
+    }
 
+    const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
       const senderUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
       if (!senderUser) return;
 
+      const safeGameType = (gameType === 'checkers') ? 'checkers' : 'morpion';
       io.to(targetSocketId).emit('game_invite_received', {
         from: socket.user.id,
         fromName: senderUser.nickname || senderUser.username,
-        gameType: gameType || 'morpion'
+        gameType: safeGameType
       });
     } else {
       socket.emit('game_user_offline', { target });
@@ -1496,9 +1644,14 @@ io.on('connection', (socket) => {
   // 2. Acceptation de l'invitation (Création sécurisée de la session de jeu)
   socket.on('game_accept', (data) => {
     if (!socket.user || !socket.user.id) return;
-    const { target, gameType } = data;
-    const targetSocketId = onlineUsers.get(target);
+    const { target, gameType } = data || {};
 
+    const check = canInteract(socket.user.id, target);
+    if (!check.allowed) {
+      return socket.emit('game_error', { message: check.reason });
+    }
+
+    const targetSocketId = onlineUsers.get(target);
     const acceptorUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
     const targetUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(target);
 
@@ -1573,7 +1726,10 @@ io.on('connection', (socket) => {
   // 3. Refus de l'invitation
   socket.on('game_decline', (data) => {
     if (!socket.user || !socket.user.id) return;
-    const { target } = data;
+    const { target } = data || {};
+    const check = canInteract(socket.user.id, target);
+    if (!check.allowed) return;
+
     const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
       const user = db.prepare('SELECT nickname, username FROM users WHERE id = ?').get(socket.user.id);

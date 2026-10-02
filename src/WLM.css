@@ -420,14 +420,6 @@ body, html {
   width: 19px; height: 19px; vertical-align: middle; margin: 0 2px;
 }
 
-.inline-emoticon-large {
-  width: 38px;
-  height: 38px;
-  vertical-align: middle;
-  margin: 2px 4px;
-  image-rendering: -webkit-optimize-contrast;
-  image-rendering: crisp-edges;
-}
 
 .emoticon-popup {
   position: absolute; bottom: 50px; left: 0;
@@ -2385,29 +2377,13 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
 
 /* --- ÉMOTICÔNES PERSONNALISÉES (E2EE) --- */
 .custom-emoticon {
-  max-width: 36px;
-  max-height: 24px;
+  max-width: 32px;
+  max-height: 26px;
   vertical-align: middle;
   object-fit: contain;
   margin: 0 2px;
 }
 
-.custom-emoticon-large {
-  max-width: 60px;
-  max-height: 48px;
-  vertical-align: middle;
-  object-fit: contain;
-  margin: 3px 5px;
-  transition: transform 0.15s ease;
-}
-
-.msg-content-emoticons-only {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  align-items: center !important;
-  padding: 4px 0 !important;
-  line-height: normal !important;
-}
 
 .wlm-custom-emo-resized-badge {
   font-size: 10px;

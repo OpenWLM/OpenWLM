@@ -11,7 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.0.0] - 2026-10-02
 
-This major release consolidates the modern recreation of Windows Live Messenger 2009 (Wave 3 / Aero) with production-grade security hardening, a built-in test assistant contact ("OpenWLM"), and authoritative automated regression testing.
+This major release consolidates the modern recreation of late-2000s instant messaging (Aero theme) with production-grade security hardening, a built-in test assistant contact ("OpenWLM"), and authoritative automated regression testing.
 
 ### 🚀 Features
 
@@ -26,21 +26,21 @@ This major release consolidates the modern recreation of Windows Live Messenger 
   - Support for static (PNG, WebP, JPEG) and animated (GIF) image formats.
   - Automatic dual rendering sizes (inline 19px and standard 50px).
 - **Multiplayer Activities & Mini-Games**:
-  - Classic MSN Tic-Tac-Toe (Morpion) in real-time.
+  - Classic Tic-Tac-Toe (Morpion) in real-time.
   - Real-time Checkers (Jeu de dames) with authoritative server validation.
   - Collapsible dock banner allowing users to minimize active games without leaving the chat.
 - **E2EE File Transfer**:
   - Encrypted peer file sharing with automatic 4-hour time-to-live (TTL).
   - Instant on-the-fly image decryption with lightbox preview.
-- **Authentic MSN / Windows Live Messenger Experience**:
-  - Original sound effects (logon, message, wizz, call, nudge).
+- **Authentic Late-2000s Aero Experience**:
+  - Original retro sound effects (logon, message, wizz, call, nudge).
   - Full-screen animated winks, screen-shaking wizz effects.
   - Display nicknames, personal status messages (PSM), retro avatars, and scenes.
 - **Full Bilingual Internationalization (EN / FR)**:
   - Reactive `I18nProvider` with seamless, live switching between English and French.
-  - Comprehensive localization of authentication, contact roster, chat toolbar, top action bar, message headers, and Windows Live classic options.
+  - Comprehensive localization of authentication, contact roster, chat toolbar, top action bar, message headers, and classic options dialog.
   - Localized interactive mini-games (Checkers, Tic-Tac-Toe), voice clip player, WebRTC audio/video calls, and custom emoticons modal.
-  - Zero visual clipping or layout degradation, strictly preserving the 2009 Windows Aero aesthetics.
+  - Zero visual clipping or layout degradation, strictly preserving the late-2000s Aero aesthetics.
 
 ---
 

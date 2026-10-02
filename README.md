@@ -8,10 +8,10 @@
 
 # OpenWLM (Modern Web Stack)
 
-A modern, open-source, and secure recreation of the iconic **Windows Live Messenger 2009 (Wave 3 / Aero)** retro instant messaging experience. This project combines the nostalgic design of the 2000s with 2026 security, end-to-end encryption, and performance standards.
+A modern, open-source, and secure recreation of the iconic late-2000s retro instant messaging experience (Aero glass UI). This project combines the nostalgic design of the 2000s with 2026 security, end-to-end encryption, and performance standards.
 
 ⚠️ **Disclaimer & Legal Notice**:  
-OpenWLM is an independent educational, open-source project and a nostalgic tribute. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Microsoft Corporation or any of its subsidiaries.
+OpenWLM is an independent educational, open-source project and a nostalgic tribute to classic 2000s instant messaging software. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with any proprietary brand, software, or corporation.
 
 > [!WARNING]
 > **AI-Assisted Development Notice**:  
@@ -22,16 +22,16 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 ## 🚀 Key Features
 
 ### 💬 Communication & Authenticity
-- **Authentic Retro Interface**: Faithful replica of WLM 2009 (Aero glass styling, tabs, background scenes, usertiles, original audio sound effects).
+- **Authentic Retro Interface**: Faithful replica of classic late-2000s instant messaging (Aero glass styling, tabs, background scenes, usertiles, retro audio sound effects).
 - **Progressive Web App (PWA)**: Fully installable as a standalone desktop or mobile application with offline Service Worker asset caching, web app manifest, and retro Aero taskbar icon integration.
 - **Built-in Assistant & Test Contact ("OpenWLM")**: Dedicated virtual system contact (ID `-1`) with an empty-state quickstart button, allowing new users to test chat, emoticons, sounds, Wizz/nudges, and Tic-Tac-Toe immediately without needing a second account.
 - **Secure Instant Messaging**: Rich text support, classic legacy emoticons, and custom end-to-end encrypted emoticons.
 - **Audio & Video Calls (WebRTC)**: Real-time peer-to-peer voice and video calls with encrypted signaling.
 - **Voice Clips**: Record and stream end-to-end encrypted audio messages.
 - **Winks & Nudges**: Animated full-screen winks and screen-shaking Wizz effects.
-- **1v1 Multiplayer Mini-Games**: Real-time MSN Tic-Tac-Toe (Morpion) and Checkers (Jeu de dames) with authoritative server-side anti-cheat validation and collapsible game docks.
+- **1v1 Multiplayer Mini-Games**: Real-time Tic-Tac-Toe (Morpion) and Checkers (Jeu de dames) with authoritative server-side anti-cheat validation and collapsible game docks.
 - **Encrypted File Transfer**: Temporary peer file sharing (4-hour TTL) with on-the-fly decryption and image lightbox previews.
-- **Full Bilingual Internationalization (EN / FR)**: Native English and French support with instant reactive switching, browser language autodetection, and zero UI overflow preserving the classic Windows Aero layout.
+- **Full Bilingual Internationalization (EN / FR)**: Native English and French support with instant reactive switching, browser language autodetection, and zero UI overflow preserving the classic retro Aero layout.
 
 ---
 
@@ -63,7 +63,7 @@ OpenWLM has undergone an extensive security audit and rigorous backend hardening
 
 ## 🛠 Tech Stack
 
-- **Frontend**: React 19, TypeScript, Vite, Vanilla CSS (Aero / WLM theme).
+- **Frontend**: React 19, TypeScript, Vite, Vanilla CSS (Aero retro theme).
 - **Client Platforms**: Web browser, Progressive Web App (PWA) with Service Worker & Web App Manifest, Desktop (Optional Electron wrapper).
 - **Backend**: Node.js, Express, Socket.IO.
 - **Database**: SQLite (via `better-sqlite3`).

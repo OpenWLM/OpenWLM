@@ -11,7 +11,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [1.0.0] - 2026-10-02
 
-Cette version majeure consolide la réécriture moderne de Windows Live Messenger 2009 (Wave 3 / Aero) avec un durcissement de sécurité de niveau production, un contact d'assistance de test intégré ("OpenWLM"), et une couverture de tests de non-régression automatisée.
+Cette version majeure consolide la réécriture moderne de la messagerie instantanée rétro fin des années 2000 (thème Aero) avec un durcissement de sécurité de niveau production, un contact d'assistance de test intégré ("OpenWLM"), et une couverture de tests de non-régression automatisée.
 
 ### 🚀 Fonctionnalités (Features)
 
@@ -26,21 +26,21 @@ Cette version majeure consolide la réécriture moderne de Windows Live Messenge
   - Support des images statiques (PNG, WebP, JPEG) et animées (GIF).
   - Découpage automatique des tailles d'affichage (inline 19px et standard 50px).
 - **Activités & Jeux multijoueurs intégrés** :
-  - Morpion MSN classique (Tic-Tac-Toe) temps réel.
+  - Morpion classique (Tic-Tac-Toe) temps réel.
   - Jeu de dames (Checkers) temps réel avec validation autoritaire.
   - Réduction de fenêtre de jeu (dock banner) sans interrompre la discussion.
 - **Transfert de fichiers chiffré E2EE** :
   - Partage de fichiers volumineux chiffrés avec expiration automatique (4 heures).
   - Aperçu direct des images avec déchiffrement à la volée et zoom lightbox.
-- **Expérience MSN / Windows Live Messenger authentique** :
+- **Expérience Aero fin des années 2000 authentique** :
   - Sons d'origine (connexion, message, wizz, appel, nudge).
   - Clins d'œil animés (Winks), Wizz avec secousse d'écran.
   - Surnom, message personnel (PSM), sélecteur d'avatars et de scènes rétro.
 - **Internationalisation Complète (FR / EN)** :
   - Fournisseur réactif `I18nProvider` avec bascule instantanée sans rechargement entre le français et l'anglais.
-  - Traduction intégrale de l'authentification, de la liste de contacts, de la barre d'outils, des en-têtes de messages et de la boîte d'options classique Windows Live.
+  - Traduction intégrale de l'authentification, de la liste de contacts, de la barre d'outils, des en-têtes de messages et de la boîte d'options classique rétro.
   - Prise en charge bilingue des mini-jeux (Dames, Morpion), du lecteur de clips vocaux, des appels WebRTC et du gestionnaire d'émoticônes personnalisées.
-  - Zéro régression visuelle ni débordement d'interface, préservant scrupuleusement l'esthétique Windows Aero 2009.
+  - Zéro régression visuelle ni débordement d'interface, préservant scrupuleusement l'esthétique Aero de la fin des années 2000.
 
 ---
 

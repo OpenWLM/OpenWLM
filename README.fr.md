@@ -8,10 +8,10 @@
 
 # OpenWLM (Modern Web Stack)
 
-Une récréation moderne, open-source et sécurisée de l'expérience iconique de messagerie rétro **Windows Live Messenger 2009 (Wave 3 / Aero)**. Ce projet combine le design nostalgique des années 2000 avec les standards de sécurité, de chiffrement et de performance de 2026.
+Une récréation moderne, open-source et sécurisée de l'expérience iconique de messagerie instantanée rétro de la fin des années 2000 (interface Aero). Ce projet combine le design nostalgique des années 2000 avec les standards de sécurité, de chiffrement et de performance de 2026.
 
 ⚠️ **Avertissement & Notice légale** :  
-OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgique. Il n'est en aucun cas affilié, associé, autorisé ou soutenu par Microsoft Corporation ou l'une de ses filiales.
+OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgique aux logiciels de messagerie instantanée de la fin des années 2000. Il n'est en aucun cas affilié, associé, autorisé ou soutenu par une quelconque entreprise ou entité tierce.
 
 > [!WARNING]
 > **Avertissement sur le développement assisté par IA** :  
@@ -21,8 +21,8 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgi
 
 ## 🚀 Fonctionnalités principales
 
-### 💬 Communication & Expérience WLM
-- **Interface Authentique** : Design rétro fidèle à WLM 2009 (Aero glass, onglets, scènes de fond, usertiles, sons d'origine).
+### 💬 Communication & Expérience Rétro
+- **Interface Authentique** : Design rétro fidèle aux messageries de l'époque (Aero glass, onglets, scènes de fond, usertiles, sons d'origine).
 - **Application Web Progressive (PWA)** : Totalement installable en tant qu'application autonome sur ordinateur ou mobile avec mise en cache hors-ligne des assets via Service Worker, manifeste web et intégration d'icônes rétro Aero dans la barre des tâches.
 - **Assistant de test intégré ("OpenWLM")** : Contact système virtuel (ID `-1`) avec état d'accueil central, permettant de tester immédiatement le chat, les émoticônes, les sons, le Wizz et le Morpion sans second compte.
 - **Messagerie Instantanée Sécurisée** : Texte riche, émoticônes classiques d'origine et émoticônes personnalisées E2EE.
@@ -63,7 +63,7 @@ OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement 
 
 ## 🛠 Tech Stack
 
-- **Frontend** : React 19, TypeScript, Vite, CSS Vanilla (thème Aero / WLM).
+- **Frontend** : React 19, TypeScript, Vite, CSS Vanilla (thème Aero rétro).
 - **Plateformes Client** : Navigateur web, Progressive Web App (PWA) avec Service Worker & Manifeste Web, Desktop (wrapper Electron optionnel).
 - **Backend** : Node.js, Express, Socket.IO.
 - **Base de données** : SQLite (via `better-sqlite3`).

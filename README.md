@@ -13,12 +13,17 @@ A modern, open-source, and secure recreation of the iconic **Windows Live Messen
 ⚠️ **Disclaimer & Legal Notice**:  
 OpenWLM is an independent educational, open-source project and a nostalgic tribute. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Microsoft Corporation or any of its subsidiaries.
 
+> [!WARNING]
+> **AI-Assisted Development Notice**:  
+> This project was developed with the assistance of Artificial Intelligence (Google Antigravity / LLM-assisted pair programming). While thorough manual reviews, end-to-end testing, and authoritative security audits (`npm run test:security`) have been implemented, unexpected bugs, edge-case regressions, or design oversights may still remain. Peer reviews, community audits, and security vulnerability reports are warmly welcomed!
+
 ---
 
 ## 🚀 Key Features
 
 ### 💬 Communication & Authenticity
 - **Authentic Retro Interface**: Faithful replica of WLM 2009 (Aero glass styling, tabs, background scenes, usertiles, original audio sound effects).
+- **Progressive Web App (PWA)**: Fully installable as a standalone desktop or mobile application with offline Service Worker asset caching, web app manifest, and retro Aero taskbar icon integration.
 - **Built-in Assistant & Test Contact ("OpenWLM")**: Dedicated virtual system contact (ID `-1`) with an empty-state quickstart button, allowing new users to test chat, emoticons, sounds, Wizz/nudges, and Tic-Tac-Toe immediately without needing a second account.
 - **Secure Instant Messaging**: Rich text support, classic legacy emoticons, and custom end-to-end encrypted emoticons.
 - **Audio & Video Calls (WebRTC)**: Real-time peer-to-peer voice and video calls with encrypted signaling.
@@ -59,10 +64,10 @@ OpenWLM has undergone an extensive security audit and rigorous backend hardening
 ## 🛠 Tech Stack
 
 - **Frontend**: React 19, TypeScript, Vite, Vanilla CSS (Aero / WLM theme).
+- **Client Platforms**: Web browser, Progressive Web App (PWA) with Service Worker & Web App Manifest, Desktop (Optional Electron wrapper).
 - **Backend**: Node.js, Express, Socket.IO.
 - **Database**: SQLite (via `better-sqlite3`).
 - **Cryptography**: Web Crypto API (`SubtleCrypto`), Node.js `crypto` (PBKDF2 SHA-512, AES-GCM, RSA-OAEP).
-- **Desktop (Optional)**: Electron.
 
 ---
 

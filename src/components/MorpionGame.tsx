@@ -12,6 +12,7 @@ interface MorpionGameProps {
   myAvatar?: string;
   initialSymbol: 'X' | 'O';
   initialIsMyTurn: boolean;
+  isBotOpponent?: boolean;
   onClose: () => void;
   onMinimize?: () => void;
   onGameStateChange?: (state: { isMyTurn: boolean; myScore: number; opponentScore: number; winner: 'me' | 'opponent' | 'draw' | null }) => void;
@@ -38,6 +39,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
   myAvatar = '/assets/usertiles/chess.png',
   initialSymbol,
   initialIsMyTurn,
+  isBotOpponent = false,
   onClose,
   onMinimize,
   onGameStateChange
@@ -82,7 +84,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
     } catch {}
 
     // Notifier l'adversaire
-    if (socket) {
+    if (socket && !isBotOpponent) {
       socket.emit('game_move', {
         target: opponentId,
         index,
@@ -102,6 +104,75 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
         setWinner('draw');
         setDraws(prev => prev + 1);
       }
+    } else if (isBotOpponent) {
+      // Le bot joue automatiquement après un court délai réaliste
+      setTimeout(() => {
+        setBoard(currentBoard => {
+          const availableIndices: number[] = [];
+          currentBoard.forEach((cell, idx) => {
+            if (cell === null) availableIndices.push(idx);
+          });
+          if (availableIndices.length === 0) return currentBoard;
+
+          let botMoveIndex = -1;
+
+          // 1. Coup gagnant pour le bot ?
+          for (const idx of availableIndices) {
+            const testB = [...currentBoard];
+            testB[idx] = opponentSymbol;
+            const winTest = checkWinner(testB);
+            if (winTest && winTest.winnerSymbol === opponentSymbol) {
+              botMoveIndex = idx;
+              break;
+            }
+          }
+
+          // 2. Bloquer le joueur s'il gagne au tour suivant ?
+          if (botMoveIndex === -1) {
+            for (const idx of availableIndices) {
+              const testB = [...currentBoard];
+              testB[idx] = mySymbol;
+              const winTest = checkWinner(testB);
+              if (winTest && winTest.winnerSymbol === mySymbol) {
+                botMoveIndex = idx;
+                break;
+              }
+            }
+          }
+
+          // 3. Centre (case 4)
+          if (botMoveIndex === -1 && availableIndices.includes(4)) {
+            botMoveIndex = 4;
+          }
+
+          // 4. Case aléatoire parmi les choix restants
+          if (botMoveIndex === -1) {
+            botMoveIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+          }
+
+          const botBoard = [...currentBoard];
+          botBoard[botMoveIndex] = opponentSymbol;
+
+          try { SoundManager.play('TYPE'); } catch {}
+
+          const botResult = checkWinner(botBoard);
+          if (botResult) {
+            if (botResult.winnerSymbol === opponentSymbol) {
+              setWinner('opponent');
+              setWinningLine(botResult.combo);
+              setOpponentScore(prev => prev + 1);
+              try { SoundManager.play('NUDGE'); } catch {}
+            } else if (botResult.winnerSymbol === 'draw') {
+              setWinner('draw');
+              setDraws(prev => prev + 1);
+            }
+          } else {
+            setIsMyTurn(true);
+          }
+
+          return botBoard;
+        });
+      }, 450);
     }
   };
 
@@ -113,17 +184,17 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
     // Celui qui a perdu commence, ou alternation
     setIsMyTurn(winner === 'opponent' || (winner === 'draw' && initialSymbol === 'X'));
 
-    if (notifyOpponent && socket) {
+    if (notifyOpponent && socket && !isBotOpponent) {
       socket.emit('game_restart', { target: opponentId });
     }
-  }, [winner, initialSymbol, socket, opponentId]);
+  }, [winner, initialSymbol, socket, opponentId, isBotOpponent]);
 
   const handleQuit = useCallback(() => {
-    if (socket) {
+    if (socket && !isBotOpponent) {
       socket.emit('game_quit', { target: opponentId });
     }
     onClose();
-  }, [socket, opponentId, onClose]);
+  }, [socket, opponentId, isBotOpponent, onClose]);
 
   // Écoute des événements socket du jeu
   useEffect(() => {

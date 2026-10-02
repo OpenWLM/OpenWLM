@@ -63,7 +63,21 @@ interface Contact {
   status: string;
   blocked: number | boolean;
   global_private?: number;
+  isBot?: boolean;
 }
+
+export const SYSTEM_BOT_ID = -1;
+export const SYSTEM_BOT_CONTACT: Contact = {
+  id: SYSTEM_BOT_ID,
+  username: 'assistant_openwlm',
+  nickname: 'Assistant OpenWLM',
+  psm: 'En ligne pour vos tests & découverte',
+  status: 'online',
+  avatar: '/assets/usertiles/robot.png',
+  scene: '/assets/scenes/0002.png',
+  blocked: 0,
+  isBot: true
+};
 
 interface Message {
   id?: number | string;
@@ -433,6 +447,10 @@ const App: React.FC = () => {
    * BASCULER LE MODE PRIVÉ (AVEC NOTIFICATION)
    */
   const togglePrivateMode = (chatId: number) => {
+    if (chatId === SYSTEM_BOT_ID) {
+      alert("La discussion avec l'Assistant OpenWLM est déjà 100% locale et n'est jamais enregistrée sur le serveur.");
+      return;
+    }
     const activeContact = contacts.find(c => c.id === chatId);
     if (activeContact?.global_private === 1) {
       alert("Ce contact a imposé le mode privé. Vous ne pouvez pas le désactiver.");
@@ -592,6 +610,7 @@ const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [isGroupOpen, setIsGroupOpen] = useState(true);
   const [isOfflineGroupOpen, setIsOfflineGroupOpen] = useState(true);
+  const [isServicesGroupOpen, setIsServicesGroupOpen] = useState(true);
   const [convBg, setConvBg] = useState<string>('');
   const [isPrivateMode, setIsPrivateMode] = useState<Record<number, boolean>>(() => {
     try {
@@ -1051,7 +1070,26 @@ const App: React.FC = () => {
    */
   const loadChatHistory = useCallback(async (chatId: number) => {
     const keys = myKeysRef.current;
-    if (!user || !keys || chatId === 0) return;
+    if (!user || chatId === 0) return;
+
+    // L'Assistant OpenWLM est un service 100% local (hors réseau et hors BDD)
+    if (chatId === SYSTEM_BOT_ID) {
+      setMessages(prev => {
+        if (prev[SYSTEM_BOT_ID] && prev[SYSTEM_BOT_ID].length > 0) return prev;
+        const welcomeMsg: Message = {
+          senderId: SYSTEM_BOT_ID,
+          receiverId: user.id,
+          sender: 'Assistant OpenWLM',
+          text: "Bonjour ! Je suis l'Assistant de test OpenWLM. Je suis là pour vous permettre de tester les fonctionnalités en solo.\n\nVous pouvez tester :\n• Votre texte avec son formatage (police, couleur, taille, gras)\n• Les émoticônes classiques et vos émoticônes personnalisées\n• Les sons WLM et le Wizz\n• Une partie de Morpion\n\nTapez /help pour afficher les commandes d'aide ou utilisez les boutons rapides ci-dessous !",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: new Date().toISOString()
+        };
+        return { ...prev, [SYSTEM_BOT_ID]: [welcomeMsg] };
+      });
+      return;
+    }
+
+    if (!keys) return;
     if (loadingChatsRef.current.has(chatId)) return;
     loadingChatsRef.current.add(chatId);
 
@@ -1432,6 +1470,79 @@ const App: React.FC = () => {
    */
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
+
+    // --- INTERCEPTION DE L'ASSISTANT OPENWLM (TESTS LOCAUX 100% CLIENT) ---
+    if (activeChatId === SYSTEM_BOT_ID) {
+      const userText = sanitize(inputText);
+      const nowIso = new Date().toISOString();
+      const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      const userMsg: Message = {
+        senderId: user?.id,
+        receiverId: SYSTEM_BOT_ID,
+        sender: myNickname || user?.nickname || 'Moi',
+        text: userText,
+        style: { ...fontSettings },
+        time: formattedTime,
+        timestamp: nowIso
+      };
+
+      setMessages(prev => ({
+        ...prev,
+        [SYSTEM_BOT_ID]: [...(prev[SYSTEM_BOT_ID] || []), userMsg]
+      }));
+      setInputText('');
+
+      const lower = userText.trim().toLowerCase();
+      if (lower === '/help' || lower === '/?' || lower === 'aide') {
+        handleAssistantAction('help');
+        return;
+      }
+      if (lower === '/wizz') {
+        handleNudge(false);
+        return;
+      }
+      if (lower === '/sons' || lower === '/sound' || lower === '/audio') {
+        handleAssistantAction('sons');
+        return;
+      }
+      if (lower === '/emo' || lower === '/emoticones' || lower === '/emojis') {
+        handleAssistantAction('emo');
+        return;
+      }
+      if (lower === '/morpion' || lower === '/game' || lower === '/jeu') {
+        handleAssistantAction('morpion');
+        return;
+      }
+
+      // Écho normal
+      setTimeout(() => {
+        try { SoundManager.play('NEW_MESSAGE'); } catch {}
+
+        let echoNotice = `Écho : ${userText}`;
+        const hasCustomEmo = myCustomEmoticons.some(e => userText.includes(e.shortcut));
+        if (hasCustomEmo) {
+          echoNotice += "\n\n✨ Votre émoticône personnalisée a bien été reçue et reconnue !";
+        }
+
+        setMessages(prev => ({
+          ...prev,
+          [SYSTEM_BOT_ID]: [
+            ...(prev[SYSTEM_BOT_ID] || []),
+            {
+              senderId: SYSTEM_BOT_ID,
+              receiverId: user?.id,
+              sender: 'Assistant OpenWLM',
+              text: echoNotice,
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              timestamp: new Date().toISOString()
+            }
+          ]
+        }));
+      }, 400);
+      return;
+    }
+
     if (!socket) { console.error("Socket non prêt"); return; }
     if (!myKeys) { console.error("Clés E2E non prêtes"); return; }
     
@@ -1570,6 +1681,10 @@ const App: React.FC = () => {
     if (!socket) { alert("Connexion au serveur non établie."); return; }
     if (!myKeys) { alert("Clés E2E non prêtes."); return; }
     if (!activeChatId) { alert("Veuillez sélectionner un contact."); return; }
+    if (activeChatId === SYSTEM_BOT_ID) {
+      alert("L'Assistant OpenWLM est un service de test local. Pour partager des fichiers chiffrés E2EE, sélectionnez un contact réel.");
+      return;
+    }
 
     const MAX_SIZE = 100 * 1024 * 1024; // 100 Mo max
     if (file.size > MAX_SIZE) {
@@ -1770,7 +1885,7 @@ const App: React.FC = () => {
   // Gestionnaire de détection de collage (presse-papiers image vs texte)
   const handlePaste = useCallback((e: React.ClipboardEvent | ClipboardEvent) => {
     if (e.defaultPrevented) return;
-    if (!activeChatId) return;
+    if (!activeChatId || activeChatId === SYSTEM_BOT_ID) return;
 
     // Si une autre modale est ouverte, ne pas intercepter
     if (
@@ -1921,6 +2036,40 @@ const App: React.FC = () => {
     const targetId = received ? fromId : activeChatId;
     
     if (!received) {
+      if (activeChatId === SYSTEM_BOT_ID) {
+        SoundManager.play('NUDGE');
+        if (!isNudging) {
+          setIsNudging(true);
+          setTimeout(() => setIsNudging(false), 2000);
+        }
+        setMessages(prev => ({ 
+          ...prev, 
+          [SYSTEM_BOT_ID]: [...(prev[SYSTEM_BOT_ID] || []), { text: "Vous venez d'envoyer un Wizz !", sender: 'Système' }] 
+        }));
+
+        setTimeout(() => {
+          SoundManager.play('NUDGE');
+          setIsNudging(true);
+          setTimeout(() => setIsNudging(false), 2000);
+          setMessages(prev => ({ 
+            ...prev, 
+            [SYSTEM_BOT_ID]: [
+              ...(prev[SYSTEM_BOT_ID] || []), 
+              { text: "Vous venez de recevoir un Wizz !", sender: 'Système' },
+              { 
+                senderId: SYSTEM_BOT_ID,
+                receiverId: user?.id,
+                text: "⚡ Wizz bien reçu ! C'est le vrai son et la vraie secousse WLM.", 
+                sender: 'Assistant OpenWLM',
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                timestamp: new Date().toISOString()
+              }
+            ] 
+          }));
+        }, 1500);
+        return;
+      }
+
       // Anti-spam local pour les Wizz
       const now = Date.now();
       const recentNudges = nudgeTimestamps.filter(ts => now - ts < 60000);
@@ -1962,6 +2111,10 @@ const App: React.FC = () => {
   };
 
   const handleVoiceClip = async () => {
+    if (activeChatId === SYSTEM_BOT_ID) {
+      alert("Les clips vocaux sont réservés aux échanges avec des contacts réels.");
+      return;
+    }
     if (!isRecording) {
       cancelRecordingRef.current = false;
       try {
@@ -2173,6 +2326,10 @@ const App: React.FC = () => {
    */
   const handleStartCall = (audioOnly: boolean) => {
     if (!activeChatId || !user) return;
+    if (activeChatId === SYSTEM_BOT_ID) {
+      alert("Les appels audio/vidéo nécessitent un contact humain réel connecté.");
+      return;
+    }
     setIsAudioOnly(audioOnly);
     setActiveCallId(activeChatId);
     setIsReceivingCall(false);
@@ -2189,7 +2346,42 @@ const App: React.FC = () => {
    * GESTION DES JEUX MULTI-JOUEURS (MORPION & JEU DE DAMES)
    */
   const handleInviteGame = (gameType: string = 'checkers') => {
-    if (!activeChatId || !socket || !user) return;
+    if (!activeChatId || !user) return;
+
+    // Invitation de jeu contre l'Assistant de test (mode solo local)
+    if (activeChatId === SYSTEM_BOT_ID) {
+      if (gameType === 'morpion') {
+        setActiveGame({
+          opponentId: SYSTEM_BOT_ID,
+          opponentName: 'Assistant OpenWLM',
+          mySymbol: 'X',
+          isMyTurn: true,
+          gameType: 'morpion'
+        });
+        setIsGameMinimized(false);
+        setShowGamesMenu(false);
+        setMessages(prev => ({
+          ...prev,
+          [SYSTEM_BOT_ID]: [
+            ...(prev[SYSTEM_BOT_ID] || []),
+            {
+              senderId: SYSTEM_BOT_ID,
+              receiverId: user.id,
+              sender: 'Assistant OpenWLM',
+              text: "🎮 Partie de Morpion lancée contre l'Assistant ! C'est à vous de commencer (X).",
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              timestamp: new Date().toISOString()
+            }
+          ]
+        }));
+      } else {
+        alert("L'Assistant OpenWLM prend en charge le Morpion pour les tests solo.");
+        setShowGamesMenu(false);
+      }
+      return;
+    }
+
+    if (!socket) return;
     const contact = contacts.find(c => c.id === activeChatId);
     if (!contact || contact.status === 'offline') {
       const gameLabel = gameType === 'checkers' ? 'au Jeu de dames' : 'au Morpion';
@@ -2200,6 +2392,66 @@ const App: React.FC = () => {
     socket.emit('game_invite', { target: activeChatId, gameType });
     setOutgoingGameInvite({ target: activeChatId, targetName: contact.nickname || contact.username, gameType });
     setShowGamesMenu(false);
+  };
+
+  /**
+   * ACTIONS ET COMMANDES DE L'ASSISTANT OPENWLM (TESTS LOCAUX SANS RÉSEAU)
+   */
+  const handleAssistantAction = (action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'help') => {
+    if (action === 'wizz') {
+      handleNudge(false);
+      return;
+    }
+
+    if (action === 'morpion') {
+      handleInviteGame('morpion');
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let botResponseText = '';
+    if (action === 'emo') {
+      botResponseText = "😃 Test des émoticônes :\nVoici un échantillon des émoticônes classiques WLM :\n:)  :D  ;)  :P  (H)  :@  :$  :O  (A)  :S  (L)  (K)\n\nVous pouvez également créer et m'envoyer vos émoticônes personnalisées (E2EE) !";
+    } else if (action === 'sons') {
+      botResponseText = "🔊 Test des effets sonores WLM :\n1. Connexion d'un contact (online.mp3)\n2. Nouveau message reçu (type.mp3)\n3. Alerte Wizz (nudge.mp3)\n\nÉcoute en cours...";
+      try {
+        SoundManager.play('ONLINE');
+        setTimeout(() => {
+          SoundManager.play('NEW_MESSAGE');
+        }, 1000);
+        setTimeout(() => {
+          SoundManager.play('NUDGE');
+          setIsNudging(true);
+          setTimeout(() => setIsNudging(false), 2000);
+        }, 2200);
+      } catch (e) {
+        console.warn("Erreur lecture son:", e);
+      }
+    } else if (action === 'help') {
+      botResponseText = "🤖 Commandes et tests disponibles :\n• Envoyez n'importe quel texte pour tester l'écho et votre mise en forme (police, couleur, taille, gras).\n• /emo : afficher les émoticônes WLM classiques et tester le rendu.\n• /wizz : envoyer et recevoir une vibration Wizz.\n• /sons : écouter les effets sonores mythiques de MSN.\n• /morpion : lancer une partie de Morpion contre l'IA.\n• /help : réafficher ce menu d'aide.";
+    }
+
+    if (botResponseText) {
+      setTimeout(() => {
+        try { SoundManager.play('NEW_MESSAGE'); } catch {}
+        setMessages(prev => ({
+          ...prev,
+          [SYSTEM_BOT_ID]: [
+            ...(prev[SYSTEM_BOT_ID] || []),
+            {
+              senderId: SYSTEM_BOT_ID,
+              receiverId: user?.id,
+              sender: 'Assistant OpenWLM',
+              text: botResponseText,
+              time: formattedTime,
+              timestamp: nowIso
+            }
+          ]
+        }));
+      }, 300);
+    }
   };
 
   const handleAcceptGameInvite = () => {
@@ -2236,7 +2488,7 @@ const App: React.FC = () => {
       setOpenChatIds(prev => [...prev, id]);
 
       // Synchronisation automatique du mode privé si actif en local
-      if ((globalPrivateMode || isPrivateMode[id]) && socket) {
+      if (id !== SYSTEM_BOT_ID && (globalPrivateMode || isPrivateMode[id]) && socket) {
         socket.emit('toggle_private_mode', {
           senderId: user?.id,
           receiverId: id,
@@ -2452,7 +2704,7 @@ const App: React.FC = () => {
   }
 
   // Détermination du contact actif pour l'affichage de la discussion
-  const activeContact = contacts.find(c => c.id === activeChatId) || { 
+  const activeContact = (activeChatId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === activeChatId)) || { 
     id: 0, 
     username: '',
     nickname: 'Contact...', 
@@ -2660,6 +2912,26 @@ const App: React.FC = () => {
               </div>
             </div>
           ))}
+
+          {/* Services & Tests (Repliable, sobre et fidèle à WLM) */}
+          <div className="group-header" onClick={() => setIsServicesGroupOpen(!isServicesGroupOpen)}>
+            <span style={{ transform: isServicesGroupOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
+            Services & Tests (1)
+          </div>
+          {isServicesGroupOpen && (
+            <div 
+              className={`contact-row ${activeChatId === SYSTEM_BOT_ID ? 'active' : ''}`}
+              onClick={() => openChat(SYSTEM_BOT_ID)}
+              title="Assistant de test OpenWLM (100% local, aucun trafic réseau)"
+            >
+              <div className="status-square online"></div>
+              <div className="contact-name-txt" style={{ display: 'flex', alignItems: 'center', gap: '3px', overflow: 'hidden' }}>
+                <span style={{ fontWeight: 600 }}>Assistant OpenWLM</span>
+                <span className="wlm-bot-badge">BOT</span>
+                <span className="contact-psm-txt"> - En ligne pour vos tests</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2670,7 +2942,21 @@ const App: React.FC = () => {
           <div className="empty-chat-state">
             <div className="msn-butterfly giant"></div>
             <div className="welcome-text">Prêt pour une conversation ?</div>
-            <div className="sub-welcome">Sélectionnez un contact dans la liste à gauche pour commencer à chatter.</div>
+            <div className="sub-welcome">Sélectionnez un contact dans la liste à gauche ou démarrez un test.</div>
+            <div style={{ marginTop: '16px' }}>
+              <button 
+                type="button" 
+                className="win-btn"
+                onClick={() => openChat(SYSTEM_BOT_ID)}
+                style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                <span>🤖</span>
+                <span>Démarrer une conversation de test</span>
+              </button>
+            </div>
+            <div style={{ fontSize: '11px', color: '#777', marginTop: '10px' }}>
+              Testez l'écho, les sons, le Wizz, les émoticônes et le Morpion avec l'Assistant OpenWLM.
+            </div>
           </div>
         ) : (
           <>
@@ -2678,14 +2964,16 @@ const App: React.FC = () => {
             <div className="chat-tabs-bar">
               <div className="mobile-back-btn" onClick={() => setActiveChatId(0)}>◀</div>
               {openChatIds.map(id => {
-                const contact = contacts.find(c => c.id === id);
+                const contact = id === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === id);
                 return (
                   <div 
                     key={id} 
                     className={`chat-tab status-${contact?.status || 'online'} ${activeChatId === id ? 'active' : ''}`} 
                     onClick={() => setActiveChatId(id)}
                   >
-                    <span className="tab-name">{contact?.nickname || contact?.username || 'Discussion'}{activeGame?.opponentId === id ? ' 🎮' : ''}</span>
+                    <span className="tab-name">
+                      {contact?.isBot ? '🤖 ' : ''}{contact?.nickname || contact?.username || 'Discussion'}{activeGame?.opponentId === id ? ' 🎮' : ''}
+                    </span>
                     <span className="chat-tab-close" onClick={(e) => closeChat(e, id)}>✕</span>
                   </div>
                 );
@@ -2771,7 +3059,8 @@ const App: React.FC = () => {
                      </div>
                      <div className="conv-info">
                         <div className="conv-name">
-                          {activeContact.nickname || activeContact.username} 
+                          {activeContact.nickname || activeContact.username}
+                          {activeContact.id === SYSTEM_BOT_ID && <span className="wlm-bot-badge">BOT</span>}
                           <span style={{fontSize:'12px', fontWeight:'normal', marginLeft: '10px'}}>
                             ({(activeContact.status === 'offline' || !activeContact.id) ? 'Hors ligne' : 'En ligne'})
                           </span>
@@ -2863,7 +3152,7 @@ const App: React.FC = () => {
                <div className="chat-log-scroll">
                   {(messages[activeChatId] || []).map((m, i) => {
                     const isSender = m.sender_id === user?.id || m.senderId === user?.id || m.sender === myNickname;
-                    const activeContact = contacts.find(c => c.id === activeChatId);
+                    const activeContact = activeChatId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === activeChatId);
                     const senderDisplayName = isSender 
                       ? (myNickname || user?.nickname || user?.username || 'Moi')
                       : (m.sender && m.sender !== 'Contact' ? m.sender : (activeContact?.nickname || activeContact?.username || m.sender || 'Contact'));
@@ -2900,6 +3189,27 @@ const App: React.FC = () => {
                   })}
                   <div ref={chatEndRef} />
                </div>
+
+               {/* Actions rapides de test pour l'Assistant OpenWLM */}
+               {activeChatId === SYSTEM_BOT_ID && (
+                 <div className="wlm-bot-quick-actions">
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('emo')} title="Tester les émoticônes classiques">
+                     😃 Émoticônes
+                   </button>
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('wizz')} title="Envoyer et recevoir un Wizz">
+                     ⚡ Wizz
+                   </button>
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('sons')} title="Écouter les sons WLM">
+                     🔊 Sons
+                   </button>
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('morpion')} title="Lancer une partie de Morpion">
+                     🎮 Morpion
+                   </button>
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('help')} title="Afficher l'aide">
+                     ❓ Aide
+                   </button>
+                 </div>
+               )}
 
                {/* Pied de page (Saisie du message) */}
                <div className="chat-footer">
@@ -3037,7 +3347,7 @@ const App: React.FC = () => {
                   socket={socket}
                   opponentId={activeGame.opponentId}
                   opponentName={activeGame.opponentName}
-                  opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar}
                   myId={user?.id || 0}
                   myName={myNickname || user?.nickname || 'Moi'}
                   myAvatar={myAvatar}
@@ -3052,10 +3362,11 @@ const App: React.FC = () => {
                 />
               ) : (
                 <MorpionGame
-                  socket={socket}
+                  socket={activeGame.opponentId === SYSTEM_BOT_ID ? null : socket}
+                  isBotOpponent={activeGame.opponentId === SYSTEM_BOT_ID}
                   opponentId={activeGame.opponentId}
                   opponentName={activeGame.opponentName}
-                  opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar}
                   myId={user?.id || 0}
                   myName={myNickname || user?.nickname || 'Moi'}
                   myAvatar={myAvatar}
@@ -3100,7 +3411,7 @@ const App: React.FC = () => {
             <div className="wlm-paste-modal-body">
               <div className="wlm-paste-prompt">
                 Envoyer cette capture d'écran à <strong>{(() => {
-                  const activeContact = contacts.find(c => c.id === activeChatId);
+                  const activeContact = activeChatId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === activeChatId);
                   return activeContact?.nickname || activeContact?.username || 'votre contact';
                 })()}</strong> ?
               </div>

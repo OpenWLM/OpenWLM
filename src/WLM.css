@@ -2179,6 +2179,202 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   border-color: #005a9e !important;
 }
 
+/* --- CARTE IMAGE INLINE DANS LE FIL (MSN AERO) --- */
+.wlm-image-card {
+  display: inline-flex;
+  flex-direction: column;
+  background: linear-gradient(to bottom, #fcfdff, #edf4fb);
+  border: 1px solid #99c2e0;
+  border-radius: 6px;
+  padding: 6px;
+  margin-top: 5px;
+  min-width: 200px;
+  max-width: 320px;
+  box-shadow: 0 1px 4px rgba(0, 75, 141, 0.12);
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  transition: all 0.2s ease;
+}
+
+.wlm-image-card:hover {
+  border-color: #0078d7;
+  box-shadow: 0 2px 8px rgba(0, 120, 215, 0.25);
+}
+
+.wlm-image-thumbnail-wrapper {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f0f3f6;
+  border: 1px solid #c0d8ec;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-height: 220px;
+  cursor: zoom-in;
+}
+
+.wlm-image-thumbnail {
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  display: block;
+  transition: transform 0.15s ease;
+}
+
+.wlm-image-thumbnail-wrapper:hover .wlm-image-thumbnail {
+  transform: scale(1.02);
+}
+
+.wlm-image-zoom-overlay {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 40, 80, 0.75);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.wlm-image-thumbnail-wrapper:hover .wlm-image-zoom-overlay {
+  opacity: 1;
+  background: rgba(0, 75, 141, 0.9);
+}
+
+.wlm-image-loading-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 12px;
+  background: #f7fafc;
+  border: 1px dashed #b0d0ea;
+  border-radius: 4px;
+  color: #004b8d;
+  font-size: 11px;
+}
+
+.wlm-image-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #bce0f6;
+  border-top-color: #0078d7;
+  border-radius: 50%;
+  animation: wlmSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes wlmSpin {
+  to { transform: rotate(360deg); }
+}
+
+.wlm-image-fallback-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #f4f8fc;
+  border: 1px solid #c2dcf0;
+  border-radius: 4px;
+}
+
+.wlm-image-fallback-icon {
+  font-size: 24px;
+}
+
+.wlm-image-fallback-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wlm-image-fallback-title {
+  font-size: 11px;
+  font-weight: bold;
+  color: #004b8d;
+}
+
+.wlm-image-fallback-sub {
+  font-size: 10px;
+  color: #6688aa;
+}
+
+.wlm-image-card-footer {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wlm-image-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wlm-image-name {
+  font-size: 11px;
+  font-weight: bold;
+  color: #004b8d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wlm-image-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed #c0d8ec;
+}
+
+/* --- LIGHTBOX PLEIN ÉCRAN POUR L'IMAGE (STYLE WINDOWS PHOTO VIEWER) --- */
+.wlm-lightbox-bg {
+  z-index: 4000 !important;
+  background: rgba(0, 0, 0, 0.65) !important;
+  backdrop-filter: blur(2px);
+}
+
+.wlm-lightbox-box {
+  width: auto;
+  max-width: 90vw;
+  max-height: 90vh;
+  background: #f0f4f9;
+  border: 1px solid #7098c4;
+  border-radius: 7px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: wlmModalPop 0.15s ease-out;
+}
+
+.wlm-lightbox-content {
+  background: #181c20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  max-height: calc(88vh - 45px);
+  overflow: auto;
+}
+
+.wlm-lightbox-image {
+  max-width: 100%;
+  max-height: calc(85vh - 55px);
+  object-fit: contain;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border-radius: 2px;
+}
+
+
 
 
 

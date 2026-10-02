@@ -17,7 +17,7 @@ import {
 } from './utils/Security';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
-import FileTransferCard, { type FileDataPayload } from './components/FileTransferCard';
+import FileTransferCard, { type FileDataPayload, isImageFile } from './components/FileTransferCard';
 import MorpionGame from './components/MorpionGame';
 import CheckersGame from './components/CheckersGame';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
@@ -2578,9 +2578,10 @@ const App: React.FC = () => {
                       ? (myNickname || user?.nickname || user?.username || 'Moi')
                       : (m.sender && m.sender !== 'Contact' ? m.sender : (activeContact?.nickname || activeContact?.username || m.sender || 'Contact'));
 
+                    const isImage = isImageFile(m.fileData);
                     const fileHeaderLabel = isSender
-                      ? 'Vous avez envoyé un fichier :'
-                      : `${senderDisplayName} vous a envoyé un fichier :`;
+                      ? (isImage ? 'Vous avez envoyé une image :' : 'Vous avez envoyé un fichier :')
+                      : (isImage ? `${senderDisplayName} vous a envoyé une image :` : `${senderDisplayName} vous a envoyé un fichier :`);
 
                     return (
                     <div key={i} className="msg-line">

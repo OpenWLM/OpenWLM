@@ -2318,14 +2318,30 @@ const App: React.FC = () => {
   };
 
   /**
-   * RENDU DU CONTENU DES MESSAGES (Gestion des émoticônes)
+   * RENDU DU CONTENU DES MESSAGES (Gestion des émoticônes avec 2 tailles : Inline & Large)
    */
   const renderMessageContent = (text: string, style: any) => {
     if (!text) return null;
+
+    // 1. Détection si le message est composé uniquement d'émoticônes reconnues et d'espaces
+    const availableCustomShortcuts = Object.keys(customEmoticonsMap).filter(k => !!customEmoticonsMap[k]?.url);
+    const standardShortcuts = Object.keys(EMOTICON_MAP);
+    const allValidShortcuts = [...availableCustomShortcuts, ...standardShortcuts].sort((a, b) => b.length - a.length);
+
+    let isEmoticonsOnly = false;
+    if (text.trim().length > 0 && allValidShortcuts.some(sc => text.includes(sc))) {
+      let stripped = text;
+      for (const sc of allValidShortcuts) {
+        if (stripped.includes(sc)) {
+          stripped = stripped.split(sc).join('');
+        }
+      }
+      isEmoticonsOnly = stripped.trim().length === 0;
+    }
     
     let parts: (string | React.ReactNode)[] = [text];
     
-    // 1. Émoticônes personnalisées (E2EE) - Triées par longueur décroissante
+    // 2. Émoticônes personnalisées (E2EE) - Triées par longueur décroissante
     const customShortcuts = Object.keys(customEmoticonsMap).sort((a, b) => b.length - a.length);
     customShortcuts.forEach(shortcut => {
       const emoInfo = customEmoticonsMap[shortcut];
@@ -2336,13 +2352,17 @@ const App: React.FC = () => {
         if (typeof part === 'string') {
           const split = part.split(shortcut);
           split.forEach((s, i) => {
-            if (s !== '') newParts.push(s);
+            if (s !== '') {
+              if (!isEmoticonsOnly || s.trim() !== '') {
+                newParts.push(s);
+              }
+            }
             if (i < split.length - 1) {
               newParts.push(
                 <img 
                   key={`custom-${shortcut}-${i}`} 
                   src={emoInfo.url} 
-                  className="inline-emoticon custom-emoticon" 
+                  className={isEmoticonsOnly ? "custom-emoticon-large" : "inline-emoticon custom-emoticon"} 
                   alt={shortcut} 
                   title={shortcut} 
                 />
@@ -2356,7 +2376,7 @@ const App: React.FC = () => {
       parts = newParts;
     });
 
-    // 2. Émoticônes de base (Standard) - Triées par longueur décroissante
+    // 3. Émoticônes de base (Standard) - Triées par longueur décroissante
     const sortedShortcuts = Object.keys(EMOTICON_MAP).sort((a, b) => b.length - a.length);
     
     sortedShortcuts.forEach(shortcut => {
@@ -2365,13 +2385,17 @@ const App: React.FC = () => {
         if (typeof part === 'string') {
           const split = part.split(shortcut);
           split.forEach((s, i) => {
-            if (s !== '') newParts.push(s);
+            if (s !== '') {
+              if (!isEmoticonsOnly || s.trim() !== '') {
+                newParts.push(s);
+              }
+            }
             if (i < split.length - 1) {
               newParts.push(
                 <img 
                   key={`std-${shortcut}-${i}`} 
                   src={`/assets/emoticons/${EMOTICON_MAP[shortcut]}`} 
-                  className="inline-emoticon" 
+                  className={isEmoticonsOnly ? "inline-emoticon-large" : "inline-emoticon"} 
                   alt={shortcut} 
                 />
               );
@@ -2388,7 +2412,7 @@ const App: React.FC = () => {
     
     return (
       <div 
-        className="msg-content" 
+        className={isEmoticonsOnly ? "msg-content msg-content-emoticons-only" : "msg-content"} 
         style={{ 
           fontFamily: s.family, 
           fontWeight: s.weight, 

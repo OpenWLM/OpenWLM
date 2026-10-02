@@ -24,6 +24,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [resizeInfo, setResizeInfo] = useState<string | null>(null);
 
   // Formulaire d'ajout
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -88,6 +89,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       loadEmoticons();
       setErrorMessage(null);
       setSuccessMessage(null);
+      setResizeInfo(null);
       resetForm();
     }
   }, [isOpen, userToken]);
@@ -106,13 +108,15 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
     setPreviewUrl(null);
     setImageMeta(null);
     setShortcutInput('');
+    setResizeInfo(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Sélection et validation stricte du fichier
+  // Sélection et validation / redimensionnement du fichier
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setErrorMessage(null);
     setSuccessMessage(null);
+    setResizeInfo(null);
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -127,20 +131,10 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       }
 
       const isGif = sig.detectedMime === 'image/gif' || file.type === 'image/gif';
-
-      // 2. Validation du poids strict (256 Ko statique, 1 Mo GIF)
       const MAX_STATIC_SIZE = 256 * 1024;
       const MAX_GIF_SIZE = 1024 * 1024;
-      if (isGif && file.size > MAX_GIF_SIZE) {
-        setErrorMessage(`Le GIF animé dépasse la taille maximale autorisée de 1 Mo (actuelle : ${(file.size / 1024).toFixed(1)} Ko).`);
-        return;
-      }
-      if (!isGif && file.size > MAX_STATIC_SIZE) {
-        setErrorMessage(`L'image statique dépasse la taille maximale autorisée de 256 Ko (actuelle : ${(file.size / 1024).toFixed(1)} Ko).`);
-        return;
-      }
 
-      // 3. Validation des dimensions via chargement d'image
+      // 2. Chargement de l'image pour analyse des dimensions
       const localUrl = URL.createObjectURL(file);
       const img = new Image();
       img.src = localUrl;
@@ -150,32 +144,112 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
         img.onerror = () => reject(new Error("Impossible de lire l'image."));
       });
 
-      if (img.naturalWidth > 128 || img.naturalHeight > 128) {
+      // 3. Gestion stricte des GIF animés (pas de redimensionnement pour ne pas figer/altérer l'animation)
+      if (isGif) {
         URL.revokeObjectURL(localUrl);
-        setErrorMessage(`L'image dépasse les dimensions maximales autorisées (128x128 px). Dimensions actuelles : ${img.naturalWidth}x${img.naturalHeight} px.`);
+        if (img.naturalWidth > 128 || img.naturalHeight > 128) {
+          setErrorMessage(
+            `Le GIF animé dépasse les dimensions maximales (128x128 px). Actuel : ${img.naturalWidth}x${img.naturalHeight} px. Afin de préserver son animation, le redimensionnement automatique des GIF n'est pas appliqué. Veuillez choisir un GIF de 128x128 px maximum.`
+          );
+          return;
+        }
+        if (file.size > MAX_GIF_SIZE) {
+          setErrorMessage(`Le GIF animé dépasse la taille maximale autorisée de 1 Mo (actuelle : ${(file.size / 1024).toFixed(1)} Ko).`);
+          return;
+        }
+
+        // GIF accepté tel quel
+        const validGifUrl = URL.createObjectURL(file);
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setSelectedFile(file);
+        setFileBuffer(buffer);
+        setPreviewUrl(validGifUrl);
+        setImageMeta({
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          isAnimated: true,
+          mime: 'image/gif'
+        });
+
+        if (!shortcutInput) {
+          const baseName = file.name.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
+          if (baseName) setShortcutInput(`(${baseName})`);
+        }
         return;
       }
 
-      // Succès validation
+      // 4. Gestion des images statiques (PNG, WebP, JPEG) avec redimensionnement automatique si nécessaire
+      let finalBuffer = buffer;
+      let finalFile = file;
+      let finalWidth = img.naturalWidth;
+      let finalHeight = img.naturalHeight;
+      let finalMime = sig.detectedMime || file.type || 'image/png';
+      let wasResized = false;
+
+      if (img.naturalWidth > 128 || img.naturalHeight > 128) {
+        const maxDim = 128;
+        const ratio = Math.min(maxDim / img.naturalWidth, maxDim / img.naturalHeight);
+        finalWidth = Math.round(img.naturalWidth * ratio);
+        finalHeight = Math.round(img.naturalHeight * ratio);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = finalWidth;
+        canvas.height = finalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error("Impossible d'initialiser le contexte canvas 2D.");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, finalWidth, finalHeight);
+
+        // Export en PNG pour préserver la transparence
+        finalMime = (sig.detectedMime === 'image/webp') ? 'image/webp' : 'image/png';
+        const resizedBlob = await new Promise<Blob | null>((res) => canvas.toBlob(res, finalMime, 0.95));
+        if (!resizedBlob) throw new Error("Erreur lors de la génération de l'image redimensionnée.");
+
+        finalBuffer = await resizedBlob.arrayBuffer();
+        finalFile = new File(
+          [resizedBlob],
+          file.name.replace(/\.[^/.]+$/, "") + (finalMime === 'image/webp' ? '.webp' : '.png'),
+          { type: finalMime }
+        );
+        wasResized = true;
+      }
+
+      URL.revokeObjectURL(localUrl);
+
+      // Validation du poids final après redimensionnement
+      if (finalFile.size > MAX_STATIC_SIZE) {
+        setErrorMessage(
+          `L'image statique dépasse la taille maximale autorisée de 256 Ko (actuelle : ${(finalFile.size / 1024).toFixed(1)} Ko). Veuillez choisir une image plus légère.`
+        );
+        return;
+      }
+
+      const newPreviewUrl = URL.createObjectURL(finalFile);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setSelectedFile(file);
-      setFileBuffer(buffer);
-      setPreviewUrl(localUrl);
+      setSelectedFile(finalFile);
+      setFileBuffer(finalBuffer);
+      setPreviewUrl(newPreviewUrl);
       setImageMeta({
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-        isAnimated: isGif,
-        mime: sig.detectedMime || file.type || 'image/png'
+        width: finalWidth,
+        height: finalHeight,
+        isAnimated: false,
+        mime: finalMime
       });
 
-      // Suggestion automatique de raccourci si vide
+      if (wasResized) {
+        setResizeInfo(
+          `Image redimensionnée automatiquement : ${img.naturalWidth}x${img.naturalHeight} → ${finalWidth}x${finalHeight} px (${(finalFile.size / 1024).toFixed(1)} Ko)`
+        );
+      }
+
       if (!shortcutInput) {
         const baseName = file.name.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
         if (baseName) setShortcutInput(`(${baseName})`);
       }
     } catch (err: unknown) {
-      console.error("Erreur lecture image:", err);
-      setErrorMessage("Une erreur est survenue lors de l'analyse du fichier.");
+      console.error("Erreur traitement image:", err);
+      setErrorMessage("Une erreur est survenue lors du traitement du fichier.");
     }
   };
 
@@ -329,6 +403,12 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
                 {imageMeta && (
                   <div className="wlm-custom-emo-meta-badge">
                     {imageMeta.width}x{imageMeta.height} px • {(selectedFile!.size / 1024).toFixed(1)} Ko {imageMeta.isAnimated && '• Animé'}
+                  </div>
+                )}
+
+                {resizeInfo && (
+                  <div className="wlm-custom-emo-resized-badge">
+                    ℹ️ {resizeInfo}
                   </div>
                 )}
 

@@ -394,6 +394,10 @@ const App: React.FC = () => {
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [showColorDropdown, setShowColorDropdown] = useState(false);
 
+  // --- ÉTAT DU COLLAGE DE CAPTURE D'ÉCRAN ---
+  const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
+  const isSubmittingPasteRef = useRef(false);
+
   // --- RÉFÉRENCES ---
   const myStatusRef = useRef(myStatus);
   useEffect(() => { myStatusRef.current = myStatus; }, [myStatus]);
@@ -1279,8 +1283,32 @@ const App: React.FC = () => {
    * Fichier chiffré stocké sur le serveur, accessible pendant 4H maximum via URL + Token
    * Déchiffré localement dans le navigateur du destinataire avec sa clé privée RSA
    */
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const formatFileSize = (bytes: number): string => {
+    if (!bytes || bytes === 0) return '0 o';
+    if (bytes < 1024) return `${bytes} o`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+  };
+
+  const getExtensionForMime = (mime: string): string => {
+    const mimeLower = (mime || '').toLowerCase();
+    if (mimeLower === 'image/png') return 'png';
+    if (mimeLower === 'image/jpeg' || mimeLower === 'image/jpg') return 'jpg';
+    if (mimeLower === 'image/webp') return 'webp';
+    if (mimeLower === 'image/gif') return 'gif';
+    if (mimeLower === 'image/bmp') return 'bmp';
+    if (mimeLower === 'image/svg+xml') return 'svg';
+    if (mimeLower === 'image/tiff') return 'tiff';
+    const parts = mimeLower.split('/');
+    return parts[1] ? parts[1].replace('+xml', '') : 'png';
+  };
+
+  /**
+   * ENVOI D'UN FICHIER CHIFFRÉ DE BOUT EN BOUT (E2EE)
+   * Chiffré localement avec AES-256-GCM + enveloppe RSA-OAEP
+   * Réutilisé pour le sélecteur de fichier et le collage direct de captures d'écran
+   */
+  const sendFile = useCallback(async (file: File): Promise<void> => {
     if (!file) return;
     if (!socket) { alert("Connexion au serveur non établie."); return; }
     if (!myKeys) { alert("Clés E2E non prêtes."); return; }
@@ -1408,12 +1436,173 @@ const App: React.FC = () => {
       } else {
         alert("Une erreur est survenue lors du chiffrement ou de l'envoi du fichier.");
       }
+    }
+  }, [socket, myKeys, activeChatId, user, myNickname, globalPrivateMode, isPrivateMode]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      await sendFile(file);
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
   };
+
+  /**
+   * COLLAGE DIRECT DE CAPTURE D'ÉCRAN (CLIPBOARD SCREENSHOT)
+   */
+  const handleCancelPastedImage = useCallback(() => {
+    setPastedImage(prev => {
+      if (prev?.previewUrl) {
+        URL.revokeObjectURL(prev.previewUrl);
+      }
+      return null;
+    });
+  }, []);
+
+  const handleConfirmPastedImage = useCallback(async () => {
+    if (!pastedImage || isSubmittingPasteRef.current) return;
+    isSubmittingPasteRef.current = true;
+    const { file, previewUrl } = pastedImage;
+    URL.revokeObjectURL(previewUrl);
+    setPastedImage(null);
+    try {
+      await sendFile(file);
+    } finally {
+      isSubmittingPasteRef.current = false;
+    }
+  }, [pastedImage, sendFile]);
+
+  // Raccourcis clavier pour la modale de confirmation (Entrée = Valider, Échap = Annuler)
+  useEffect(() => {
+    if (!pastedImage) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancelPastedImage();
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleConfirmPastedImage();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [pastedImage, handleCancelPastedImage, handleConfirmPastedImage]);
+
+  // Nettoyage de l'URL blob si changement de conversation ou démontage
+  useEffect(() => {
+    return () => {
+      if (pastedImage?.previewUrl) {
+        URL.revokeObjectURL(pastedImage.previewUrl);
+      }
+    };
+  }, [pastedImage]);
+
+  useEffect(() => {
+    if (pastedImage) {
+      if (pastedImage.previewUrl) URL.revokeObjectURL(pastedImage.previewUrl);
+      setPastedImage(null);
+    }
+  }, [activeChatId]);
+
+  // Gestionnaire de détection de collage (presse-papiers image vs texte)
+  const handlePaste = useCallback((e: React.ClipboardEvent | ClipboardEvent) => {
+    if (e.defaultPrevented) return;
+    if (!activeChatId) return;
+
+    // Si une autre modale est ouverte, ne pas intercepter
+    if (
+      showAddContactModal ||
+      showSceneModal ||
+      showAvatarModal ||
+      showPasswordModal ||
+      showBgModal ||
+      showWinksModal ||
+      showAllEmoticonsModal ||
+      showFontModal ||
+      showOptionsModal
+    ) {
+      return;
+    }
+
+    // Si l'utilisateur colle dans un autre champ texte que le chat (ex: recherche, email...)
+    const activeEl = document.activeElement as HTMLElement | null;
+    if (
+      activeEl &&
+      (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
+      !activeEl.classList.contains('chat-textarea')
+    ) {
+      return;
+    }
+
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+
+    let imageItem: DataTransferItem | null = null;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
+        imageItem = items[i];
+        break; // V1 : limiter à la première image trouvée
+      }
+    }
+
+    // Si aucun élément image : NE PAS appeler preventDefault -> laisser le collage texte natif fonctionner
+    if (!imageItem) return;
+
+    e.preventDefault();
+    const blob = imageItem.getAsFile();
+    if (!blob) return;
+
+    const ext = getExtensionForMime(blob.type);
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timestampStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+    const rawName = blob.name || '';
+    const isGenericName = !rawName || rawName === 'image.png' || rawName === 'blob' || rawName === 'screenshot.png';
+    const fileName = isGenericName ? `capture_${timestampStr}.${ext}` : rawName;
+
+    const file = new File([blob], fileName, { type: blob.type || 'image/png' });
+
+    // Nettoyer l'ancienne preview éventuelle
+    setPastedImage(prev => {
+      if (prev?.previewUrl) {
+        URL.revokeObjectURL(prev.previewUrl);
+      }
+      return null;
+    });
+
+    const previewUrl = URL.createObjectURL(file);
+    setPastedImage({ file, previewUrl });
+  }, [
+    activeChatId,
+    showAddContactModal,
+    showSceneModal,
+    showAvatarModal,
+    showPasswordModal,
+    showBgModal,
+    showWinksModal,
+    showAllEmoticonsModal,
+    showFontModal,
+    showOptionsModal
+  ]);
+
+  // Écouter le collage au niveau global pour la fenêtre de discussion active
+  useEffect(() => {
+    if (!activeChatId) return;
+    const onWindowPaste = (e: ClipboardEvent) => {
+      handlePaste(e);
+    };
+    window.addEventListener('paste', onWindowPaste);
+    return () => {
+      window.removeEventListener('paste', onWindowPaste);
+    };
+  }, [activeChatId, handlePaste]);
 
   /**
    * ENVOI D'UN CLIN D'ŒIL (WINK)
@@ -2275,7 +2464,7 @@ const App: React.FC = () => {
               </div>
 
             {/* Vue scindée : Chat à gauche, Jeu à droite */}
-            <div className="conversation-split-view">
+            <div className="conversation-split-view" onPaste={handlePaste}>
               <div className="conversation-chat-column">
                 {/* Zone principale de discussion */}
                 <div className="chat-main-area" style={convBg ? { backgroundImage: `url(/assets/backgrounds/${convBg})`, backgroundSize: 'cover' } : {}}>
@@ -2437,6 +2626,7 @@ const App: React.FC = () => {
                         value={inputText} 
                         onChange={e => setInputText(e.target.value)} 
                         onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())} 
+                        onPaste={handlePaste}
                         placeholder="Saisissez un message..." 
                      />
                      
@@ -2554,6 +2744,79 @@ const App: React.FC = () => {
       </div>
 
       {/* --- MODALES --- */}
+
+      {/* Modale: Confirmation d'envoi d'une capture d'écran collée */}
+      {pastedImage && (
+        <div className="modal-bg" onClick={handleCancelPastedImage}>
+          <div className="wlm-paste-modal" onClick={e => e.stopPropagation()}>
+            <div className="wlm-paste-modal-header">
+              <div className="wlm-paste-title-area">
+                <span className="wlm-paste-icon">📷</span>
+                <span className="wlm-paste-title">Envoi d'une capture d'écran</span>
+              </div>
+              <button 
+                type="button" 
+                className="win-close-btn" 
+                onClick={handleCancelPastedImage} 
+                title="Fermer (Échap)"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="wlm-paste-modal-body">
+              <div className="wlm-paste-prompt">
+                Envoyer cette capture d'écran à <strong>{(() => {
+                  const activeContact = contacts.find(c => c.id === activeChatId);
+                  return activeContact?.nickname || activeContact?.username || 'votre contact';
+                })()}</strong> ?
+              </div>
+
+              <div className="wlm-paste-preview-container">
+                <div className="wlm-paste-thumbnail-box">
+                  <img 
+                    src={pastedImage.previewUrl} 
+                    alt="Aperçu capture d'écran" 
+                    className="wlm-paste-thumbnail" 
+                  />
+                </div>
+                <div className="wlm-paste-meta-box">
+                  <div className="wlm-paste-filename" title={pastedImage.file.name}>
+                    📁 {pastedImage.file.name}
+                  </div>
+                  <div className="wlm-paste-filesize">
+                    Taille : <strong>{formatFileSize(pastedImage.file.size)}</strong>
+                  </div>
+                  <div className="wlm-paste-type">
+                    Format : {pastedImage.file.type || 'image/png'}
+                  </div>
+                  <div className="wlm-paste-hint">
+                    🔒 Chiffrement de bout en bout (E2EE) • Expire après 4h
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="wlm-paste-modal-footer">
+              <button 
+                type="button" 
+                className="win-btn win-btn-primary" 
+                onClick={handleConfirmPastedImage}
+                autoFocus
+              >
+                Envoyer
+              </button>
+              <button 
+                type="button" 
+                className="win-btn" 
+                onClick={handleCancelPastedImage}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modale: Toutes les émoticônes */}
       {showAllEmoticonsModal && (

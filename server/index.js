@@ -375,6 +375,13 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN global_private INTEGER DEFAULT 0;");
 } catch(e) {}
 
+// SÉCURITÉ : Colonne de révocation des sessions JWT
+// Incrémentée lors de chaque changement de mot de passe ou déconnexion forcée.
+// Les tokens émis avec un token_version antérieur sont rejetés.
+try {
+  db.exec("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0;");
+} catch(e) {}
+
 /**
  * HELPERS ET MIDDLEWARES
  */
@@ -521,6 +528,37 @@ const authRateLimiter = (req, res, next) => {
 };
 
 /**
+ * Rate Limiter dédié aux uploads de fichiers (5/minute par IP)
+ * Plus restrictif que l'auth rate limiter car les uploads consomment du stockage disque.
+ */
+const uploadRateLimitStorage = new Map();
+const uploadRateLimiter = (req, res, next) => {
+  const ip = req.headers['cf-connecting-ip'] || 
+             (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || 
+             req.ip || 
+             req.socket.remoteAddress;
+
+  const now = Date.now();
+  const windowMs = 60000;
+  const limit = 5;
+
+  if (!uploadRateLimitStorage.has(ip)) {
+    uploadRateLimitStorage.set(ip, []);
+  }
+
+  let timestamps = uploadRateLimitStorage.get(ip).filter(ts => now - ts < windowMs);
+  
+  if (timestamps.length >= limit) {
+    console.warn(`[Security] Upload rate limit atteint pour l'IP: ${ip}`);
+    return res.status(429).json({ error: "Trop d'envois de fichiers. Veuillez réessayer dans une minute." });
+  }
+
+  timestamps.push(now);
+  uploadRateLimitStorage.set(ip, timestamps);
+  next();
+};
+
+/**
  * Middleware d'authentification par JWT
  */
 const authenticateToken = (req, res, next) => {
@@ -533,8 +571,15 @@ const authenticateToken = (req, res, next) => {
     if (err || !payload || !payload.id) return res.status(403).json({ error: "Token invalide ou expiré." });
     
     // Vérifier que l'utilisateur existe toujours en base de données
-    const dbUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(payload.id);
+    const dbUser = db.prepare('SELECT id, username, token_version FROM users WHERE id = ?').get(payload.id);
     if (!dbUser) return res.status(401).json({ error: "Compte utilisateur introuvable ou révoqué." });
+
+    // SÉCURITÉ : Vérifier que le token n'a pas été révoqué (changement de mot de passe, etc.)
+    const currentTv = dbUser.token_version || 0;
+    const tokenTv = payload.tv !== undefined ? payload.tv : 0;
+    if (tokenTv !== currentTv) {
+      return res.status(401).json({ error: "Session révoquée. Veuillez vous reconnecter." });
+    }
 
     req.user = dbUser;
     next();
@@ -644,8 +689,9 @@ app.post('/api/login', authRateLimiter, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   
   if (user && hashPassword(password, user.salt) === user.password_hash) {
-    // Création d'un token valable 24h
-    const token = jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: '24h' });
+    // Création d'un token valable 24h avec token_version pour révocation
+    const tv = user.token_version || 0;
+    const token = jwt.sign({ id: user.id, username: user.username, tv }, SECRET, { expiresIn: '24h' });
     
     // SÉCURITÉ : DTO pour éviter de fuiter hash/salt
     res.json({ success: true, token, user: toPrivateUserDTO(user) });
@@ -947,6 +993,8 @@ app.post('/api/user/change-password', authenticateToken, (req, res) => {
         db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?')
           .run(newHash, newSalt, userId);
       }
+      // SÉCURITÉ : Incrémenter token_version pour révoquer toutes les sessions JWT existantes
+      db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(userId);
     })();
     res.json({ success: true });
   } catch (err) {
@@ -1001,7 +1049,7 @@ app.post('/api/messages/clear', authenticateToken, (req, res) => {
  * Le serveur reçoit uniquement des octets chiffrés avec AES-GCM (Zero-Knowledge)
  * Validité : 4 heures maximum
  */
-app.post('/api/files/upload', authenticateToken, (req, res) => {
+app.post('/api/files/upload', authenticateToken, uploadRateLimiter, (req, res) => {
   upload.single('file')(req, res, (err) => {
     // 1. GESTION PROPRE DES ERREURS MULTER (Ex: dépassement de taille)
     if (err) {
@@ -1023,7 +1071,7 @@ app.post('/api/files/upload', authenticateToken, (req, res) => {
     // 2. NE PAS FAIRE CONFIANCE AU MIME ET NOM DÉCLARÉS PAR LE CLIENT
     // - Assainir le nom original pour bloquer toute tentative de path traversal ou caractères de contrôle
     const rawOriginalName = String(req.body.originalName || 'fichier_chiffre.bin');
-    const safeOriginalName = path.basename(rawOriginalName).replace(/[/\\?%*:|"<>]/g, '_').slice(0, 255) || 'fichier_chiffre.bin';
+    const safeOriginalName = path.basename(rawOriginalName).replace(/[/\\\\?%*:|"<>]/g, '_').slice(0, 255) || 'fichier_chiffre.bin';
 
     // - Valider strictement le format MIME 'type/subtype' (sans l'utiliser comme type d'exécution serveur)
     const rawFileType = String(req.body.fileType || 'application/octet-stream');
@@ -1037,6 +1085,25 @@ app.post('/api/files/upload', authenticateToken, (req, res) => {
     if (!receiverId || isNaN(receiverId)) {
       if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: "Destinataire manquant ou invalide." });
+    }
+
+    // 3. SÉCURITÉ : Vérifier que l'expéditeur a le droit d'interagir avec le destinataire
+    const check = canInteract(senderId, receiverId);
+    if (!check.allowed) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(403).json({ error: check.reason });
+    }
+
+    // 4. SÉCURITÉ : Quota de stockage — 1 Go max de fichiers actifs par compte
+    const QUOTA_BYTES = 1 * 1024 * 1024 * 1024; // 1 Go
+    const usageRow = db.prepare('SELECT COALESCE(SUM(file_size), 0) as total FROM shared_files WHERE sender_id = ?').get(senderId);
+    const currentUsage = usageRow ? usageRow.total : 0;
+    if (currentUsage + fileSize > QUOTA_BYTES) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      const usedMB = Math.round(currentUsage / (1024 * 1024));
+      return res.status(413).json({ 
+        error: `Quota de stockage dépassé (${usedMB} Mo utilisés sur 1 Go). Attendez l'expiration de vos anciens fichiers.` 
+      });
     }
 
     const fileId = crypto.randomUUID();
@@ -1310,6 +1377,13 @@ const disconnectTimers = new Map(); // userId -> Timeout (pour gérer les rafra�
 const wizzLimits = new Map();      // userId -> timestamps[]
 const messageLimits = new Map();   // userId -> timestamps[]
 const activeGames = new Map();     // gameKey -> session de jeu sécurisée (anti-usurpation et vérification de tour)
+/**
+ * SÉCURITÉ : Invitations de jeu en attente avec expiration (60 secondes).
+ * Clé : "inviterId_targetId_gameType" -> timestamp de l'invitation.
+ * game_accept ne sera autorisé que si une invitation valide et non expirée existe.
+ */
+const pendingGameInvites = new Map();
+const GAME_INVITE_TTL_MS = 60 * 1000; // 60 secondes
 
 const getGameKey = (id1, id2) => {
   const [min, max] = Number(id1) < Number(id2) ? [id1, id2] : [id2, id1];
@@ -1344,8 +1418,15 @@ io.use((socket, next) => {
     if (err || !payload || !payload.id) return next(new Error("Erreur d'authentification : Token invalide ou expiré"));
 
     // Vérifier que l'utilisateur existe toujours en base de données
-    const dbUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(payload.id);
+    const dbUser = db.prepare('SELECT id, username, token_version FROM users WHERE id = ?').get(payload.id);
     if (!dbUser) return next(new Error("Erreur d'authentification : Compte utilisateur introuvable ou révoqué"));
+
+    // SÉCURITÉ : Vérifier que le token n'a pas été révoqué
+    const currentTv = dbUser.token_version || 0;
+    const tokenTv = payload.tv !== undefined ? payload.tv : 0;
+    if (tokenTv !== currentTv) {
+      return next(new Error("Session révoquée. Veuillez vous reconnecter."));
+    }
 
     socket.user = dbUser;
     next();
@@ -1631,6 +1712,14 @@ io.on('connection', (socket) => {
       if (!senderUser) return;
 
       const safeGameType = (gameType === 'checkers') ? 'checkers' : 'morpion';
+      
+      // SÉCURITÉ : Enregistrer l'invitation avec expiration (60 secondes)
+      const inviteKey = `${socket.user.id}_${target}`;
+      pendingGameInvites.set(inviteKey, {
+        gameType: safeGameType,
+        expiresAt: Date.now() + GAME_INVITE_TTL_MS
+      });
+
       io.to(targetSocketId).emit('game_invite_received', {
         from: socket.user.id,
         fromName: senderUser.nickname || senderUser.username,
@@ -1651,13 +1740,23 @@ io.on('connection', (socket) => {
       return socket.emit('game_error', { message: check.reason });
     }
 
+    // SÉCURITÉ : Exiger une invitation préalable valide et non expirée
+    const inviteKey = `${target}_${socket.user.id}`;
+    const invite = pendingGameInvites.get(inviteKey);
+    if (!invite || Date.now() > invite.expiresAt) {
+      if (invite) pendingGameInvites.delete(inviteKey);
+      return socket.emit('game_error', { message: "Aucune invitation valide ou expirée." });
+    }
+    // Consommation unique de l'invitation
+    pendingGameInvites.delete(inviteKey);
+
     const targetSocketId = onlineUsers.get(target);
     const acceptorUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
     const targetUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(target);
 
     if (targetSocketId && acceptorUser && targetUser) {
       const gameKey = getGameKey(target, socket.user.id);
-      const chosenGameType = gameType || 'morpion';
+      const chosenGameType = invite.gameType || (gameType === 'checkers' ? 'checkers' : 'morpion');
 
       if (chosenGameType === 'checkers') {
         const initialBoard = createInitialCheckersBoard();
@@ -1729,6 +1828,10 @@ io.on('connection', (socket) => {
     const { target } = data || {};
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) return;
+
+    // SÉCURITÉ : Nettoyer l'invitation refusée
+    const inviteKey = `${target}_${socket.user.id}`;
+    pendingGameInvites.delete(inviteKey);
 
     const targetSocketId = onlineUsers.get(target);
     if (targetSocketId) {
@@ -1986,6 +2089,13 @@ io.on('connection', (socket) => {
         }
       }
 
+      // Nettoyer les invitations de jeux en attente liées à cet utilisateur
+      for (const [key] of pendingGameInvites.entries()) {
+        if (key.startsWith(`${disconnectedUserId}_`) || key.endsWith(`_${disconnectedUserId}`)) {
+          pendingGameInvites.delete(key);
+        }
+      }
+
       // Période de grâce de 60 secondes avant de passer en 'offline' 
       // (Plus adapté au mobile où le navigateur suspend l'onglet en arrière-plan)
       const timer = setTimeout(() => {
@@ -2010,6 +2120,14 @@ io.on('connection', (socket) => {
       disconnectTimers.delete(userId);
     }
     onlineUsers.delete(userId);
+
+    // Nettoyer les invitations de jeux en attente liées à cet utilisateur
+    for (const [key] of pendingGameInvites.entries()) {
+      if (key.startsWith(`${userId}_`) || key.endsWith(`_${userId}`)) {
+        pendingGameInvites.delete(key);
+      }
+    }
+
     try {
       db.prepare('UPDATE users SET status = ? WHERE id = ?').run('offline', userId);
       broadcastStatusToContacts(userId, { id: userId, userId, status: 'offline' });

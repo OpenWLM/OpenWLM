@@ -224,6 +224,33 @@ class CustomEmoticonsDB {
   }
 
   /**
+   * Purge complète de toutes les données au logout
+   * Supprime les clés, le cache et les URLs mémoire pour éviter toute fuite entre sessions.
+   */
+  public async clearAll(): Promise<void> {
+    // 1. Révoquer toutes les URLs blob en mémoire
+    this.cleanupMemoryUrls();
+    
+    // 2. Purger les deux stores IndexedDB
+    if (!this.db) {
+      try { await this.init(); } catch { return; }
+    }
+    if (!this.db) return;
+    
+    return new Promise((resolve) => {
+      try {
+        const tx = this.db!.transaction([STORE_MY_KEYS, STORE_ASSET_CACHE], 'readwrite');
+        tx.objectStore(STORE_MY_KEYS).clear();
+        tx.objectStore(STORE_ASSET_CACHE).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
+  }
+
+  /**
    * Nettoie toutes les URLs d'objet mémoire créées lors de la session
    */
   public cleanupMemoryUrls(): void {

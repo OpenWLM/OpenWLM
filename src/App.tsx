@@ -2308,14 +2308,18 @@ const App: React.FC = () => {
   /**
    * DÉCONNEXION (PURGE COMPLÈTE DE LA MÉMOIRE VIVE)
    */
-  const handleLogout = (reason?: string) => {
+  const handleLogout = async (reason?: string) => {
     if (reason) console.warn("[Session] Déconnexion:", reason); 
     if (socket) {
       socket.emit('manual_disconnect');
     }
+    // SÉCURITÉ : Purger le token JWT côté client
+    localStorage.removeItem('token');
     localStorage.removeItem('wlm_user'); 
     localStorage.removeItem('wlm_open_chats');
     localStorage.removeItem('wlm_active_chat');
+    // SÉCURITÉ : Purger le cache IndexedDB des émoticônes personnalisées (clés + assets déchiffrés)
+    try { await CustomEmoticonsDB.clearAll(); } catch (e) { console.warn('[Logout] Erreur purge CustomEmoticonsDB:', e); }
     setMyKeys(null);
     setUser(null);
     window.location.reload(); 

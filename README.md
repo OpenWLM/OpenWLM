@@ -2,62 +2,66 @@
   <img src="logo.jpg" alt="OpenWLM Logo" width="200" />
 </p>
 
+<p align="center">
+  <b>English</b> • <a href="README.fr.md">Français</a>
+</p>
+
 # OpenWLM (Modern Web Stack)
 
-Une récréation moderne, open-source et sécurisée de l'expérience iconique de messagerie rétro **Windows Live Messenger 2009 (Wave 3 / Aero)**. Ce projet combine le design nostalgique des années 2000 avec les standards de sécurité, de chiffrement et de performance de 2026.
+A modern, open-source, and secure recreation of the iconic **Windows Live Messenger 2009 (Wave 3 / Aero)** retro instant messaging experience. This project combines the nostalgic design of the 2000s with 2026 security, end-to-end encryption, and performance standards.
 
-⚠️ **Avertissement & Notice légale** :  
-OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgique. Il n'est en aucun cas affilié, associé, autorisé ou soutenu par Microsoft Corporation ou l'une de ses filiales.
-
----
-
-## 🚀 Fonctionnalités principales
-
-### 💬 Communication & Expérience WLM
-- **Interface Authentique** : Design rétro fidèle à WLM 2009 (Aero glass, onglets, scènes de fond, usertiles, sons d'origine).
-- **Assistant de test intégré ("OpenWLM")** : Contact système virtuel (ID `-1`) avec état d'accueil central, permettant de tester immédiatement le chat, les émoticônes, les sons, le Wizz et le Morpion sans second compte.
-- **Messagerie Instantanée Sécurisée** : Texte riche, émoticônes classiques d'origine et émoticônes personnalisées E2EE.
-- **Audio & Vidéo (WebRTC)** : Appels vocaux et vidéo en direct avec signalisation chiffrée.
-- **Messages Vocaux** : Enregistrement et lecture de clips vocaux chiffrés.
-- **Winks & Wizz** : Clins d'œil animés et Wizz secouant la fenêtre.
-- **Activités & Jeux 1v1** : Morpion (Tic-Tac-Toe) et Jeu de dames (Checkers) en temps réel avec validation autoritaire anti-triche côté serveur.
-- **Transfert de fichiers chiffré E2EE** : Partage temporaire (expiration 4h) avec déchiffrement direct et prévisualisation d'images.
+⚠️ **Disclaimer & Legal Notice**:  
+OpenWLM is an independent educational, open-source project and a nostalgic tribute. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Microsoft Corporation or any of its subsidiaries.
 
 ---
 
-## 🔐 Sécurité & Architecture (Security Hardened)
+## 🚀 Key Features
 
-OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement rigoureux :
+### 💬 Communication & Authenticity
+- **Authentic Retro Interface**: Faithful replica of WLM 2009 (Aero glass styling, tabs, background scenes, usertiles, original audio sound effects).
+- **Built-in Assistant & Test Contact ("OpenWLM")**: Dedicated virtual system contact (ID `-1`) with an empty-state quickstart button, allowing new users to test chat, emoticons, sounds, Wizz/nudges, and Tic-Tac-Toe immediately without needing a second account.
+- **Secure Instant Messaging**: Rich text support, classic legacy emoticons, and custom end-to-end encrypted emoticons.
+- **Audio & Video Calls (WebRTC)**: Real-time peer-to-peer voice and video calls with encrypted signaling.
+- **Voice Clips**: Record and stream end-to-end encrypted audio messages.
+- **Winks & Nudges**: Animated full-screen winks and screen-shaking Wizz effects.
+- **1v1 Multiplayer Mini-Games**: Real-time MSN Tic-Tac-Toe (Morpion) and Checkers (Jeu de dames) with authoritative server-side anti-cheat validation and collapsible game docks.
+- **Encrypted File Transfer**: Temporary peer file sharing (4-hour TTL) with on-the-fly decryption and image lightbox previews.
 
-1. **Chiffrement de bout en bout (E2EE Zero-Knowledge)** :
-   - Chiffrement asymétrique RSA-OAEP 2048 bits pour l'échange de clés de session.
-   - Chiffrement symétrique AES-256-GCM pour les messages, fichiers et émoticônes.
-   - Le serveur ne voit jamais le texte en clair ni les clés de déchiffrement (Zero-Knowledge).
-2. **Autorisation centralisée (`canInteract`)** :
-   - Vérification stricte des relations de contact mutuel et de l'absence de blocage avant toute interaction (messages, wizz, appels, fichiers, jeux).
-3. **Prévention de l'usurpation d'identité (Anti-Spoofing)** :
-   - Validation stricte de l'identité émettrice via le token JWT certifié.
-   - Les pseudonymes affichés sont systématiquement recalculés depuis la base de données SQL côté serveur.
-4. **Mode Privé (Off-The-Record) autoritaire** :
-   - Forçage côté serveur de la non-persistance si un contact a activé le mode privé global (`global_private = 1`).
-5. **Révocation instantanée des sessions JWT (`token_version`)** :
-   - Invalidation immédiate des jetons côté serveur lors de la déconnexion (`/api/logout` et `manual_disconnect`) ou du changement de mot de passe.
-6. **Protection contre les abus & déni de service** :
-   - Quota de stockage strict de **1 Go** par compte utilisateur pour les fichiers partagés.
-   - Rate limiting étagé : authentification (10 req/min), uploads (5 req/min), wizz (3/min), winks (7/min), messages (20 / 10s).
-   - Nettoyage automatique toutes les 5 minutes des structures mémoire (captchas, adresses IP inactives).
-7. **Comparaisons cryptographiques sécurisées** :
-   - Vérification des hashs PBKDF2 en temps constant (`crypto.timingSafeEqual`) pour neutraliser les attaques par analyse temporelle.
+---
+
+## 🔐 Architecture & Security Hardening
+
+OpenWLM has undergone an extensive security audit and rigorous backend hardening:
+
+1. **End-to-End Encryption (E2EE Zero-Knowledge)**:
+   - Asymmetric RSA-OAEP 2048-bit encryption for session key exchange.
+   - Symmetric AES-256-GCM encryption for messages, file transfers, and custom emoticons.
+   - Zero-Knowledge architecture: the server never has access to plaintext messages or private decryption keys.
+2. **Centralized Access Authorization (`canInteract`)**:
+   - Strict mutual contact verification and bidirectional block checking before any interaction (messages, nudges, calls, files, games).
+3. **Identity Spoofing Prevention**:
+   - Strict validation of sender identity via verified JWT tokens (`socket.user.id === senderId`).
+   - Display nicknames are systematically recalculated server-side from the SQL database (client-provided names are never trusted).
+4. **Authoritative Off-The-Record (Private Mode)**:
+   - Server-enforced non-persistence: if either user in a conversation enables global private mode (`global_private = 1`), messages are never persisted to disk, overriding any client manipulation.
+5. **Instant JWT Session Revocation (`token_version`)**:
+   - Instant token invalidation via server-side database versioning upon user logout (`/api/logout` and `manual_disconnect`) or password change.
+6. **Rate Limiting & Abuse Prevention**:
+   - Strict **1 GB** storage quota per account for active shared files.
+   - Tiered rate limiters: authentication (10 req/min), file uploads (5 req/min), nudges (3/min), winks (7/min), messages (20 / 10s).
+   - Automated in-memory garbage collection every 5 minutes purging expired captchas and inactive client IPs.
+7. **Timing-Safe Cryptography**:
+   - Password hashes verified in constant time using `crypto.timingSafeEqual` to neutralize timing attack vulnerabilities.
 
 ---
 
 ## 🛠 Tech Stack
 
-- **Frontend** : React 19, TypeScript, Vite, CSS Vanilla (thème Aero / WLM).
-- **Backend** : Node.js, Express, Socket.IO.
-- **Base de données** : SQLite (via `better-sqlite3`).
-- **Cryptographie** : Web Crypto API (`SubtleCrypto`), Node.js `crypto` (PBKDF2 SHA-512, AES-GCM, RSA-OAEP).
-- **Desktop (Optionnel)** : Electron.
+- **Frontend**: React 19, TypeScript, Vite, Vanilla CSS (Aero / WLM theme).
+- **Backend**: Node.js, Express, Socket.IO.
+- **Database**: SQLite (via `better-sqlite3`).
+- **Cryptography**: Web Crypto API (`SubtleCrypto`), Node.js `crypto` (PBKDF2 SHA-512, AES-GCM, RSA-OAEP).
+- **Desktop (Optional)**: Electron.
 
 ---
 
@@ -68,96 +72,96 @@ OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement 
 
 ---
 
-## 📦 Installation & Lancement
+## 📦 Installation & Quickstart
 
-### Prérequis
-- **Node.js** : v20 ou supérieur recommandé (testé sous v22 LTS).
-- **npm** : v10 ou supérieur.
+### Prerequisites
+- **Node.js**: v20 or higher recommended (tested on v22 LTS).
+- **npm**: v10 or higher.
 
-### 1. Cloner le dépôt
+### 1. Clone the repository
 ```bash
 git clone https://github.com/OpenWLM/OpenWLM.git
 cd OpenWLM
 npm install
 ```
 
-### 2. Initialiser la base de données de développement (Optionnel)
-Pour tester l'application immédiatement avec deux comptes de démonstration pré-configurés :
+### 2. Seed the development database (Optional)
+To test the application immediately with two pre-configured demonstration accounts:
 ```bash
 npm run db:seed
 ```
-Ce script crée deux comptes fictifs (sans aucune donnée personnelle) :
-- `alice@openwlm.local` (Mot de passe: `DemoPassword123!`)
-- `bob@openwlm.local` (Mot de passe: `DemoPassword123!`)
+This initializes two fictitious accounts with zero personal data:
+- `alice@openwlm.local` (Password: `DemoPassword123!`)
+- `bob@openwlm.local` (Password: `DemoPassword123!`)
 
-> *Note : Si vous ne lancez pas `npm run db:seed`, le serveur créera automatiquement une base vierge au premier démarrage.*
+> *Note: If you do not run `npm run db:seed`, the server automatically creates a fresh, empty database on first launch.*
 
-### 3. Démarrer l'application
+### 3. Run the application
 
-#### Mode Développement (Frontend Vite + Backend avec rechargement à chaud) :
+#### Development Mode (Vite frontend with hot-reload + Backend):
 ```bash
 npm run dev
 ```
 
-#### Mode Production :
+#### Production Mode:
 ```bash
-# Compiler le frontend React
+# Build the React frontend
 npm run build
 
-# Démarrer le serveur Node.js en mode production
+# Start the Node.js production server
 npm run server
-# ou en direct :
+# or directly:
 NODE_ENV=production node server/index.js
 ```
-L'application est accessible sur : **http://localhost:3001**
+The application will be accessible at: **http://localhost:3001**
 
 ---
 
-## 🧪 Tests de Sécurité & Non-Régression
+## 🧪 Security & Regression Testing
 
-Une suite de tests d'enforcement serveur est intégrée au projet pour valider que toutes les restrictions du frontend sont rigoureusement appliquées côté API et sockets :
+An authoritative security enforcement test suite is included in the project to verify that all frontend restrictions are strictly enforced server-side:
 
 ```bash
 npm test
-# ou :
+# or:
 npm run test:security
 ```
 
-Cette suite simule des contournements directs sans passer par l'interface :
-- Usurpation d'identifiant expéditeur (rejet immédiat)
-- Espionnage ou suppression de l'historique d'autrui (rejet HTTP 403)
-- Forçage de persistance en mode privé (rejeté par le serveur)
-- Invitation de soi-même ou doublon d'invitation (rejet HTTP 400)
-- Acceptation d'invitation destinée à un tiers (rejet HTTP 404)
-- Appel WebRTC ou message vers non-contact ou faux contact (bloqué)
-- Triche aux jeux multi-joueurs (coup hors-tour, case déjà occupée)
-- Téléchargement de fichiers sans token cryptographique d'accès (rejet HTTP 401/403)
-- Injection de chemin (Path Traversal) sur les avatars/scènes (rejet HTTP 400)
+This automated suite tests direct API and WebSocket bypass attempts:
+- Sender ID spoofing (rejected)
+- Unauthorized message history reading or deletion (HTTP 403)
+- Forced persistence in private mode (overridden by server)
+- Self-invitation or duplicate contact invitations (HTTP 400)
+- Stealing third-party contact invitations (HTTP 404)
+- WebRTC call requests to non-contacts or virtual bots (blocked)
+- Game cheating attempts (out-of-turn moves, already occupied cells)
+- File download attempts without valid secret tokens (HTTP 401/403)
+- Directory traversal attacks on avatars or scenes (HTTP 400)
 
 ---
 
-## 🛡️ Procédure de Sauvegarde avant Évolution Sensible
+## 🛡️ Safe Rollback & Backup Procedures
 
-Pour respecter les bonnes pratiques de maintenance et garantir un retour arrière immédiat :
+Before making any sensitive architectural or database changes:
 
 ```bash
-# 1. Créer une archive à froid horodatée (serveur arrêté de préférence)
+# 1. Create a timestamped cold archive (server stopped recommended)
 tar czf OpenWLM_backup_$(date +%Y%m%d_%H%M%S).tar.gz --exclude='node_modules' --exclude='.git' .
 
-# 2. Créer un tag Git local avant toute modification
+# 2. Tag your local Git state
 git tag pre-feature-$(date +%Y%m%d)
 ```
 
 ---
 
-## 🏷️ Version & Référence
+## 🏷️ Version & References
 
-- **Version actuelle** : `v1.0.0`
-- **Tag Git de référence** : `v1.0.0`
-- **Historique complet** : Voir le fichier [CHANGELOG.md](CHANGELOG.md).
+- **Current Version**: `v1.0.0`
+- **Git Reference Tag**: `v1.0.0`
+- **Changelog**: See [CHANGELOG.md](CHANGELOG.md) (or [French version](CHANGELOG.fr.md)).
 
 ---
 
-## 📄 Licence
+## 📄 License
 
-Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus d'informations.
+This project is open-source under the MIT License. See the [LICENSE](LICENSE) file for details.

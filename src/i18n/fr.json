@@ -1,0 +1,71 @@
+{
+  "common": {
+    "appName": "OpenWLM",
+    "ok": "OK",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "close": "Fermer",
+    "delete": "Supprimer",
+    "error": "Erreur",
+    "loading": "Chargement...",
+    "search": "Rechercher un contact..."
+  },
+  "auth": {
+    "login": "Connexion",
+    "signup": "Inscription",
+    "emailOrUsername": "Adresse de messagerie ou pseudo",
+    "password": "Mot de passe",
+    "rememberMe": "Mémoriser mon adresse de messagerie",
+    "autoLogin": "Connexion automatique",
+    "signingIn": "Connexion en cours...",
+    "logout": "Se déconnecter",
+    "changePassword": "Changer le mot de passe"
+  },
+  "status": {
+    "online": "En ligne",
+    "busy": "Occupé(e)",
+    "away": "Absent(e)",
+    "offline": "Hors ligne"
+  },
+  "roster": {
+    "contacts": "Contacts",
+    "favorites": "Favoris",
+    "otherContacts": "Autres contacts",
+    "botSection": "Bot",
+    "addContact": "Ajouter un contact",
+    "emptyStateTitle": "Aucune conversation active",
+    "emptyStateSubtitle": "Sélectionnez un contact dans la liste à gauche ou lancez une conversation de test avec le bot OpenWLM.",
+    "startTestChat": "Démarrer une conversation de test"
+  },
+  "chat": {
+    "send": "Envoyer",
+    "sendNudge": "Envoyer un Wizz",
+    "sendWink": "Envoyer un clin d'œil",
+    "sendFile": "Envoyer un fichier",
+    "callAudio": "Appel vocal",
+    "callVideo": "Appel vidéo",
+    "activities": "Activités & Jeux",
+    "privateMode": "Mode privé",
+    "privateModeActive": "Mode privé activé (messages non enregistrés)",
+    "clearHistory": "Effacer l'historique",
+    "typing": "est en train d'écrire un message..."
+  },
+  "bot": {
+    "name": "OpenWLM",
+    "status": "En ligne pour vos tests",
+    "welcome": "Bonjour ! Je suis OpenWLM, votre contact de test. Tapez 'aide' pour voir les commandes disponibles.",
+    "nudgeAck": "Wizz bien reçu."
+  },
+  "games": {
+    "morpion": "Morpion",
+    "checkers": "Jeu de dames",
+    "yourTurn": "C'est votre tour de jouer",
+    "opponentTurn": "Tour de l'adversaire...",
+    "victory": "Victoire !",
+    "defeat": "Défaite",
+    "draw": "Partie nulle",
+    "inviteSent": "Invitation de jeu envoyée...",
+    "restart": "Rejouer",
+    "quit": "Quitter la partie"
+  }
+}

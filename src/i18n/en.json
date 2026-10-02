@@ -1,0 +1,71 @@
+{
+  "common": {
+    "appName": "OpenWLM",
+    "ok": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "delete": "Delete",
+    "error": "Error",
+    "loading": "Loading...",
+    "search": "Search a contact..."
+  },
+  "auth": {
+    "login": "Sign in",
+    "signup": "Sign up",
+    "emailOrUsername": "Sign-in address or username",
+    "password": "Password",
+    "rememberMe": "Remember my email address",
+    "autoLogin": "Sign me in automatically",
+    "signingIn": "Signing in...",
+    "logout": "Sign out",
+    "changePassword": "Change password"
+  },
+  "status": {
+    "online": "Available",
+    "busy": "Busy",
+    "away": "Away",
+    "offline": "Appear offline"
+  },
+  "roster": {
+    "contacts": "Contacts",
+    "favorites": "Favorites",
+    "otherContacts": "Other contacts",
+    "botSection": "Bot",
+    "addContact": "Add a contact",
+    "emptyStateTitle": "No active conversation",
+    "emptyStateSubtitle": "Select a contact from the list on the left or start a test chat with the OpenWLM bot.",
+    "startTestChat": "Start a test conversation"
+  },
+  "chat": {
+    "send": "Send",
+    "sendNudge": "Send a Nudge (Wizz)",
+    "sendWink": "Send a Wink",
+    "sendFile": "Send a file",
+    "callAudio": "Voice call",
+    "callVideo": "Video call",
+    "activities": "Activities & Games",
+    "privateMode": "Private mode",
+    "privateModeActive": "Private mode enabled (messages not recorded)",
+    "clearHistory": "Clear history",
+    "typing": "is typing a message..."
+  },
+  "bot": {
+    "name": "OpenWLM",
+    "status": "Online for testing",
+    "welcome": "Hello! I am OpenWLM, your test contact. Type 'aide' or 'help' to see available commands.",
+    "nudgeAck": "Nudge received."
+  },
+  "games": {
+    "morpion": "Tic-Tac-Toe",
+    "checkers": "Checkers",
+    "yourTurn": "Your turn to move",
+    "opponentTurn": "Opponent's turn...",
+    "victory": "You won!",
+    "defeat": "You lost",
+    "draw": "Draw",
+    "inviteSent": "Game invite sent...",
+    "restart": "Play again",
+    "quit": "Leave game"
+  }
+}

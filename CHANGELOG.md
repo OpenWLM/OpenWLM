@@ -1,94 +1,98 @@
-# Journal des modifications (Changelog) - OpenWLM
+<p align="center">
+  <b>English</b> • <a href="CHANGELOG.fr.md">Français</a>
+</p>
 
-Toutes les modifications notables apportées au projet sont documentées dans ce fichier.
-Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lang/fr/).
+# Changelog - OpenWLM
+
+All notable changes to this project are documented in this file.
+This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
 ## [1.0.0] - 2026-10-02
 
-Cette version majeure consolide la réécriture moderne de Windows Live Messenger 2009 (Wave 3 / Aero) avec un durcissement de sécurité de niveau production, un contact d'assistance de test intégré ("OpenWLM"), et une couverture de tests de non-régression automatisée.
+This major release consolidates the modern recreation of Windows Live Messenger 2009 (Wave 3 / Aero) with production-grade security hardening, a built-in test assistant contact ("OpenWLM"), and authoritative automated regression testing.
 
-### 🚀 Fonctionnalités (Features)
+### 🚀 Features
 
-- **Contact système & Assistant de test intégré ("OpenWLM")** :
-  - Contact système virtuel dédié (ID `-1`) permettant aux nouveaux utilisateurs de tester immédiatement l'interface sans nécessiter de second compte.
-  - État vide central soigné avec bouton interactif *"Démarrer une conversation de test"*.
-  - Section *"Bot (1)"* discrète et repliable dans la liste de contacts, badge sobre `BOT`.
-  - Commandes de test intégrées : Aide (`aide`), Écho (`echo`), Émoticônes (`emoticones`), Sons (`sons`), Wizz (`wizz`), Morpion solo (`morpion`).
-  - Isolation 100% côté client : zéro trafic réseau parasite, zéro écriture en base de données, zéro conflit avec les vrais contacts.
-- **Émoticônes personnalisées chiffrées de bout en bout (E2EE)** :
-  - Gestion des raccourcis personnalisés avec chiffrement Zero-Knowledge (AES-256-GCM).
-  - Support des images statiques (PNG, WebP, JPEG) et animées (GIF).
-  - Découpage automatique des tailles d'affichage (inline 19px et standard 50px).
-- **Activités & Jeux multijoueurs intégrés** :
-  - Morpion MSN classique (Tic-Tac-Toe) temps réel.
-  - Jeu de dames (Checkers) temps réel avec validation autoritaire.
-  - Réduction de fenêtre de jeu (dock banner) sans interrompre la discussion.
-- **Transfert de fichiers chiffré E2EE** :
-  - Partage de fichiers volumineux chiffrés avec expiration automatique (4 heures).
-  - Aperçu direct des images avec déchiffrement à la volée et zoom lightbox.
-- **Expérience MSN / Windows Live Messenger authentique** :
-  - Sons d'origine (connexion, message, wizz, appel, nudge).
-  - Clins d'œil animés (Winks), Wizz avec secousse d'écran.
-  - Surnom, message personnel (PSM), sélecteur d'avatars et de scènes rétro.
-
----
-
-### 🛡️ Sécurité (Security Hardening)
-
-#### Priorité 1 — Authentification forte & Contrôle des accès
-- **Secret JWT robuste** :
-  - Élimination de tout secret statique par défaut.
-  - Génération automatique d'une clé cryptographique de 256 bits (`.jwt_secret`) avec permissions restrictives (`0600`) et exclusion Git.
-- **Helper d'autorisation centralisé `canInteract(senderId, targetId)`** :
-  - Contrôle systématique du lien de contact mutuel et de l'absence de blocage.
-  - Appliqué avant toute émission de message, Wizz, Clin d'œil, appel WebRTC, invitation de jeu ou transfert de fichier.
-- **Prévention de l'usurpation d'identité (Anti-Spoofing)** :
-  - Rejet immédiat si `socket.user.id !== senderId`.
-  - Recalcul obligatoire du pseudonyme (`senderNickname`) depuis la base de données SQL (aucune confiance accordée au client).
-- **Mode Privé (Off-The-Record) autoritaire** :
-  - Forçage côté serveur de la non-persistance si l'un des contacts a activé le mode privé global (`global_private = 1`), ignorant tout contournement client.
-
-#### Priorité 2 — Isolation des données & Révocation
-- **Sécurisation des transferts de fichiers (`/api/files/upload`)** :
-  - Contrôle `canInteract` obligatoire avant acceptation du fichier.
-  - Quota de stockage strict de **1 Go** par compte utilisateur avec purge automatique.
-  - Rate limiting dédié aux téléversements : maximum 5 uploads par minute par IP (HTTP 429).
-  - Jetons d'accès cryptographiques de 24 octets hexadécimaux avec expiration de 4 heures.
-- **Révocation instantanée des sessions JWT (`token_version`)** :
-  - Colonne `token_version` en base de données, vérifiée dans le middleware Express et WebSocket.
-  - Révocation automatique et immédiate lors du changement de mot de passe.
-  - Endpoint dédié `POST /api/logout` et événement `manual_disconnect` incrémentant la version côté serveur.
-- **Validation stricte des invitations de jeux (`game_accept`)** :
-  - Obligation d'une invitation préalable active stockée en mémoire avec expiration TTL de 60 secondes.
-  - Consommation unique de l'invitation à l'acceptation (anti-forçage de partie).
-- **Protection du cache des émoticônes (`CustomEmoticonsDB`)** :
-  - Méthode `clearAll()` purgeant l'IndexedDB locale (clés AES et blobs) et révoquant les URLs mémoire lors de la déconnexion.
-
-#### Priorité 3 — Défense en profondeur
-- **Neutralisation des attaques temporelles (Anti-Timing Attacks)** :
-  - Utilisation de `crypto.timingSafeEqual` sur les buffers binaires PBKDF2 lors de l'authentification (`/api/login`) et du changement de mot de passe (`/api/user/change-password`).
-- **Prévention des fuites mémoire (Anti-DoS RAM)** :
-  - Nettoyage périodique automatique toutes les 5 minutes des structures mémoire (`captchas`, `rateLimitStorage`, `uploadRateLimitStorage`).
+- **System Assistant & Test Contact ("OpenWLM")**:
+  - Dedicated virtual system contact (ID `-1`) enabling new users to immediately test the application without requiring a second account.
+  - Polished central empty-state screen with interactive *"Start a test conversation"* button.
+  - Discreet, collapsible *"Bot (1)"* section in the contact roster with a clean `BOT` badge.
+  - Built-in test commands: Help (`aide`), Echo (`echo`), Emoticons (`emoticones`), Sounds (`sons`), Wizz/Nudge (`wizz`), Solo Tic-Tac-Toe (`morpion`).
+  - 100% client-side isolation: zero network traffic, zero database writes, zero interference with real contacts.
+- **End-to-End Encrypted (E2EE) Custom Emoticons**:
+  - Custom shortcut management with Zero-Knowledge encryption (AES-256-GCM).
+  - Support for static (PNG, WebP, JPEG) and animated (GIF) image formats.
+  - Automatic dual rendering sizes (inline 19px and standard 50px).
+- **Multiplayer Activities & Mini-Games**:
+  - Classic MSN Tic-Tac-Toe (Morpion) in real-time.
+  - Real-time Checkers (Jeu de dames) with authoritative server validation.
+  - Collapsible dock banner allowing users to minimize active games without leaving the chat.
+- **E2EE File Transfer**:
+  - Encrypted peer file sharing with automatic 4-hour time-to-live (TTL).
+  - Instant on-the-fly image decryption with lightbox preview.
+- **Authentic MSN / Windows Live Messenger Experience**:
+  - Original sound effects (logon, message, wizz, call, nudge).
+  - Full-screen animated winks, screen-shaking wizz effects.
+  - Display nicknames, personal status messages (PSM), retro avatars, and scenes.
 
 ---
 
-### 🔧 Corrections (Bug Fixes)
+### 🛡️ Security Hardening
 
-- Correction de la mise en cache agressive des raccourcis d'émoticônes personnalisées supprimées.
-- Correction de l'attribution des messages de transfert de fichiers (*"[Contact] vous a envoyé un fichier"* au lieu de *"[Contact] dit"*).
-- Correction du déclenchement du son de connexion lors de l'arrivée d'un contact en ligne.
-- Harmonisation du Content Security Policy (CSP) en production et derrière Cloudflare Tunnel.
+#### Priority 1 — Strong Authentication & Access Control
+- **Cryptographic JWT Secret**:
+  - Deprecated static fallback secrets.
+  - Automatic generation of a high-entropy 256-bit secret stored in `.jwt_secret` with strict file permissions (`0600`) and Git exclusion.
+- **Centralized Authorization Helper `canInteract(senderId, targetId)`**:
+  - Authoritative validation of mutual contact status and absence of blocks.
+  - Enforced across all messages, wizz, winks, WebRTC calls, game invites, and file transfers.
+- **Anti-Identity Spoofing**:
+  - Immediate rejection when `socket.user.id !== senderId`.
+  - Display nicknames (`senderNickname`) systematically recomputed from the SQL database (never trusting client-supplied strings).
+- **Authoritative Off-The-Record (Private Mode)**:
+  - Server-enforced non-persistence: if either user has enabled global private mode (`global_private = 1`), messages are never persisted to SQLite, overriding client parameters.
+
+#### Priority 2 — Data Isolation & Session Revocation
+- **File Transfer Hardening (`/api/files/upload`)**:
+  - Compulsory `canInteract` check prior to accepting file uploads.
+  - Strict **1 GB** storage quota per account with automatic deletion on threshold exceedance.
+  - Dedicated rate limiter on uploads: maximum 5 uploads per minute per IP (HTTP 429).
+  - 24-byte hexadecimal cryptographic access tokens with 4-hour expiration.
+- **Instant JWT Session Revocation (`token_version`)**:
+  - Database-backed `token_version` validated on every Express request and WebSocket handshake.
+  - Instant invalidation upon password change.
+  - Dedicated `POST /api/logout` endpoint and `manual_disconnect` event incrementing server-side version.
+- **Strict Game Invite Validation (`game_accept`)**:
+  - Prior active invitation required in memory with a 60-second TTL.
+  - Single-use consumption upon acceptance to prevent unauthorized game session forging.
+- **Custom Emoticon Cache Isolation (`CustomEmoticonsDB`)**:
+  - Added `clearAll()` method purging local IndexedDB stores (AES keys and blobs) and revoking memory blob URLs upon logout.
+
+#### Priority 3 — Defense in Depth
+- **Anti-Timing Attack Protection**:
+  - Constant-time password hash comparison using `crypto.timingSafeEqual` on PBKDF2 binary buffers during authentication (`/api/login`) and password updates (`/api/user/change-password`).
+- **Memory Leak & RAM DoS Prevention**:
+  - Automated garbage collection every 5 minutes purging expired captchas and inactive rate-limit tracking entries.
 
 ---
 
-### 🧪 Infrastructure & Tests
+### 🔧 Bug Fixes
 
-- **Suite de tests d'enforcement (`tests/audit_security_enforcement.js`)** :
-  - Vérification automatisée sans interface utilisateur testant le contournement direct des restrictions (messages, invitations, fichiers, jeux, statuts, profils, etc.).
-  - Commande intégrée `npm run test:security` / `npm test`.
-- **Script de peuplement de démonstration (`scripts/seed-demo.js`)** :
-  - Commande `npm run db:seed` créant un environnement de test local propre (Alice & Bob) sans aucune donnée personnelle.
-- **Routine de sauvegarde à froid** :
-  - Procédure standardisée de snapshot `tar.gz` avant toute opération sensible.
+- Resolved browser caching issues with deleted custom emoticon shortcuts.
+- Fixed file transfer message attribution displaying *"[Contact] sent you a file"* instead of *"[Contact] says"*.
+- Fixed missing online notification sound trigger when a contact connects.
+- Harmonized Content Security Policy (CSP) headers between direct production and Cloudflare Tunnel configurations.
+
+---
+
+### 🧪 Infrastructure & Testing
+
+- **Authoritative Enforcement Test Suite (`tests/audit_security_enforcement.js`)**:
+  - Automated headless test suite verifying that all frontend UI restrictions are strictly enforced server-side.
+  - Integrated command: `npm test` / `npm run test:security`.
+- **Demo Database Seeder (`scripts/seed-demo.js`)**:
+  - Command `npm run db:seed` creating clean, fictitious local demonstration accounts (Alice & Bob) with zero personal data.
+- **Safe Rollback Procedures**:
+  - Standardized cold archive snapshot guidelines prior to sensitive migrations.

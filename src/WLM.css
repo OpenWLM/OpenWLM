@@ -2374,7 +2374,230 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   border-radius: 2px;
 }
 
+/* --- ÉMOTICÔNES PERSONNALISÉES (E2EE) --- */
+.custom-emoticon {
+  max-width: 48px;
+  max-height: 32px;
+  vertical-align: middle;
+  object-fit: contain;
+  margin: 0 2px;
+}
 
+.wlm-custom-emo-modal {
+  width: 520px;
+  max-width: 95vw;
+  background: #f7fafc;
+  border: 1px solid #7098c4;
+  border-radius: 7px;
+  box-shadow: 0 8px 30px rgba(0, 35, 70, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  animation: wlmModalPop 0.15s ease-out;
+}
 
+.wlm-custom-emo-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #ffffff;
+  max-height: 72vh;
+  overflow-y: auto;
+}
 
+.wlm-custom-emo-add-section {
+  background: #f0f6fc;
+  border: 1px solid #c2d8eb;
+  border-radius: 6px;
+  padding: 12px;
+}
 
+.wlm-custom-emo-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #004b8d;
+  margin-bottom: 8px;
+}
+
+.wlm-custom-emo-form-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.wlm-custom-emo-preview-box {
+  width: 74px;
+  height: 74px;
+  border: 1px dashed #99b4d1;
+  background: #ffffff;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.wlm-custom-emo-thumb-preview {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.wlm-custom-emo-no-preview {
+  font-size: 11px;
+  color: #8fa5ba;
+  font-style: italic;
+}
+
+.wlm-custom-emo-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+.wlm-custom-emo-hints {
+  font-size: 10px;
+  color: #557088;
+}
+
+.wlm-custom-emo-meta-badge {
+  font-size: 10px;
+  color: #0f5132;
+  background: #d1e7dd;
+  padding: 2px 6px;
+  border-radius: 3px;
+  width: fit-content;
+  font-weight: 500;
+}
+
+.wlm-custom-emo-error {
+  color: #842029;
+  background: #f8d7da;
+  border: 1px solid #f5c2c7;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.wlm-custom-emo-success {
+  color: #0f5132;
+  background: #d1e7dd;
+  border: 1px solid #badbcc;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.wlm-custom-emo-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wlm-custom-emo-empty {
+  font-size: 11px;
+  color: #666;
+  text-align: center;
+  padding: 20px;
+  background: #fcfdfe;
+  border: 1px dashed #cddde9;
+  border-radius: 4px;
+  line-height: 1.5;
+}
+
+.wlm-custom-emo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #fbfdff;
+  border: 1px solid #cddde9;
+  border-radius: 4px;
+}
+
+.wlm-custom-emo-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px;
+  border: 1px solid #e0eaf2;
+  border-radius: 4px;
+  position: relative;
+  cursor: pointer;
+  background: #ffffff;
+  transition: all 0.15s ease;
+}
+
+.wlm-custom-emo-item:hover {
+  background: #eef6ff;
+  border-color: #7098c4;
+  box-shadow: 0 2px 5px rgba(0, 60, 120, 0.1);
+}
+
+.wlm-custom-emo-thumb-container {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.wlm-custom-emo-thumb {
+  max-width: 40px;
+  max-height: 40px;
+  object-fit: contain;
+}
+
+.wlm-custom-emo-gif-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: #ff8c00;
+  color: #fff;
+  font-size: 8px;
+  font-weight: bold;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.wlm-custom-emo-shortcut {
+  font-size: 10px;
+  color: #2b445a;
+  max-width: 68px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 4px;
+  font-family: monospace;
+}
+
+.wlm-custom-emo-del-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: rgba(220, 53, 69, 0.85);
+  color: #ffffff;
+  font-size: 9px;
+  line-height: 1;
+  border-radius: 50%;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.wlm-custom-emo-item:hover .wlm-custom-emo-del-btn {
+  display: flex;
+}

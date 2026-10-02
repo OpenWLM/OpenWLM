@@ -13,18 +13,30 @@ import {
   encryptPrivateKeyVault, 
   decryptPrivateKeyVault,
   deriveZeroKnowledgeKeys,
-  encryptFileBinary 
+  encryptFileBinary,
+  decryptCustomEmoticon
 } from './utils/Security';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
 import FileTransferCard, { type FileDataPayload, isImageFile } from './components/FileTransferCard';
 import MorpionGame from './components/MorpionGame';
 import CheckersGame from './components/CheckersGame';
+import CustomEmoticonsModal from './components/CustomEmoticonsModal';
+import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 
 /**
  * INTERFACES
  */
+
+export interface CustomEmoticonPayload {
+  assetId: string;
+  key: string;       // Clé AES-GCM 256 en base64
+  mime: string;      // image/png, image/gif, etc.
+  width?: number;
+  height?: number;
+  animated?: number | boolean;
+}
 
 interface User {
   id: number;
@@ -70,7 +82,9 @@ interface Message {
   _isPending?: boolean;
   clientMsgId?: string;
   fileData?: FileDataPayload;
+  customEmoticons?: Record<string, CustomEmoticonPayload>;
 }
+
 
 const formatMessageTime = (rawTimestamp: string | number | undefined, fallbackTime?: string): string => {
   if (!rawTimestamp) return fallbackTime || '';
@@ -393,6 +407,16 @@ const App: React.FC = () => {
   const [showFontModal, setShowFontModal] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [showColorDropdown, setShowColorDropdown] = useState(false);
+  const [showCustomEmoticonsModal, setShowCustomEmoticonsModal] = useState(false);
+  const [myCustomEmoticons, setMyCustomEmoticons] = useState<MyEmoticonRecord[]>([]);
+  const [customEmoticonsMap, setCustomEmoticonsMap] = useState<Record<string, {
+    assetId: string;
+    url: string;
+    shortcut: string;
+    isAnimated?: number;
+    width?: number;
+    height?: number;
+  }>>({});
 
   // --- ÉTAT DU COLLAGE DE CAPTURE D'ÉCRAN ---
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
@@ -752,6 +776,175 @@ const App: React.FC = () => {
   }, [activeChatId]);
 
   /**
+   * ENREGISTREMENT ET DÉCHIFFREMENT ASYNCHRONE DES ÉMOTICÔNES PERSONNALISÉES REÇUES
+   */
+  const registerReceivedCustomEmoticons = useCallback(async (
+    receivedMap: Record<string, CustomEmoticonPayload>
+  ) => {
+    if (!receivedMap || typeof receivedMap !== 'object') return;
+    const token = user?.token || localStorage.getItem('token');
+
+    for (const [shortcut, info] of Object.entries(receivedMap)) {
+      if (!info || !info.assetId || !info.key) continue;
+
+      // 1. Déjà en mémoire ?
+      const existingUrl = CustomEmoticonsDB.getMemoryUrl(info.assetId);
+      if (existingUrl) {
+        setCustomEmoticonsMap(prev => {
+          if (prev[shortcut]?.url === existingUrl) return prev;
+          return {
+            ...prev,
+            [shortcut]: {
+              assetId: info.assetId,
+              url: existingUrl,
+              shortcut,
+              isAnimated: info.animated ? 1 : 0,
+              width: info.width,
+              height: info.height
+            }
+          };
+        });
+        continue;
+      }
+
+      // 2. Déjà dans le cache IndexedDB ?
+      const cachedBlob = await CustomEmoticonsDB.getCachedAsset(info.assetId);
+      if (cachedBlob) {
+        const url = CustomEmoticonsDB.getOrCreateObjectUrl(info.assetId, cachedBlob);
+        setCustomEmoticonsMap(prev => ({
+          ...prev,
+          [shortcut]: {
+            assetId: info.assetId,
+            url,
+            shortcut,
+            isAnimated: info.animated ? 1 : 0,
+            width: info.width,
+            height: info.height
+          }
+        }));
+        continue;
+      }
+
+      // 3. Téléchargement de l'asset chiffré depuis le serveur (Zero-Knowledge) et déchiffrement local
+      try {
+        const res = await axios.get(`/api/emoticons/custom/asset/${info.assetId}`, {
+          responseType: 'arraybuffer',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined
+        });
+
+        if (res.data) {
+          const decryptedBlob = await decryptCustomEmoticon(res.data, info.key, info.mime || 'image/png');
+          if (decryptedBlob) {
+            await CustomEmoticonsDB.saveCachedAsset(info.assetId, decryptedBlob, info.mime || 'image/png', info.key);
+            const url = CustomEmoticonsDB.getOrCreateObjectUrl(info.assetId, decryptedBlob);
+            setCustomEmoticonsMap(prev => ({
+              ...prev,
+              [shortcut]: {
+                assetId: info.assetId,
+                url,
+                shortcut,
+                isAnimated: info.animated ? 1 : 0,
+                width: info.width,
+                height: info.height
+              }
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn("Échec téléchargement asset émoticône personnalisée:", info.assetId, err);
+      }
+    }
+  }, [user?.token]);
+
+  /**
+   * CHARGEMENT ET SYNCHRONISATION DES ÉMOTICÔNES DU PROPRIÉTAIRE
+   */
+  const loadMyCustomEmoticons = useCallback(async () => {
+    if (!user) return;
+    try {
+      await CustomEmoticonsDB.init();
+      const localRecords = await CustomEmoticonsDB.getMyEmoticons();
+      
+      let serverRecords: any[] = [];
+      const token = user.token || localStorage.getItem('token');
+      if (token) {
+        try {
+          const res = await axios.get('/api/emoticons/custom/my', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.data && res.data.success && Array.isArray(res.data.emoticons)) {
+            serverRecords = res.data.emoticons;
+          }
+        } catch (err) {
+          console.warn("Erreur chargement serveur émoticônes custom:", err);
+        }
+      }
+
+      const merged: MyEmoticonRecord[] = [];
+      const newMap: Record<string, { assetId: string; url: string; shortcut: string; isAnimated?: number; width?: number; height?: number }> = {};
+
+      const listToProcess = serverRecords.length > 0 ? serverRecords : localRecords;
+      for (const item of listToProcess) {
+        const local = localRecords.find(l => l.id === item.id);
+        const keyBase64 = local?.keyBase64 || (item as any).keyBase64 || '';
+        const record: MyEmoticonRecord = {
+          id: item.id,
+          shortcut: item.shortcut,
+          keyBase64,
+          mimeType: item.mime_type || item.mimeType || 'image/png',
+          width: item.width || 0,
+          height: item.height || 0,
+          isAnimated: item.is_animated !== undefined ? item.is_animated : (item.isAnimated || 0),
+          createdAt: item.created_at || item.createdAt || Date.now()
+        };
+        merged.push(record);
+
+        let cachedBlob = await CustomEmoticonsDB.getCachedAsset(item.id);
+        if (!cachedBlob && keyBase64 && token) {
+          try {
+            const assetRes = await axios.get(`/api/emoticons/custom/asset/${item.id}`, {
+              responseType: 'arraybuffer',
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (assetRes.data) {
+              const decrypted = await decryptCustomEmoticon(assetRes.data, keyBase64, record.mimeType);
+              if (decrypted) {
+                await CustomEmoticonsDB.saveCachedAsset(item.id, decrypted, record.mimeType, keyBase64);
+                cachedBlob = decrypted;
+              }
+            }
+          } catch (e) {
+            // Ignorer silencieusement si non disponible
+          }
+        }
+
+        if (cachedBlob) {
+          const url = CustomEmoticonsDB.getOrCreateObjectUrl(item.id, cachedBlob);
+          newMap[record.shortcut] = {
+            assetId: record.id,
+            url,
+            shortcut: record.shortcut,
+            isAnimated: record.isAnimated,
+            width: record.width,
+            height: record.height
+          };
+        }
+      }
+
+      setMyCustomEmoticons(merged);
+      setCustomEmoticonsMap(prev => ({ ...prev, ...newMap }));
+    } catch (err) {
+      console.error("Erreur loadMyCustomEmoticons:", err);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user?.id) {
+      loadMyCustomEmoticons();
+    }
+  }, [user?.id, loadMyCustomEmoticons]);
+
+  /**
    * DÉCHIFFREMENT D'UN TABLEAU DE MESSAGES
    */
   const decryptMessageArray = useCallback(async (msgs: any[], privateKey: any) => {
@@ -778,6 +971,9 @@ const App: React.FC = () => {
              if (payload.sender) payloadSender = payload.sender;
              if (payload.audio) decryptedAudio = payload.audio;
              if (payload.style) decryptedStyle = payload.style;
+             if (payload.customEmoticons) {
+               registerReceivedCustomEmoticons(payload.customEmoticons);
+             }
            } else {
              decryptedText = "[!] Message illisible (E2E)";
            }
@@ -933,6 +1129,9 @@ const App: React.FC = () => {
                    decryptedData.text = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
                  }
                  if (payload.sender) payloadSender = payload.sender;
+                 if (payload.customEmoticons) {
+                   registerReceivedCustomEmoticons(payload.customEmoticons);
+                 }
               } else {
                  decryptedData = { ...data, text: "[!] Message chiffré illisible", audio: null };
               }
@@ -1206,12 +1405,31 @@ const App: React.FC = () => {
     }
 
     try {
-      const unencryptedPayload = { 
+      // Détecter les émoticônes personnalisées utilisées dans le message (Moindre privilège V1)
+      const customEmoticonsToSend: Record<string, CustomEmoticonPayload> = {};
+      for (const emo of myCustomEmoticons) {
+        if (emo.keyBase64 && inputText.includes(emo.shortcut)) {
+          customEmoticonsToSend[emo.shortcut] = {
+            assetId: emo.id,
+            key: emo.keyBase64,
+            mime: emo.mimeType,
+            width: emo.width,
+            height: emo.height,
+            animated: emo.isAnimated
+          };
+        }
+      }
+
+      const unencryptedPayload: any = { 
         text: sanitize(inputText), 
         sender: myNickname, 
         style: { ...fontSettings }, 
         type: 'text' 
       };
+
+      if (Object.keys(customEmoticonsToSend).length > 0) {
+        unencryptedPayload.customEmoticons = customEmoticonsToSend;
+      }
       
       // Chiffrement du message
       const e2eData = await encryptMessagePayload(unencryptedPayload, contactPubKey, myKeys.publicKeyJwk);
@@ -1242,7 +1460,8 @@ const App: React.FC = () => {
         sender: myNickname || user?.nickname || 'Moi', 
         time: formattedTime,
         timestamp: nowIso,
-        _isPending: true
+        _isPending: true,
+        customEmoticons: Object.keys(customEmoticonsToSend).length > 0 ? customEmoticonsToSend : undefined
       };
 
       setMessages(prev => ({ 
@@ -1524,6 +1743,7 @@ const App: React.FC = () => {
       showBgModal ||
       showWinksModal ||
       showAllEmoticonsModal ||
+      showCustomEmoticonsModal ||
       showFontModal ||
       showOptionsModal
     ) {
@@ -1588,6 +1808,7 @@ const App: React.FC = () => {
     showBgModal,
     showWinksModal,
     showAllEmoticonsModal,
+    showCustomEmoticonsModal,
     showFontModal,
     showOptionsModal
   ]);
@@ -2104,7 +2325,38 @@ const App: React.FC = () => {
     
     let parts: (string | React.ReactNode)[] = [text];
     
-    // On trie les raccourcis par longueur décroissante pour éviter les conflits (ex: :) avant :)) )
+    // 1. Émoticônes personnalisées (E2EE) - Triées par longueur décroissante
+    const customShortcuts = Object.keys(customEmoticonsMap).sort((a, b) => b.length - a.length);
+    customShortcuts.forEach(shortcut => {
+      const emoInfo = customEmoticonsMap[shortcut];
+      if (!emoInfo || !emoInfo.url) return; // Fallback texte brut si l'asset n'est pas encore disponible
+
+      const newParts: (string | React.ReactNode)[] = [];
+      parts.forEach(part => {
+        if (typeof part === 'string') {
+          const split = part.split(shortcut);
+          split.forEach((s, i) => {
+            if (s !== '') newParts.push(s);
+            if (i < split.length - 1) {
+              newParts.push(
+                <img 
+                  key={`custom-${shortcut}-${i}`} 
+                  src={emoInfo.url} 
+                  className="inline-emoticon custom-emoticon" 
+                  alt={shortcut} 
+                  title={shortcut} 
+                />
+              );
+            }
+          });
+        } else {
+          newParts.push(part);
+        }
+      });
+      parts = newParts;
+    });
+
+    // 2. Émoticônes de base (Standard) - Triées par longueur décroissante
     const sortedShortcuts = Object.keys(EMOTICON_MAP).sort((a, b) => b.length - a.length);
     
     sortedShortcuts.forEach(shortcut => {
@@ -2117,7 +2369,7 @@ const App: React.FC = () => {
             if (i < split.length - 1) {
               newParts.push(
                 <img 
-                  key={`${shortcut}-${i}`} 
+                  key={`std-${shortcut}-${i}`} 
                   src={`/assets/emoticons/${EMOTICON_MAP[shortcut]}`} 
                   className="inline-emoticon" 
                   alt={shortcut} 
@@ -2640,11 +2892,53 @@ const App: React.FC = () => {
                         {showEmoticonMenu && (
                           <div className="emoticon-popup">
                             <div className="emoticon-popup-header">
-                              <span>Vos émoticônes</span>
-                              <span className="tout-afficher" onClick={() => { setShowAllEmoticonsModal(true); setShowEmoticonMenu(false); }}>Tout afficher...</span>
+                              <span>Émoticônes</span>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <span className="tout-afficher" onClick={() => { setShowCustomEmoticonsModal(true); setShowEmoticonMenu(false); }} title="Gérer vos émoticônes personnalisées">
+                                  + Mes émoticônes
+                                </span>
+                                <span className="tout-afficher" onClick={() => { setShowAllEmoticonsModal(true); setShowEmoticonMenu(false); }}>
+                                  Tout afficher...
+                                </span>
+                              </div>
                             </div>
+
+                            {/* Section: Mes émoticônes (si l'utilisateur en possède) */}
+                            {myCustomEmoticons.length > 0 && (
+                              <div className="emoticon-section" style={{ maxHeight: '110px', overflowY: 'auto' }}>
+                                <div className="emoticon-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>Mes émoticônes ({myCustomEmoticons.length})</span>
+                                  <span 
+                                    style={{ fontSize: '10px', color: '#004b8d', cursor: 'pointer', textDecoration: 'underline' }}
+                                    onClick={() => { setShowCustomEmoticonsModal(true); setShowEmoticonMenu(false); }}
+                                  >
+                                    Gérer
+                                  </span>
+                                </div>
+                                <div className="emoticon-grid">
+                                  {myCustomEmoticons.slice(0, 15).map((emo) => {
+                                    const emoUrl = customEmoticonsMap[emo.shortcut]?.url;
+                                    return (
+                                      <div 
+                                        key={emo.id} 
+                                        className="emoticon-item" 
+                                        title={emo.shortcut} 
+                                        onClick={() => { setInputText(prev => prev + emo.shortcut); setShowEmoticonMenu(false); }}
+                                      >
+                                        {emoUrl ? (
+                                          <img src={emoUrl} alt={emo.shortcut} className="custom-emoticon" />
+                                        ) : (
+                                          <span style={{ fontSize: '9px' }}>...</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
                             <div className="emoticon-section">
-                              <div className="emoticon-section-title">Émoticônes affichées</div>
+                              <div className="emoticon-section-title">Émoticônes standard</div>
                               <div className="emoticon-grid">
                                 {EMOTICONS_LIST.slice(0, 15).map((emo, idx) => (
                                   <div key={idx} className="emoticon-item" title={emo.shortcut} onClick={() => { setInputText(prev => prev + emo.shortcut); setShowEmoticonMenu(false); }}>
@@ -2822,20 +3116,91 @@ const App: React.FC = () => {
       {/* Modale: Toutes les émoticônes */}
       {showAllEmoticonsModal && (
         <div className="modal-bg" onClick={() => setShowAllEmoticonsModal(false)}>
-          <div className="modal-box emoticons-all-modal" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
-            <div className="win-modal-header"><span>Toutes les émoticônes</span><button className="win-close-btn" onClick={() => setShowAllEmoticonsModal(false)}>✕</button></div>
-            <div className="emoticon-all-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '10px', maxHeight: '300px', overflowY: 'auto', padding: '10px' }}>
-              {EMOTICONS_LIST.map((emo, idx) => (
-                <div key={idx} className="emoticon-item-large" title={emo.shortcut} onClick={() => { setInputText(prev => prev + emo.shortcut); setShowAllEmoticonsModal(false); }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-                  <img src={`/assets/emoticons/${emo.file}`} alt={emo.shortcut} style={{ width: '19px', height: '19px' }} />
-                  <span style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>{emo.shortcut}</span>
-                </div>
-              ))}
+          <div className="modal-box emoticons-all-modal" onClick={e => e.stopPropagation()} style={{ width: '440px' }}>
+            <div className="win-modal-header">
+              <span>Toutes les émoticônes</span>
+              <button className="win-close-btn" onClick={() => setShowAllEmoticonsModal(false)}>✕</button>
             </div>
-            <div style={{ marginTop: '20px', textAlign: 'right' }}><button className="win-btn" onClick={() => setShowAllEmoticonsModal(false)}>Fermer</button></div>
+            
+            <div style={{ padding: '12px 16px', maxHeight: '420px', overflowY: 'auto' }}>
+              {/* Section Mes émoticônes */}
+              <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #d0e0ee' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#004b8d' }}>
+                    Mes émoticônes ({myCustomEmoticons.length})
+                  </span>
+                  <button 
+                    type="button" 
+                    className="win-btn" 
+                    style={{ fontSize: '10px', padding: '2px 8px' }}
+                    onClick={() => { setShowCustomEmoticonsModal(true); setShowAllEmoticonsModal(false); }}
+                  >
+                    + Ajouter / Gérer...
+                  </button>
+                </div>
+                {myCustomEmoticons.length === 0 ? (
+                  <div style={{ fontSize: '11px', color: '#888', fontStyle: 'italic', padding: '6px 0' }}>
+                    Aucune émoticône personnalisée pour le moment.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
+                    {myCustomEmoticons.map((emo) => {
+                      const emoUrl = customEmoticonsMap[emo.shortcut]?.url;
+                      return (
+                        <div 
+                          key={emo.id} 
+                          className="emoticon-item-large" 
+                          title={emo.shortcut} 
+                          onClick={() => { setInputText(prev => prev + emo.shortcut); setShowAllEmoticonsModal(false); }}
+                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px', border: '1px solid #e0eaf2', borderRadius: '4px' }}
+                        >
+                          {emoUrl ? (
+                            <img src={emoUrl} alt={emo.shortcut} style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+                          ) : (
+                            <span style={{ fontSize: '10px' }}>...</span>
+                          )}
+                          <span style={{ fontSize: '9px', color: '#444', marginTop: '2px', maxWidth: '50px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emo.shortcut}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Section Émoticônes standard */}
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#004b8d', marginBottom: '8px' }}>
+                  Émoticônes standard
+                </div>
+                <div className="emoticon-all-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '10px' }}>
+                  {EMOTICONS_LIST.map((emo, idx) => (
+                    <div key={idx} className="emoticon-item-large" title={emo.shortcut} onClick={() => { setInputText(prev => prev + emo.shortcut); setShowAllEmoticonsModal(false); }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+                      <img src={`/assets/emoticons/${emo.file}`} alt={emo.shortcut} style={{ width: '19px', height: '19px' }} />
+                      <span style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>{emo.shortcut}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '10px', padding: '10px 14px', borderTop: '1px solid #ddd', textAlign: 'right', background: '#f5f5f5' }}>
+              <button className="win-btn" onClick={() => setShowAllEmoticonsModal(false)}>Fermer</button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Modale: Gestionnaire des émoticônes personnalisées (E2EE) */}
+      <CustomEmoticonsModal 
+        isOpen={showCustomEmoticonsModal}
+        onClose={() => setShowCustomEmoticonsModal(false)}
+        userToken={user?.token}
+        onEmoticonsChange={loadMyCustomEmoticons}
+        onSelectEmoticon={(shortcut) => {
+          setInputText(prev => prev + shortcut);
+          setShowCustomEmoticonsModal(false);
+        }}
+      />
 
       {/* Modale: Choix du décor (Scène) */}
       {showSceneModal && (

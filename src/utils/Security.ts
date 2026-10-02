@@ -395,3 +395,102 @@ export const decryptFileBinary = async (
   }
 };
 
+/**
+ * Validation de la signature binaire (magic bytes) des images
+ */
+export const validateImageSignature = (buffer: ArrayBuffer): { valid: boolean; detectedMime?: string } => {
+  if (buffer.byteLength < 12) return { valid: false };
+  const bytes = new Uint8Array(buffer.slice(0, 12));
+  // PNG: 89 50 4E 47
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+    return { valid: true, detectedMime: 'image/png' };
+  }
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+    return { valid: true, detectedMime: 'image/jpeg' };
+  }
+  // GIF: 47 49 46 38 (GIF87a / GIF89a)
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+    return { valid: true, detectedMime: 'image/gif' };
+  }
+  // WEBP: 52 49 46 46 (RIFF) ... 57 45 42 50 (WEBP)
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+    return { valid: true, detectedMime: 'image/webp' };
+  }
+  return { valid: false };
+};
+
+/**
+ * Chiffre un asset d'émoticône personnalisée avec AES-GCM 256 bits.
+ * Chaque appel génère un IV unique aléatoire de 12 octets préfixé au blob.
+ * Format du blob : [12 octets IV] + [Données chiffrées + Tag d'authentification GCM]
+ */
+export const encryptCustomEmoticon = async (
+  imageBuffer: ArrayBuffer
+): Promise<{ encryptedBlob: Blob; keyBase64: string }> => {
+  const key = await window.crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+  const ciphertext = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    imageBuffer
+  );
+
+  const combined = new Uint8Array(iv.byteLength + ciphertext.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(ciphertext), iv.byteLength);
+
+  const encryptedBlob = new Blob([combined], { type: 'application/octet-stream' });
+  const rawKey = await window.crypto.subtle.exportKey('raw', key);
+  const keyBase64 = arrayBufferToBase64(rawKey);
+
+  return { encryptedBlob, keyBase64 };
+};
+
+/**
+ * Déchiffre un asset d'émoticône personnalisée avec sa clé AES-256 (en base64).
+ * Extrait les 12 premiers octets (IV) et déchiffre le reste.
+ */
+export const decryptCustomEmoticon = async (
+  encryptedBuffer: ArrayBuffer,
+  keyBase64: string,
+  mimeType: string = 'image/png'
+): Promise<Blob | null> => {
+  try {
+    if (encryptedBuffer.byteLength <= 12) {
+      throw new Error("Blob chiffré invalide ou incomplet.");
+    }
+
+    const iv = new Uint8Array(encryptedBuffer.slice(0, 12));
+    const ciphertext = encryptedBuffer.slice(12);
+
+    const rawKey = base64ToArrayBuffer(keyBase64);
+    const key = await window.crypto.subtle.importKey(
+      'raw',
+      rawKey,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      ciphertext
+    );
+
+    return new Blob([decrypted], { type: mimeType });
+  } catch (err) {
+    console.error("Échec du déchiffrement de l'émoticône personnalisée:", err);
+    return null;
+  }
+};
+
+

@@ -26,6 +26,7 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgi
 - **Winks & Wizz** : Clins d'œil animés et Wizz secouant la fenêtre.
 - **Activités & Jeux 1v1** : Morpion (Tic-Tac-Toe) et Jeu de dames (Checkers) en temps réel avec validation autoritaire anti-triche côté serveur.
 - **Transfert de fichiers chiffré E2EE** : Partage temporaire (expiration 4h) avec déchiffrement direct et prévisualisation d'images.
+- **Internationalisation Complète (FR / EN)** : Support bilingue natif Français et Anglais avec bascule réactive instantanée, détection automatique du navigateur et zéro régression visuelle sur le rendu Aero.
 
 ---
 

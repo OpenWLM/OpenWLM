@@ -36,6 +36,11 @@ This major release consolidates the modern recreation of Windows Live Messenger 
   - Original sound effects (logon, message, wizz, call, nudge).
   - Full-screen animated winks, screen-shaking wizz effects.
   - Display nicknames, personal status messages (PSM), retro avatars, and scenes.
+- **Full Bilingual Internationalization (EN / FR)**:
+  - Reactive `I18nProvider` with seamless, live switching between English and French.
+  - Comprehensive localization of authentication, contact roster, chat toolbar, top action bar, message headers, and Windows Live classic options.
+  - Localized interactive mini-games (Checkers, Tic-Tac-Toe), voice clip player, WebRTC audio/video calls, and custom emoticons modal.
+  - Zero visual clipping or layout degradation, strictly preserving the 2009 Windows Aero aesthetics.
 
 ---
 

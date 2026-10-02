@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { initPWA } from './pwa'
+import { I18nProvider } from './i18n'
 
 // Initialiser le Service Worker PWA et les gestionnaires d'installation
 initPWA()
@@ -15,6 +16,8 @@ if (window.location.protocol === 'http:' && window.location.hostname !== 'localh
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
   </StrictMode>,
 )

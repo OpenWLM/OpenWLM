@@ -26,6 +26,7 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 - **Winks & Nudges**: Animated full-screen winks and screen-shaking Wizz effects.
 - **1v1 Multiplayer Mini-Games**: Real-time MSN Tic-Tac-Toe (Morpion) and Checkers (Jeu de dames) with authoritative server-side anti-cheat validation and collapsible game docks.
 - **Encrypted File Transfer**: Temporary peer file sharing (4-hour TTL) with on-the-fly decryption and image lightbox previews.
+- **Full Bilingual Internationalization (EN / FR)**: Native English and French support with instant reactive switching, browser language autodetection, and zero UI overflow preserving the classic Windows Aero layout.
 
 ---
 

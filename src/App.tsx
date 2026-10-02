@@ -24,6 +24,7 @@ import CheckersGame from './components/CheckersGame';
 import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
+import { useI18n } from './i18n';
 
 /**
  * INTERFACES
@@ -286,6 +287,7 @@ const CONV_BACKGROUNDS = [
  * Lecteur de clip vocal simple avec icône play/pause et barre de progression texte.
  */
 const VoiceClipPlayer: React.FC<{ src: string }> = ({ src }) => {
+  const { t } = useI18n();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -339,10 +341,10 @@ const VoiceClipPlayer: React.FC<{ src: string }> = ({ src }) => {
   };
 
   return (
-    <div className="wlm-voice-clip-player" onClick={togglePlay} title="Cliquer pour écouter">
+    <div className="wlm-voice-clip-player" onClick={togglePlay} title={t.chat.voiceClipClickToListen}>
       <div className={`play-pause-icon ${isPlaying ? 'pause' : 'play'}`}></div>
       <div className="voice-clip-info">
-        <span className="voice-clip-text">{isPlaying ? 'Lecture...' : 'Écouter le clip vocal'}</span>
+        <span className="voice-clip-text">{isPlaying ? t.chat.voiceClipPlaying : t.chat.voiceClipPlay}</span>
         {duration > 0 && (
           <span className="voice-clip-timer">
             {formatTime(currentTime)} / {formatTime(duration)}
@@ -354,6 +356,18 @@ const VoiceClipPlayer: React.FC<{ src: string }> = ({ src }) => {
 };
 
 const App: React.FC = () => {
+  const { t, language, setLanguage } = useI18n();
+
+  const getStatusLabel = (id: string) => {
+    switch (id) {
+      case 'online': return t.status.online;
+      case 'busy': return t.status.busy;
+      case 'away': return t.status.away;
+      case 'offline': return t.status.offline;
+      default: return id;
+    }
+  };
+
   // --- ÉTAT UTILISATEUR & AUTHENTIFICATION ---
   const [user, setUser] = useState<User | null>(() => {
     try {
@@ -2759,9 +2773,9 @@ const App: React.FC = () => {
             <button 
               className="pwa-install-btn" 
               onClick={() => promptPWAInstall()}
-              title="Installer OpenWLM sur votre ordinateur ou mobile"
+              title={t.roster.installPWATooltip}
             >
-              📥 Installer
+              📥 {t.roster.installPWA}
             </button>
           )}
         </div>
@@ -2769,13 +2783,13 @@ const App: React.FC = () => {
         {/* En-tête Profil (Avatar, Nom, PSM) */}
         <div className="wlm-header-main">
           <div className="header-scene" style={{ backgroundImage: `url(${myScene})` }}></div>
-          <div className="folded-corner" onClick={() => setShowSceneModal(true)} title="Changer le décor"></div>
+          <div className="folded-corner" onClick={() => setShowSceneModal(true)} title={t.roster.changeSceneTooltip}></div>
           
           <div className="header-content-inner">
             <div className={`wlm-avatar-glass ${myStatus}`} onClick={() => setShowAvatarModal(true)} style={{ cursor: 'pointer', position: 'relative' }}>
               <img src={myAvatar} alt="Avatar" />
               {globalPrivateMode && (
-                <div className="padlock-badge" title="Mode Privé Global Activé" style={{ bottom: '-2px', right: '-2px' }}>🔒</div>
+                <div className="padlock-badge" title={t.chat.privateModeActive} style={{ bottom: '-2px', right: '-2px' }}>🔒</div>
               )}
             </div>
             
@@ -2791,11 +2805,11 @@ const App: React.FC = () => {
                     onKeyDown={e => e.key === 'Enter' && (setIsEditingNickname(false), syncProfile({ nickname: myNickname }))} 
                   />
                 ) : (
-                  <span className="nickname-display" onClick={() => setIsEditingNickname(true)} title="Cliquer pour modifier">{myNickname}</span>
+                  <span className="nickname-display" onClick={() => setIsEditingNickname(true)} title={t.roster.editTooltip}>{myNickname}</span>
                 )}
                 
                 <span className="status-trigger" onClick={(e) => { e.stopPropagation(); setShowStatusMenu(!showStatusMenu); }}>
-                  <span className="status-label">({STATUS_OPTIONS.find(o => o.id === myStatus)?.label}) ▼</span>
+                  <span className="status-label">({getStatusLabel(myStatus)}) ▼</span>
                 </span>
 
                 {/* Menu déroulant de Statut et Options */}
@@ -2803,7 +2817,7 @@ const App: React.FC = () => {
                   <div className="wlm-status-dropdown">
                     {STATUS_OPTIONS.map(opt => (
                       <div key={opt.id} className="dropdown-item" onClick={() => { setMyStatus(opt.id); setShowStatusMenu(false); syncProfile({ status: opt.id }); }}>
-                        <div className={`status-icon-box ${opt.id}`}></div>{opt.label}
+                        <div className={`status-icon-box ${opt.id}`}></div>{getStatusLabel(opt.id)}
                       </div>
                     ))}
                     <div className="dropdown-item separator"></div>
@@ -2823,16 +2837,19 @@ const App: React.FC = () => {
                         });
                       }
                     }}>
-                      {globalPrivateMode ? 'Désactiver le Mode Privé Global' : 'Activer le Mode Privé Global'}
+                      {globalPrivateMode ? t.roster.globalPrivateOn : t.roster.globalPrivateOff}
                     </div>
-                    <div className="dropdown-item" onClick={() => { setShowOptionsModal(true); setShowStatusMenu(false); }}>Options...</div>
-                    <div className="dropdown-item" onClick={() => handleLogout()}>Se déconnecter</div>
+                    <div className="dropdown-item" onClick={() => { setShowOptionsModal(true); setShowStatusMenu(false); }}>{t.roster.optionsMenu}</div>
+                    <div className="dropdown-item" onClick={() => { setLanguage(language === 'fr' ? 'en' : 'fr'); setShowStatusMenu(false); }}>
+                      🌐 {language === 'fr' ? 'English (EN)' : 'Français (FR)'}
+                    </div>
+                    <div className="dropdown-item" onClick={() => handleLogout()}>{t.auth.logout}</div>
                     <div className="dropdown-item separator"></div>
-                    <div className="dropdown-item" onClick={() => { setShowAvatarModal(true); setShowStatusMenu(false); }}>Modifier votre image perso...</div>
-                    <div className="dropdown-item" onClick={() => { setShowSceneModal(true); setShowStatusMenu(false); }}>Modifier un décor...</div>
-                    <div className="dropdown-item" onClick={() => { setIsEditingNickname(true); setShowStatusMenu(false); }}>Modifier votre surnom...</div>
-                    <div className="dropdown-item" onClick={() => { setShowPasswordModal(true); setShowStatusMenu(false); }}>Changer de mot de passe...</div>
-                    <div className="dropdown-item" onClick={handleResetE2EKeys} style={{color:'red'}}>Réinitialiser les clés E2E...</div>
+                    <div className="dropdown-item" onClick={() => { setShowAvatarModal(true); setShowStatusMenu(false); }}>{t.roster.changeAvatar}</div>
+                    <div className="dropdown-item" onClick={() => { setShowSceneModal(true); setShowStatusMenu(false); }}>{t.roster.changeScene}</div>
+                    <div className="dropdown-item" onClick={() => { setIsEditingNickname(true); setShowStatusMenu(false); }}>{t.roster.changeNickname}</div>
+                    <div className="dropdown-item" onClick={() => { setShowPasswordModal(true); setShowStatusMenu(false); }}>{t.roster.changePasswordMenu}</div>
+                    <div className="dropdown-item" onClick={handleResetE2EKeys} style={{color:'red'}}>{t.roster.resetE2EKeys}</div>
                   </div>
                 )}
               </div>
@@ -2848,8 +2865,8 @@ const App: React.FC = () => {
                   onKeyDown={e => e.key === 'Enter' && (setIsEditingPSM(false), syncProfile({ psm: myPSM }))} 
                 />
               ) : (
-                <div className="user-psm-display" onClick={() => setIsEditingPSM(true)} title="Cliquer pour modifier">
-                  {myPSM || 'Entrez votre message perso'}
+                <div className="user-psm-display" onClick={() => setIsEditingPSM(true)} title={t.roster.editTooltip}>
+                  {myPSM || t.roster.defaultPsm}
                 </div>
               )}
             </div>
@@ -2859,13 +2876,13 @@ const App: React.FC = () => {
         {/* Barre d'actions rapides (Recherche, Ajout contact) */}
         <div className="wlm-actions-bar">
           <div className="search-wrapper">
-            <input type="text" placeholder="Rechercher des contacts..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+            <input type="text" placeholder={t.common.search} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
             <i className="search-magnifier">🔍</i>
           </div>
           <div className="actions-icons-right">
-            <span onClick={() => setShowAddContactModal(true)} style={{cursor:'pointer'}} title="Ajouter un contact">👤+</span> 
-            <span title="Organisation">▤</span> 
-            <span title="Messages">✉️</span>
+            <span onClick={() => setShowAddContactModal(true)} style={{cursor:'pointer'}} title={t.roster.addContact}>👤+</span> 
+            <span title={t.roster.organizationTooltip}>▤</span> 
+            <span title={t.roster.messagesTooltip}>✉️</span>
           </div>
         </div>
 
@@ -2874,14 +2891,14 @@ const App: React.FC = () => {
           {/* Invitations en attente */}
           {pendingInvites.length > 0 && (
             <div className="pending-section">
-               <div className="group-header">Invitations en attente ({pendingInvites.length})</div>
+               <div className="group-header">{t.roster.pendingInvites} ({pendingInvites.length})</div>
                {pendingInvites.map(invite => (
                  <div key={invite.id} className="contact-row pending">
                     <div className="status-square offline"></div>
                     <div className="contact-name-txt" style={{flex: 1, marginLeft: '10px'}}>{invite.nickname || invite.username}</div>
                     <div style={{display:'flex', gap:'5px', marginRight: '10px'}}>
-                      <button className="win-btn mini" onClick={() => handleAcceptInvite(invite.id)}>Accepter</button>
-                      <button className="win-btn mini secondary" onClick={() => handleDeclineInvite(invite.id)}>Refuser</button>
+                      <button className="win-btn mini" onClick={() => handleAcceptInvite(invite.id)}>{t.roster.accept}</button>
+                      <button className="win-btn mini secondary" onClick={() => handleDeclineInvite(invite.id)}>{t.roster.decline}</button>
                     </div>
                  </div>
                ))}
@@ -2891,7 +2908,7 @@ const App: React.FC = () => {
           {/* Contacts en ligne */}
           <div className="group-header" onClick={() => setIsGroupOpen(!isGroupOpen)}>
             <span style={{ transform: isGroupOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
-            En ligne ({onlineContacts.length})
+            {t.roster.onlineGroup} ({onlineContacts.length})
           </div>
           {isGroupOpen && onlineContacts.map(contact => (
             <div 
@@ -2911,7 +2928,7 @@ const App: React.FC = () => {
           {/* Contacts hors ligne ou bloqués */}
           <div className="group-header" onClick={() => setIsOfflineGroupOpen(!isOfflineGroupOpen)}>
             <span style={{ transform: isOfflineGroupOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
-            Hors ligne ({offlineContacts.length})
+            {t.roster.offlineGroup} ({offlineContacts.length})
           </div>
           {isOfflineGroupOpen && offlineContacts.map(contact => (
             <div 
@@ -2924,7 +2941,7 @@ const App: React.FC = () => {
               <div className="contact-name-txt" style={{color: contact.blocked ? '#f44336' : '#999'}}>
                 {contact.nickname || contact.username} 
                 {contact.psm && <span className="contact-psm-txt"> - {contact.psm}</span>} 
-                {contact.blocked ? <span style={{fontSize:'10px', marginLeft: '5px'}}>(Bloqué)</span> : ''}
+                {contact.blocked ? <span style={{fontSize:'10px', marginLeft: '5px'}}>{t.roster.blockedSuffix}</span> : ''}
               </div>
             </div>
           ))}
@@ -2932,19 +2949,19 @@ const App: React.FC = () => {
           {/* Bot (Repliable, sobre et fidèle à WLM) */}
           <div className="group-header" onClick={() => setIsServicesGroupOpen(!isServicesGroupOpen)}>
             <span style={{ transform: isServicesGroupOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
-            Bot (1)
+            {t.roster.botSection} (1)
           </div>
           {isServicesGroupOpen && (
             <div 
               className={`contact-row ${activeChatId === SYSTEM_BOT_ID ? 'active' : ''}`}
               onClick={() => openChat(SYSTEM_BOT_ID)}
-              title="OpenWLM (100% local, aucun trafic réseau)"
+              title={t.bot.tooltip}
             >
               <div className="status-square online"></div>
               <div className="contact-name-txt" style={{ display: 'flex', alignItems: 'center', gap: '3px', overflow: 'hidden' }}>
-                <span style={{ fontWeight: 600 }}>OpenWLM</span>
-                <span className="wlm-bot-badge">BOT</span>
-                <span className="contact-psm-txt"> - En ligne pour vos tests</span>
+                <span style={{ fontWeight: 600 }}>{t.bot.name}</span>
+                <span className="wlm-bot-badge">{t.bot.badge}</span>
+                <span className="contact-psm-txt"> - {t.bot.status}</span>
               </div>
             </div>
           )}
@@ -2957,8 +2974,8 @@ const App: React.FC = () => {
           /* État vide si aucune discussion n'est sélectionnée */
           <div className="empty-chat-state">
             <div className="msn-butterfly giant"></div>
-            <div className="welcome-text">Prêt pour une conversation ?</div>
-            <div className="sub-welcome">Sélectionnez un contact dans la liste à gauche ou démarrez un test.</div>
+            <div className="welcome-text">{t.roster.emptyStateTitle}</div>
+            <div className="sub-welcome">{t.roster.emptyStateSubtitle}</div>
             <div style={{ marginTop: '16px' }}>
               <button 
                 type="button" 
@@ -2967,11 +2984,11 @@ const App: React.FC = () => {
                 style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}
               >
                 <span>🤖</span>
-                <span>Démarrer une conversation de test</span>
+                <span>{t.roster.startTestChat}</span>
               </button>
             </div>
             <div style={{ fontSize: '11px', color: '#777', marginTop: '10px' }}>
-              Testez l'écho, les sons, le Wizz, les émoticônes et le Morpion avec OpenWLM.
+              {t.roster.emptyStateBotHint}
             </div>
           </div>
         ) : (
@@ -2998,62 +3015,62 @@ const App: React.FC = () => {
 
             {/* Barre d'actions du chat (Haut) */}
             <div className="chat-top-actions">
-              <span onClick={() => fileInputRef.current?.click()} style={{cursor:'pointer'}} title="Envoyer un fichier chiffré de bout en bout (4h max)">Fichiers</span>
-              <span onClick={() => setShowBgModal(true)} style={{cursor:'pointer'}}>Arrière-plan</span>
-              <span onClick={() => handleStartCall(false)} style={{cursor:'pointer'}}>Vidéo</span>
-              <span onClick={() => handleStartCall(true)} style={{cursor:'pointer'}}>Appeler</span>
+              <span onClick={() => fileInputRef.current?.click()} style={{cursor:'pointer'}} title={t.chat.filesTooltip}>{t.chat.files}</span>
+              <span onClick={() => setShowBgModal(true)} style={{cursor:'pointer'}}>{t.chat.background}</span>
+              <span onClick={() => handleStartCall(false)} style={{cursor:'pointer'}}>{t.chat.video}</span>
+              <span onClick={() => handleStartCall(true)} style={{cursor:'pointer'}}>{t.chat.call}</span>
               <div className="wlm-games-menu-wrapper">
                 <span 
                   onClick={() => setShowGamesMenu(prev => !prev)} 
                   style={{ cursor: 'pointer', fontWeight: showGamesMenu ? 'bold' : 'normal' }}
-                  title="Jouer à un jeu avec ce contact"
+                  title={t.chat.gamesMenuTooltip}
                 >
-                  Jeux ▾
+                  {t.chat.gamesMenu}
                 </span>
                 {showGamesMenu && (
                   <div className="wlm-games-dropdown" onClick={e => e.stopPropagation()}>
                     <div 
                       className="wlm-game-menu-item" 
                       onClick={() => handleInviteGame('checkers')}
-                      title="Lancer une partie de Jeu de dames multijoueur"
+                      title={t.games.checkersTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
                     >
                       <span className="msn-game-icon">⚪</span>
-                      <span>Jeu de dames</span>
+                      <span>{t.games.checkers}</span>
                     </div>
                     <div 
                       className="wlm-game-menu-item" 
                       onClick={() => handleInviteGame('morpion')}
-                      title="Lancer une partie de Morpion multijoueur"
+                      title={t.games.morpionTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
                     >
                       <span className="msn-game-icon">🎮</span>
-                      <span>Morpion (Tic-Tac-Toe)</span>
+                      <span>{t.games.morpion}</span>
                     </div>
                   </div>
                 )}
               </div>
-              <span onClick={() => handleInviteGame('checkers')} style={{cursor:'pointer'}} title="Lancer une partie de Jeu de dames">Activités</span>
+              <span onClick={() => handleInviteGame('checkers')} style={{cursor:'pointer'}} title={t.games.checkersTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}>{t.chat.activities}</span>
               {activeGame && activeGame.opponentId === activeChatId && isGameMinimized && (
                 <span 
                   onClick={() => setIsGameMinimized(false)} 
                   style={{ cursor: 'pointer', color: '#0055aa', fontWeight: 'bold' }}
-                  title={`Agrandir et reprendre la partie de ${activeGame.gameType === 'checkers' ? 'Jeu de dames' : 'Morpion'}`}
+                  title={t.chat.resumeTooltip}
                 >
-                  {activeGame.gameType === 'checkers' ? '⚪ Reprendre les Dames' : '🎮 Reprendre le Morpion'}
+                  {activeGame.gameType === 'checkers' ? t.chat.resumeCheckers : t.chat.resumeMorpion}
                 </span>
               )}
 
               <span
                 onClick={() => {
                   if (globalPrivateMode) {
-                    alert("Le mode privé global est activé. Désactivez-le dans le menu principal pour gérer individuellement.");
+                    alert(t.chat.privateModeGlobalAlert);
                   } else {
                     togglePrivateMode(activeChatId);
                   }
                 }}
                 style={{ cursor: 'pointer', fontWeight: (globalPrivateMode || isPrivateMode[activeChatId]) ? 'bold' : 'normal', color: (globalPrivateMode || isPrivateMode[activeChatId]) ? '#00FF00' : 'inherit' }}
-                title="Les messages envoyés dans ce mode ne sont pas enregistrés sur le serveur."
+                title={t.chat.privateModeTooltip}
               >
-                Mode Privé
+                {t.chat.privateMode}
               </span>
               </div>
 
@@ -3070,18 +3087,18 @@ const App: React.FC = () => {
                      <div className={`conv-avatar-box ${activeContact.status || 'online'}`} style={{ position: 'relative' }}>
                        <img src={activeContact.avatar} alt="Avatar" />
                        {(globalPrivateMode || isPrivateMode[activeChatId]) && (
-                         <div className="padlock-badge" title="Mode Privé Activé">🔒</div>
+                         <div className="padlock-badge" title={t.chat.privateModeActive}>🔒</div>
                        )}
                      </div>
                      <div className="conv-info">
                         <div className="conv-name">
                           {activeContact.nickname || activeContact.username}
-                          {activeContact.id === SYSTEM_BOT_ID && <span className="wlm-bot-badge">BOT</span>}
+                          {activeContact.id === SYSTEM_BOT_ID && <span className="wlm-bot-badge">{t.bot.badge}</span>}
                           <span style={{fontSize:'12px', fontWeight:'normal', marginLeft: '10px'}}>
-                            ({(activeContact.status === 'offline' || !activeContact.id) ? 'Hors ligne' : 'En ligne'})
+                            ({(activeContact.status === 'offline' || !activeContact.id) ? t.status.offline : t.status.online})
                           </span>
                         </div>
-                        <div className="conv-psm">{activeContact.psm || (activeContact.status === 'offline' ? '' : 'En ligne')}</div>
+                        <div className="conv-psm">{activeContact.psm || ((activeContact.status === 'offline' || !activeContact.id) ? '' : t.status.online)}</div>
                      </div>
                   </div>
                </div>
@@ -3093,14 +3110,14 @@ const App: React.FC = () => {
                       <span className="wlm-game-invite-icon">{incomingGameInvite.gameType === 'checkers' ? '⚪' : '🎮'}</span>
                       <div className="wlm-game-invite-text">
                         <span className="wlm-game-invite-title">
-                          {incomingGameInvite.gameType === 'checkers' ? 'Invitation au Jeu de dames !' : 'Invitation au Morpion !'}
+                          {incomingGameInvite.gameType === 'checkers' ? t.games.inviteCheckersTitle : t.games.inviteMorpionTitle}
                         </span>
-                        <span className="wlm-game-invite-sub">{incomingGameInvite.fromName} vous invite à une partie en direct.</span>
+                        <span className="wlm-game-invite-sub">{t.games.inviteLivePrompt.replace('{name}', incomingGameInvite.fromName)}</span>
                       </div>
                     </div>
                     <div className="wlm-game-invite-actions">
-                      <button className="btn-game-accept" onClick={handleAcceptGameInvite}>Accepter</button>
-                      <button className="btn-game-decline" onClick={handleDeclineGameInvite}>Refuser</button>
+                      <button className="btn-game-accept" onClick={handleAcceptGameInvite}>{t.roster.accept}</button>
+                      <button className="btn-game-decline" onClick={handleDeclineGameInvite}>{t.roster.decline}</button>
                     </div>
                   </div>
                 )}
@@ -3112,13 +3129,13 @@ const App: React.FC = () => {
                       <span className="wlm-game-invite-icon">⏳</span>
                       <div className="wlm-game-invite-text">
                         <span className="wlm-game-invite-title">
-                          {outgoingGameInvite.gameType === 'checkers' ? 'Partie de Jeu de dames en attente...' : 'Partie de Morpion en attente...'}
+                          {outgoingGameInvite.gameType === 'checkers' ? t.games.invitePendingCheckers : t.games.invitePendingMorpion}
                         </span>
-                        <span className="wlm-game-invite-sub">Invitation envoyée à {outgoingGameInvite.targetName}. En attente de réponse...</span>
+                        <span className="wlm-game-invite-sub">{t.games.inviteSentWaiting.replace('{name}', outgoingGameInvite.targetName)}</span>
                       </div>
                     </div>
                     <div className="wlm-game-invite-actions">
-                      <button className="btn-game-decline" onClick={handleCancelOutgoingInvite}>Annuler</button>
+                      <button className="btn-game-decline" onClick={handleCancelOutgoingInvite}>{t.common.cancel}</button>
                     </div>
                   </div>
                 )}
@@ -3127,36 +3144,36 @@ const App: React.FC = () => {
                   <div 
                     className={`wlm-game-docked-pill ${gameSummary.isMyTurn ? 'docked-pill-my-turn' : ''}`}
                     onClick={() => setIsGameMinimized(false)}
-                    title="Cliquer pour afficher la fenêtre de jeu"
+                    title={t.games.dockedExpand}
                   >
                     <div className="docked-pill-info">
                       <span className="docked-pill-icon">{activeGame.gameType === 'checkers' ? '⚪' : '🎮'}</span>
                       <div className="docked-pill-texts">
                         <span className="docked-pill-title">
-                          {activeGame.gameType === 'checkers' ? 'Jeu de dames' : 'Morpion'} en cours vs <strong>{activeGame.opponentName}</strong>
+                          {t.games.dockedTitle.replace('{game}', activeGame.gameType === 'checkers' ? t.games.checkers : t.games.morpion).replace('{name}', activeGame.opponentName)}
                         </span>
                         <span className="docked-pill-score">
-                          Score : <strong>{gameSummary.myScore}</strong> - <strong>{gameSummary.opponentScore}</strong>
+                          {t.games.dockedScore.replace('{myScore}', gameSummary.myScore.toString()).replace('{opponentScore}', gameSummary.opponentScore.toString())}
                         </span>
                       </div>
                       <span className={`docked-pill-badge ${gameSummary.isMyTurn ? 'badge-my-turn' : 'badge-wait'}`}>
                         {gameSummary.winner 
-                          ? (gameSummary.winner === 'me' ? '🏆 Manche gagnée !' : gameSummary.winner === 'opponent' ? 'Manche perdue' : '🤝 Match nul')
-                          : (gameSummary.isMyTurn ? '👉 À vous de jouer !' : `⏳ Tour de ${activeGame.opponentName}`)}
+                          ? (gameSummary.winner === 'me' ? t.games.dockedWon : gameSummary.winner === 'opponent' ? t.games.dockedLost : t.games.dockedDraw)
+                          : (gameSummary.isMyTurn ? t.games.dockedYourTurn : t.games.dockedOpponentTurn.replace('{name}', activeGame.opponentName))}
                       </span>
                     </div>
                     <div className="docked-pill-actions" onClick={e => e.stopPropagation()}>
                       <button 
                         className="btn-docked-restore" 
                         onClick={() => setIsGameMinimized(false)}
-                        title="Agrandir la fenêtre de jeu"
+                        title={t.games.dockedExpand}
                       >
-                        🗖 Agrandir le jeu
+                        {t.games.dockedExpand}
                       </button>
                       <button 
                         className="btn-docked-quit" 
                         onClick={handleQuitActiveGame}
-                        title="Quitter la partie"
+                        title={t.games.quitGameTitle}
                       >
                         ✕
                       </button>
@@ -3175,8 +3192,8 @@ const App: React.FC = () => {
 
                     const isImage = isImageFile(m.fileData);
                     const fileHeaderLabel = isSender
-                      ? (isImage ? 'Vous avez envoyé une image :' : 'Vous avez envoyé un fichier :')
-                      : (isImage ? `${senderDisplayName} vous a envoyé une image :` : `${senderDisplayName} vous a envoyé un fichier :`);
+                      ? (isImage ? t.chat.youSentImage : t.chat.youSentFile)
+                      : (isImage ? t.chat.contactSentImage.replace('{name}', senderDisplayName) : t.chat.contactSentFile.replace('{name}', senderDisplayName));
 
                     return (
                     <div key={i} className="msg-line">
@@ -3185,7 +3202,7 @@ const App: React.FC = () => {
                        ) : (
                          <>
                            <div className={`msg-name ${isSender ? 'me' : ''}`}>
-                             {m.fileData ? fileHeaderLabel : `${senderDisplayName} dit :`}
+                             {m.fileData ? fileHeaderLabel : `${senderDisplayName} ${t.chat.says}`}
                            </div>
                            {m.fileData ? (
                              <FileTransferCard 
@@ -3209,20 +3226,20 @@ const App: React.FC = () => {
                {/* Actions rapides de test pour OpenWLM */}
                {activeChatId === SYSTEM_BOT_ID && (
                  <div className="wlm-bot-quick-actions">
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('emo')} title="Tester les émoticônes classiques">
-                     😃 Émoticônes
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('emo')} title={t.bot.chipEmoticons}>
+                     {t.bot.chipEmoticons}
                    </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('wizz')} title="Envoyer et recevoir un Wizz">
-                     ⚡ Wizz
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('wizz')} title={t.bot.chipWizz}>
+                     {t.bot.chipWizz}
                    </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('sons')} title="Écouter les sons WLM">
-                     🔊 Sons
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('sons')} title={t.bot.chipSounds}>
+                     {t.bot.chipSounds}
                    </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('morpion')} title="Lancer une partie de Morpion">
-                     🎮 Morpion
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('morpion')} title={t.bot.chipMorpion}>
+                     {t.bot.chipMorpion}
                    </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('help')} title="Afficher l'aide">
-                     ❓ Aide
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('help')} title={t.bot.chipHelp}>
+                     {t.bot.chipHelp}
                    </button>
                  </div>
                )}
@@ -3244,25 +3261,25 @@ const App: React.FC = () => {
                         onChange={e => setInputText(e.target.value)} 
                         onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())} 
                         onPaste={handlePaste}
-                        placeholder="Saisissez un message..." 
+                        placeholder={t.chat.typeMessagePlaceholder} 
                      />
                      
                      {/* Barre d'outils du chat (Émoticônes, Winks, Wizz, Voice) */}
                      <div className="chat-toolbar" style={{ position: 'relative' }}>
-                        <span className="tool-icon" title="Émoticônes" onClick={() => setShowEmoticonMenu(!showEmoticonMenu)}>
-                          <img src="/assets/icons/emoticon_official.svg" style={{width:'32px', cursor:'pointer'}} alt="Emoticônes" />
+                        <span className="tool-icon" title={t.chat.emoticonsTooltip} onClick={() => setShowEmoticonMenu(!showEmoticonMenu)}>
+                          <img src="/assets/icons/emoticon_official.svg" style={{width:'32px', cursor:'pointer'}} alt={t.chat.emoticonsTooltip} />
                         </span>
                         
                         {showEmoticonMenu && (
                           <div className="emoticon-popup">
                             <div className="emoticon-popup-header">
-                              <span>Émoticônes</span>
+                              <span>{t.chat.emoticonsTooltip}</span>
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                <span className="tout-afficher" onClick={() => { setShowCustomEmoticonsModal(true); setShowEmoticonMenu(false); }} title="Gérer vos émoticônes personnalisées">
-                                  + Mes émoticônes
+                                <span className="tout-afficher" onClick={() => { setShowCustomEmoticonsModal(true); setShowEmoticonMenu(false); }} title={t.chat.manageEmoticons}>
+                                  + {t.chat.myEmoticons}
                                 </span>
                                 <span className="tout-afficher" onClick={() => { setShowAllEmoticonsModal(true); setShowEmoticonMenu(false); }}>
-                                  Tout afficher...
+                                  {t.chat.emoticonsAll}
                                 </span>
                               </div>
                             </div>
@@ -3271,12 +3288,12 @@ const App: React.FC = () => {
                             {myCustomEmoticons.length > 0 && (
                               <div className="emoticon-section" style={{ maxHeight: '110px', overflowY: 'auto' }}>
                                 <div className="emoticon-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span>Mes émoticônes ({myCustomEmoticons.length})</span>
+                                  <span>{t.chat.myEmoticons} ({myCustomEmoticons.length})</span>
                                   <span 
                                     style={{ fontSize: '10px', color: '#004b8d', cursor: 'pointer', textDecoration: 'underline' }}
                                     onClick={() => { setShowCustomEmoticonsModal(true); setShowEmoticonMenu(false); }}
                                   >
-                                    Gérer
+                                    {t.chat.manageEmoticons}
                                   </span>
                                 </div>
                                 <div className="emoticon-grid">
@@ -3302,7 +3319,7 @@ const App: React.FC = () => {
                             )}
 
                             <div className="emoticon-section">
-                              <div className="emoticon-section-title">Émoticônes standard</div>
+                              <div className="emoticon-section-title">{t.chat.standardEmoticons}</div>
                               <div className="emoticon-grid">
                                 {EMOTICONS_LIST.slice(0, 15).map((emo, idx) => (
                                   <div key={idx} className="emoticon-item" title={emo.shortcut} onClick={() => { setInputText(prev => prev + emo.shortcut); setShowEmoticonMenu(false); }}>
@@ -3314,23 +3331,23 @@ const App: React.FC = () => {
                           </div>
                         )}
 
-                        <span className="tool-icon" title="Clins d'œil" onClick={() => setShowWinksModal(true)}>
-                          <img src="/assets/icons/wink_official.svg" style={{width:'32px', cursor:'pointer'}} alt="Winks" />
+                        <span className="tool-icon" title={t.chat.winksTooltip} onClick={() => setShowWinksModal(true)}>
+                          <img src="/assets/icons/wink_official.svg" style={{width:'32px', cursor:'pointer'}} alt={t.chat.winksTooltip} />
                         </span>
                         
-                        <span className="tool-icon" title="Wizz!" onClick={() => handleNudge(false)}>
-                          <img src="/assets/icons/wizz_reconstructed.svg" style={{width:'36px', cursor:'pointer'}} alt="Wizz" />
+                        <span className="tool-icon" title={t.chat.nudgeTooltip} onClick={() => handleNudge(false)}>
+                          <img src="/assets/icons/wizz_reconstructed.svg" style={{width:'36px', cursor:'pointer'}} alt={t.chat.nudgeTooltip} />
                         </span>
                         
-                        <span className={`tool-icon ${isRecording ? 'recording' : ''}`} title={isRecording ? "Arrêter et envoyer" : "Clip vocal"} onClick={handleVoiceClip}>
-                          <img src="/assets/icons/voice_clip_official.svg" style={{width:'32px', cursor:'pointer'}} alt="Voice Clip" />
+                        <span className={`tool-icon ${isRecording ? 'recording' : ''}`} title={isRecording ? t.chat.stopAndSend : t.chat.voiceClip} onClick={handleVoiceClip}>
+                          <img src="/assets/icons/voice_clip_official.svg" style={{width:'32px', cursor:'pointer'}} alt={t.chat.voiceClip} />
                         </span>
                         
                         {isRecording && (
-                          <span className="tool-icon" title="Annuler l'enregistrement" onClick={handleCancelVoiceClip} style={{ color: 'red', fontWeight: 'bold', fontSize: '20px' }}>✕</span>
+                          <span className="tool-icon" title={t.chat.cancelRecording} onClick={handleCancelVoiceClip} style={{ color: 'red', fontWeight: 'bold', fontSize: '20px' }}>✕</span>
                         )}
 
-                        <span className="tool-icon" title="Envoyer un fichier (Chiffré E2EE, 4h max)" onClick={() => fileInputRef.current?.click()} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span className="tool-icon" title={t.chat.filesTooltip} onClick={() => fileInputRef.current?.click()} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                           <svg style={{width:'22px', height:'22px', cursor:'pointer'}} viewBox="0 0 24 24" fill="none" stroke="#004b8d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                           </svg>
@@ -3343,7 +3360,7 @@ const App: React.FC = () => {
                           onChange={handleFileSelect} 
                         />
                         
-                        <span className="tool-icon" title="Police" style={{ fontSize: '14px', fontWeight: 'bold', color: '#004b8d', cursor:'pointer' }} onClick={() => setShowFontModal(true)}>A/B</span>
+                        <span className="tool-icon" title={t.chat.fontTooltip} style={{ fontSize: '14px', fontWeight: 'bold', color: '#004b8d', cursor:'pointer' }} onClick={() => setShowFontModal(true)}>A/B</span>
                      </div>
                   </div>
                </div>
@@ -3412,13 +3429,13 @@ const App: React.FC = () => {
             <div className="wlm-paste-modal-header">
               <div className="wlm-paste-title-area">
                 <span className="wlm-paste-icon">📷</span>
-                <span className="wlm-paste-title">Envoi d'une capture d'écran</span>
+                <span className="wlm-paste-title">{t.modals.pastedImageTitle}</span>
               </div>
               <button 
                 type="button" 
                 className="win-close-btn" 
                 onClick={handleCancelPastedImage} 
-                title="Fermer (Échap)"
+                title={`${t.common.close} (Esc)`}
               >
                 ✕
               </button>
@@ -3426,17 +3443,17 @@ const App: React.FC = () => {
 
             <div className="wlm-paste-modal-body">
               <div className="wlm-paste-prompt">
-                Envoyer cette capture d'écran à <strong>{(() => {
+                {t.modals.pastedImagePrompt.replace('{name}', (() => {
                   const activeContact = activeChatId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === activeChatId);
-                  return activeContact?.nickname || activeContact?.username || 'votre contact';
-                })()}</strong> ?
+                  return activeContact?.nickname || activeContact?.username || 'contact';
+                })())}
               </div>
 
               <div className="wlm-paste-preview-container">
                 <div className="wlm-paste-thumbnail-box">
                   <img 
                     src={pastedImage.previewUrl} 
-                    alt="Aperçu capture d'écran" 
+                    alt="Preview" 
                     className="wlm-paste-thumbnail" 
                   />
                 </div>
@@ -3445,13 +3462,13 @@ const App: React.FC = () => {
                     📁 {pastedImage.file.name}
                   </div>
                   <div className="wlm-paste-filesize">
-                    Taille : <strong>{formatFileSize(pastedImage.file.size)}</strong>
+                    {t.modals.sizeLabel} <strong>{formatFileSize(pastedImage.file.size)}</strong>
                   </div>
                   <div className="wlm-paste-type">
-                    Format : {pastedImage.file.type || 'image/png'}
+                    {t.modals.formatLabel} {pastedImage.file.type || 'image/png'}
                   </div>
                   <div className="wlm-paste-hint">
-                    🔒 Chiffrement de bout en bout (E2EE) • Expire après 4h
+                    {t.modals.e2eeExpiryHint}
                   </div>
                 </div>
               </div>
@@ -3464,14 +3481,14 @@ const App: React.FC = () => {
                 onClick={handleConfirmPastedImage}
                 autoFocus
               >
-                Envoyer
+                {t.chat.send}
               </button>
               <button 
                 type="button" 
                 className="win-btn" 
                 onClick={handleCancelPastedImage}
               >
-                Annuler
+                {t.common.cancel}
               </button>
             </div>
           </div>
@@ -3483,7 +3500,7 @@ const App: React.FC = () => {
         <div className="modal-bg" onClick={() => setShowAllEmoticonsModal(false)}>
           <div className="modal-box emoticons-all-modal" onClick={e => e.stopPropagation()} style={{ width: '440px' }}>
             <div className="win-modal-header">
-              <span>Toutes les émoticônes</span>
+              <span>{t.modals.allEmoticonsTitle}</span>
               <button className="win-close-btn" onClick={() => setShowAllEmoticonsModal(false)}>✕</button>
             </div>
             
@@ -3492,7 +3509,7 @@ const App: React.FC = () => {
               <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #d0e0ee' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#004b8d' }}>
-                    Mes émoticônes ({myCustomEmoticons.length})
+                    {t.chat.myEmoticons} ({myCustomEmoticons.length})
                   </span>
                   <button 
                     type="button" 
@@ -3500,12 +3517,12 @@ const App: React.FC = () => {
                     style={{ fontSize: '10px', padding: '2px 8px' }}
                     onClick={() => { setShowCustomEmoticonsModal(true); setShowAllEmoticonsModal(false); }}
                   >
-                    + Ajouter / Gérer...
+                    {t.modals.addManageBtn}
                   </button>
                 </div>
                 {myCustomEmoticons.length === 0 ? (
                   <div style={{ fontSize: '11px', color: '#888', fontStyle: 'italic', padding: '6px 0' }}>
-                    Aucune émoticône personnalisée pour le moment.
+                    {t.chat.noCustomEmoticons}
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
@@ -3535,7 +3552,7 @@ const App: React.FC = () => {
               {/* Section Émoticônes standard */}
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#004b8d', marginBottom: '8px' }}>
-                  Émoticônes standard
+                  {t.chat.standardEmoticons}
                 </div>
                 <div className="emoticon-all-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '10px' }}>
                   {EMOTICONS_LIST.map((emo, idx) => (
@@ -3549,7 +3566,7 @@ const App: React.FC = () => {
             </div>
 
             <div style={{ marginTop: '10px', padding: '10px 14px', borderTop: '1px solid #ddd', textAlign: 'right', background: '#f5f5f5' }}>
-              <button className="win-btn" onClick={() => setShowAllEmoticonsModal(false)}>Fermer</button>
+              <button className="win-btn" onClick={() => setShowAllEmoticonsModal(false)}>{t.common.close}</button>
             </div>
           </div>
         </div>
@@ -3571,7 +3588,7 @@ const App: React.FC = () => {
       {showSceneModal && (
         <div className="modal-bg" onClick={() => setShowSceneModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="win-modal-header"><span>Modifier votre décor</span><button className="win-close-btn" onClick={() => setShowSceneModal(false)}>✕</button></div>
+            <div className="win-modal-header"><span>{t.modals.changeSceneTitle}</span><button className="win-close-btn" onClick={() => setShowSceneModal(false)}>✕</button></div>
             <div className="scene-grid">
               {SCENES.map(s => (
                 <div key={s.id} className="scene-thumb" onClick={() => { setMyScene(`/assets/scenes/${s.file}`); setShowSceneModal(false); syncProfile({ scene: `/assets/scenes/${s.file}` }); }}>
@@ -3588,14 +3605,14 @@ const App: React.FC = () => {
       {showAddContactModal && (
         <div className="modal-bg" onClick={() => setShowAddContactModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
-            <div className="win-modal-header"><span>Ajouter un contact</span><button className="win-close-btn" onClick={() => setShowAddContactModal(false)}>✕</button></div>
+            <div className="win-modal-header"><span>{t.modals.addContactTitle}</span><button className="win-close-btn" onClick={() => setShowAddContactModal(false)}>✕</button></div>
             <div className="auth-field" style={{ padding: '20px' }}>
-              <label>Adresse de messagerie du contact :</label>
+              <label>{t.modals.contactEmailLabel}</label>
               <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="exemple@hotmail.com" style={{ width: '100%', marginTop: '5px' }} />
             </div>
             <div style={{ marginTop: '20px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '0 20px 20px' }}>
-              <button className="win-btn" onClick={handleInvite}>OK</button>
-              <button className="win-btn" onClick={() => setShowAddContactModal(false)}>Annuler</button>
+              <button className="win-btn" onClick={handleInvite}>{t.common.ok}</button>
+              <button className="win-btn" onClick={() => setShowAddContactModal(false)}>{t.common.cancel}</button>
             </div>
           </div>
         </div>
@@ -3605,11 +3622,11 @@ const App: React.FC = () => {
       {showBgModal && (
         <div className="modal-bg" onClick={() => setShowBgModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="win-modal-header"><span>Modifier l'arrière-plan</span><button className="win-close-btn" onClick={() => setShowBgModal(false)}>✕</button></div>
+            <div className="win-modal-header"><span>{t.modals.changeBgTitle}</span><button className="win-close-btn" onClick={() => setShowBgModal(false)}>✕</button></div>
             <div className="scene-grid">
               {CONV_BACKGROUNDS.map(bg => (
                 <div key={bg.id} className="scene-thumb" onClick={() => { setConvBg(bg.file); setShowBgModal(false); }}>
-                  {bg.file ? <img src={`/assets/backgrounds/${bg.file}`} alt={bg.name} /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f0f0' }}>Aucun</div>}
+                  {bg.file ? <img src={`/assets/backgrounds/${bg.file}`} alt={bg.name} /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f0f0' }}>{t.modals.bgNone}</div>}
                   <div className="scene-name">{bg.name}</div>
                 </div>
               ))}
@@ -3622,7 +3639,7 @@ const App: React.FC = () => {
       {showAvatarModal && (
         <div className="modal-bg" onClick={() => setShowAvatarModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="win-modal-header"><span>Choisir une image perso</span><button className="win-close-btn" onClick={() => setShowAvatarModal(false)}>✕</button></div>
+            <div className="win-modal-header"><span>{t.modals.chooseAvatarTitle}</span><button className="win-close-btn" onClick={() => setShowAvatarModal(false)}>✕</button></div>
             <div className="scene-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
               {USERTILES.map(tile => (
                 <div key={tile} className="scene-thumb" style={{ height: '60px' }} onClick={() => { setMyAvatar(`/assets/usertiles/${tile}`); setShowAvatarModal(false); syncProfile({ avatar: `/assets/usertiles/${tile}` }); }}>
@@ -3638,11 +3655,11 @@ const App: React.FC = () => {
       {showFontModal && (
         <div className="modal-bg" onClick={() => setShowFontModal(false)}>
           <div className="modal-box font-modal win-style-modal" onClick={e => e.stopPropagation()} style={{ width: '550px' }}>
-            <div className="win-modal-header"><span>Modifier la police</span><button className="win-close-btn" onClick={() => setShowFontModal(false)}>✕</button></div>
+            <div className="win-modal-header"><span>{t.modals.changeFontTitle}</span><button className="win-close-btn" onClick={() => setShowFontModal(false)}>✕</button></div>
             <div className="win-modal-body">
               <div className="win-font-grid">
                 <div className="win-field-col">
-                  <label>Police:</label>
+                  <label>{t.modals.fontFamily}</label>
                   <input type="text" readOnly value={fontSettings.family} className="win-input-preview" />
                   <div className="win-list-box">
                     {['Segoe UI', 'Arial', 'Tahoma', 'Verdana', 'Comic Sans MS', 'Courier New', 'Times New Roman'].map(f => (
@@ -3651,17 +3668,17 @@ const App: React.FC = () => {
                   </div>
                 </div>
                 <div className="win-field-col">
-                  <label>Style de police:</label>
-                  <input type="text" readOnly value={fontSettings.weight === 'bold' ? (fontSettings.style === 'italic' ? 'Gras Italique' : 'Gras') : (fontSettings.style === 'italic' ? 'Italique' : 'Normal')} className="win-input-preview" />
+                  <label>{t.modals.fontStyle}</label>
+                  <input type="text" readOnly value={fontSettings.weight === 'bold' ? (fontSettings.style === 'italic' ? t.modals.styleBoldItalic : t.modals.styleBold) : (fontSettings.style === 'italic' ? t.modals.styleItalic : t.modals.styleNormal)} className="win-input-preview" />
                   <div className="win-list-box">
-                    <div className={`win-list-item ${fontSettings.weight === 'normal' && fontSettings.style === 'normal' ? 'selected' : ''}`} onClick={() => setFontSettings({...fontSettings, weight: 'normal', style: 'normal'})}>Normal</div>
-                    <div className={`win-list-item ${fontSettings.style === 'italic' && fontSettings.weight === 'normal' ? 'selected' : ''}`} style={{ fontStyle: 'italic' }} onClick={() => setFontSettings({...fontSettings, style: 'italic', weight: 'normal'})}>Italique</div>
-                    <div className={`win-list-item ${fontSettings.weight === 'bold' && fontSettings.style === 'normal' ? 'selected' : ''}`} style={{ fontWeight: 'bold' }} onClick={() => setFontSettings({...fontSettings, weight: 'bold', style: 'normal'})}>Gras</div>
-                    <div className={`win-list-item ${fontSettings.weight === 'bold' && fontSettings.style === 'italic' ? 'selected' : ''}`} style={{ fontWeight: 'bold', fontStyle: 'italic' }} onClick={() => setFontSettings({...fontSettings, weight: 'bold', style: 'italic'})}>Gras Italique</div>
+                    <div className={`win-list-item ${fontSettings.weight === 'normal' && fontSettings.style === 'normal' ? 'selected' : ''}`} onClick={() => setFontSettings({...fontSettings, weight: 'normal', style: 'normal'})}>{t.modals.styleNormal}</div>
+                    <div className={`win-list-item ${fontSettings.style === 'italic' && fontSettings.weight === 'normal' ? 'selected' : ''}`} style={{ fontStyle: 'italic' }} onClick={() => setFontSettings({...fontSettings, style: 'italic', weight: 'normal'})}>{t.modals.styleItalic}</div>
+                    <div className={`win-list-item ${fontSettings.weight === 'bold' && fontSettings.style === 'normal' ? 'selected' : ''}`} style={{ fontWeight: 'bold' }} onClick={() => setFontSettings({...fontSettings, weight: 'bold', style: 'normal'})}>{t.modals.styleBold}</div>
+                    <div className={`win-list-item ${fontSettings.weight === 'bold' && fontSettings.style === 'italic' ? 'selected' : ''}`} style={{ fontWeight: 'bold', fontStyle: 'italic' }} onClick={() => setFontSettings({...fontSettings, weight: 'bold', style: 'italic'})}>{t.modals.styleBoldItalic}</div>
                   </div>
                 </div>
                 <div className="win-field-col">
-                  <label>Taille:</label>
+                  <label>{t.modals.fontSize}</label>
                   <input type="text" readOnly value={fontSettings.size} className="win-input-preview" style={{width: '60px'}} />
                   <div className="win-list-box" style={{width: '80px'}}>
                     {['8', '9', '10', '11', '12', '14', '16', '18', '20'].map(s => (
@@ -3673,11 +3690,11 @@ const App: React.FC = () => {
               <div className="win-lower-grid">
                 <div className="win-effects-group">
                   <fieldset>
-                    <legend>Effets</legend>
-                    <label className="win-checkbox"><input type="checkbox" checked={fontSettings.strikeout} onChange={e => setFontSettings({...fontSettings, strikeout: e.target.checked})} /> Barré</label>
-                    <label className="win-checkbox"><input type="checkbox" checked={fontSettings.underline} onChange={e => setFontSettings({...fontSettings, underline: e.target.checked})} /> Souligné</label>
+                    <legend>{t.modals.fontEffects}</legend>
+                    <label className="win-checkbox"><input type="checkbox" checked={fontSettings.strikeout} onChange={e => setFontSettings({...fontSettings, strikeout: e.target.checked})} /> {t.modals.strikeout}</label>
+                    <label className="win-checkbox"><input type="checkbox" checked={fontSettings.underline} onChange={e => setFontSettings({...fontSettings, underline: e.target.checked})} /> {t.modals.underline}</label>
                     <div style={{ marginTop: '10px' }}>
-                      <label>Couleur:</label>
+                      <label>{t.modals.fontColor}</label>
                       <div className="wlm-color-picker-container" style={{ position: 'relative' }}>
                         <div 
                           className="wlm-color-picker-selected" 
@@ -3714,7 +3731,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="win-sample-group">
                   <fieldset>
-                    <legend>Aperçu</legend>
+                    <legend>{t.modals.fontPreview}</legend>
                     <div className="win-sample-box">
                       <span style={{ 
                         fontFamily: fontSettings.family, 
@@ -3729,8 +3746,8 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="win-modal-footer">
-                <button className="win-btn" onClick={() => setShowFontModal(false)}>OK</button>
-                <button className="win-btn" onClick={() => setShowFontModal(false)}>Annuler</button>
+                <button className="win-btn" onClick={() => setShowFontModal(false)}>{t.common.ok}</button>
+                <button className="win-btn" onClick={() => setShowFontModal(false)}>{t.common.cancel}</button>
               </div>
             </div>
           </div>
@@ -3741,7 +3758,7 @@ const App: React.FC = () => {
       {showWinksModal && (
         <div className="modal-bg" onClick={() => setShowWinksModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="win-modal-header"><span>Choisir un Clin d'œil (Wink)</span><button className="win-close-btn" onClick={() => setShowWinksModal(false)}>✕</button></div>
+            <div className="win-modal-header"><span>{t.modals.chooseWinkTitle}</span><button className="win-close-btn" onClick={() => setShowWinksModal(false)}>✕</button></div>
             <div className="scene-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', padding: '20px' }}>
               {WINKS.map(w => (
                 <div key={w.id} className="scene-thumb" style={{ height: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }} onClick={() => handleSendWink(w.id)}>
@@ -3758,11 +3775,11 @@ const App: React.FC = () => {
       {showPasswordModal && (
         <div className="modal-bg" onClick={() => setShowPasswordModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: '300px' }}>
-            <div className="win-modal-header"><span>Changer le mot de passe</span><button className="win-close-btn" onClick={() => setShowPasswordModal(false)}>✕</button></div>
+            <div className="win-modal-header"><span>{t.modals.changePasswordTitle}</span><button className="win-close-btn" onClick={() => setShowPasswordModal(false)}>✕</button></div>
             <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px' }}>
-              <input id="old-password" type="password" placeholder="Ancien mot de passe" required className="user-name-input" style={{ width: '100%', padding: '5px' }} />
-              <input id="new-password" type="password" placeholder="Nouveau mot de passe" required className="user-name-input" style={{ width: '100%', padding: '5px' }} />
-              <button type="submit" className="win-btn" style={{ marginTop: '10px' }}>Valider</button>
+              <input id="old-password" type="password" placeholder={t.modals.oldPasswordPlaceholder} required className="user-name-input" style={{ width: '100%', padding: '5px' }} />
+              <input id="new-password" type="password" placeholder={t.modals.newPasswordPlaceholder} required className="user-name-input" style={{ width: '100%', padding: '5px' }} />
+              <button type="submit" className="win-btn" style={{ marginTop: '10px' }}>{t.modals.validateBtn}</button>
             </form>
           </div>
         </div>
@@ -3789,28 +3806,28 @@ const App: React.FC = () => {
         <div className="modal-bg">
           <div className="modal-box wlm-options-modal" style={{ width: '550px' }}>
             <div className="win-modal-header">
-              <span>Options</span>
+              <span>{t.settings.optionsTitle}</span>
               <button className="win-close-btn" onClick={() => setShowOptionsModal(false)}>✕</button>
             </div>
             
             <div className="options-body">
               <div className="options-sidebar">
-                <div className="options-nav-item active">Personnel</div>
-                <div className="options-nav-item">Disposition</div>
-                <div className="options-nav-item">Messages</div>
-                <div className="options-nav-item">Alertes</div>
-                <div className="options-nav-item">Sons</div>
-                <div className="options-nav-item">Sécurité</div>
-                <div className="options-nav-item">Connexion</div>
+                <div className="options-nav-item active">{t.settings.tabPersonal}</div>
+                <div className="options-nav-item">{t.settings.tabLayout}</div>
+                <div className="options-nav-item">{t.settings.tabMessages}</div>
+                <div className="options-nav-item">{t.settings.tabAlerts}</div>
+                <div className="options-nav-item">{t.settings.tabSounds}</div>
+                <div className="options-nav-item">{t.settings.tabSecurity}</div>
+                <div className="options-nav-item">{t.settings.tabConnection}</div>
               </div>
               
               <div className="options-content">
                 <div className="options-section">
-                  <div className="options-title">Personnel</div>
+                  <div className="options-title">{t.settings.tabPersonal}</div>
                   
                   <div className="options-subsection">
-                    <label className="options-label">Surnom</label>
-                    <div className="options-hint">Tapez le surnom sous lequel vous souhaitez apparaître :</div>
+                    <label className="options-label">{t.auth.nicknameLabel.replace(':', '')}</label>
+                    <div className="options-hint">{t.settings.nicknameSub}</div>
                     <input 
                       className="win-input" 
                       value={myNickname} 
@@ -3820,7 +3837,7 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="options-subsection">
-                    <div className="options-hint">Tapez le message perso sous lequel vous souhaitez apparaître :</div>
+                    <div className="options-hint">{t.settings.psmSub}</div>
                     <input 
                       className="win-input" 
                       value={myPSM} 
@@ -3830,7 +3847,22 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="options-subsection">
-                    <label className="options-label">Statut</label>
+                    <label className="options-label">{t.common.language}</label>
+                    <div style={{ marginTop: '5px' }}>
+                      <select 
+                        value={language} 
+                        onChange={e => setLanguage(e.target.value as 'fr' | 'en')}
+                        className="wlm-auth-select"
+                        style={{ width: '160px', padding: '3px 6px' }}
+                      >
+                        <option value="fr">{t.common.french}</option>
+                        <option value="en">{t.common.english}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="options-subsection">
+                    <label className="options-label">{t.settings.statusSection}</label>
                     <div className="options-checkbox-line">
                       <input 
                         type="checkbox" 
@@ -3841,7 +3873,7 @@ const App: React.FC = () => {
                           localStorage.setItem('wlm_enable_auto_away', e.target.checked.toString());
                         }} 
                       />
-                      <label htmlFor="check-away">Afficher le statut "Absent" après </label>
+                      <label htmlFor="check-away">{t.settings.autoAwayPrefix}</label>
                       <input 
                         type="number" 
                         className="win-input-small" 
@@ -3853,15 +3885,15 @@ const App: React.FC = () => {
                         }} 
                         style={{ width: '40px', textAlign: 'center', margin: '0 5px' }} 
                       />
-                      <span> minutes d'inactivité</span>
+                      <span>{t.settings.autoAwaySuffix}</span>
                     </div>
                   </div>
 
                   <div className="options-subsection">
-                    <label className="options-label">Webcam</label>
+                    <label className="options-label">{t.settings.webcamSection}</label>
                     <div className="options-checkbox-line">
                       <input type="checkbox" id="check-webcam" defaultChecked />
-                      <label htmlFor="check-webcam">Indiquer aux autres utilisateurs que je dispose d'une webcam</label>
+                      <label htmlFor="check-webcam">{t.settings.webcamCheckbox}</label>
                     </div>
                   </div>
                 </div>
@@ -3869,9 +3901,9 @@ const App: React.FC = () => {
             </div>
 
             <div className="win-modal-footer">
-              <button className="win-btn" onClick={() => { syncProfile({ nickname: myNickname, psm: myPSM }); setShowOptionsModal(false); }}>OK</button>
-              <button className="win-btn" onClick={() => setShowOptionsModal(false)}>Annuler</button>
-              <button className="win-btn" onClick={() => syncProfile({ nickname: myNickname, psm: myPSM })}>Appliquer</button>
+              <button className="win-btn" onClick={() => { syncProfile({ nickname: myNickname, psm: myPSM }); setShowOptionsModal(false); }}>{t.common.ok}</button>
+              <button className="win-btn" onClick={() => setShowOptionsModal(false)}>{t.common.cancel}</button>
+              <button className="win-btn" onClick={() => syncProfile({ nickname: myNickname, psm: myPSM })}>{t.common.apply}</button>
             </div>
           </div>
         </div>
@@ -3880,14 +3912,14 @@ const App: React.FC = () => {
       {/* Menu Contextuel (Clic droit sur un contact) */}
       {contextMenu && (
         <div className="wlm-status-dropdown" style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 10000 }}>
-          <div className="dropdown-item" onClick={() => openChat(contextMenu.contactId)}>Envoyer un message instantané</div>
-          <div className="dropdown-item" onClick={() => handleClearHistory(contextMenu.contactId)}>Effacer l'historique de conversation</div>
+          <div className="dropdown-item" onClick={() => openChat(contextMenu.contactId)}>{t.roster.contextSendIM}</div>
+          <div className="dropdown-item" onClick={() => handleClearHistory(contextMenu.contactId)}>{t.roster.contextClearHistory}</div>
           <div className="dropdown-item separator"></div>
-          <div className="dropdown-item" onClick={() => handleDeleteContact(contextMenu.contactId)}>Supprimer</div>
+          <div className="dropdown-item" onClick={() => handleDeleteContact(contextMenu.contactId)}>{t.roster.contextDelete}</div>
           {contacts.find(c => c.id === contextMenu.contactId)?.blocked ? (
-            <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, false)}>Débloquer</div>
+            <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, false)}>{t.roster.contextUnblock}</div>
           ) : (
-            <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, true)}>Bloquer</div>
+            <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, true)}>{t.roster.contextBlock}</div>
           )}
         </div>
       )}

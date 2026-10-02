@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { deriveZeroKnowledgeKeys } from '../utils/Security';
+import { useI18n } from '../i18n';
 
 /**
  * Interface pour les propriétés du composant Auth
@@ -30,6 +31,8 @@ interface AuthProps {
  * Architecture Zero-Knowledge stricte : le mot de passe maître ne quitte JAMAIS le navigateur
  */
 const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
+  const { t, language, setLanguage } = useI18n();
+
   // États locaux
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState(initialUsername);
@@ -52,7 +55,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
       setCaptchaAnswer('');
     } catch {
       console.error('Échec de la récupération du captcha');
-      setError('Impossible de contacter le serveur pour le captcha.');
+      setError(t.auth.captchaError);
     }
   };
 
@@ -76,14 +79,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
 
     // Validation basique côté client
     if (!username || !password) {
-      setError('Veuillez remplir tous les champs.');
+      setError(t.auth.fillAllFields);
       return;
     }
 
     if (!isLogin) {
       const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{12,}$/;
       if (!passwordRegex.test(password)) {
-        setError('Le mot de passe doit comporter au moins 12 caractères et inclure majuscule, minuscule, chiffre et caractère spécial.');
+        setError(t.auth.passwordPolicy);
         return;
       }
     }
@@ -108,12 +111,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
             rememberMe: rememberMe
           }, vaultKey);
         } else {
-          setError("Réponse du serveur invalide ou altérée.");
+          setError(t.auth.invalidServerResponse);
         }
       } else {
         // Tentative d'inscription
         if (!captchaData || !captchaAnswer) {
-          setError('Veuillez répondre au captcha.');
+          setError(t.auth.captchaRequired);
           return;
         }
 
@@ -126,11 +129,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
         });
         
         setIsLogin(true);
-        alert('Compte créé avec succès ! Vous pouvez maintenant vous connecter.');
+        alert(t.auth.signupSuccess);
       }
     } catch (err: unknown) {
       // Gestion des erreurs serveur
-      const serverError = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Une erreur inattendue est survenue.';
+      const serverError = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || t.auth.unexpectedError;
       setError(serverError);
       
       // Rafraîchir le captcha en cas d'erreur d'inscription
@@ -143,6 +146,44 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
   return (
     <div className="wlm-auth-container">
       <div className="wlm-auth-box">
+        {/* Sélecteur de langue discret style WLM */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '4px', fontSize: '11px', gap: '5px' }}>
+          <span style={{ color: '#666' }}>{t.common.language} :</span>
+          <button 
+            type="button" 
+            onClick={() => setLanguage('fr')} 
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontWeight: language === 'fr' ? 'bold' : 'normal', 
+              color: language === 'fr' ? '#004b8d' : '#777',
+              textDecoration: language === 'fr' ? 'underline' : 'none',
+              padding: '0 2px',
+              fontSize: '11px'
+            }}
+          >
+            FR
+          </button>
+          <span style={{ color: '#bbb' }}>|</span>
+          <button 
+            type="button" 
+            onClick={() => setLanguage('en')} 
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontWeight: language === 'en' ? 'bold' : 'normal', 
+              color: language === 'en' ? '#004b8d' : '#777',
+              textDecoration: language === 'en' ? 'underline' : 'none',
+              padding: '0 2px',
+              fontSize: '11px'
+            }}
+          >
+            EN
+          </button>
+        </div>
+
         {/* En-tête avec logo style MSN */}
         <div className="wlm-auth-logo">
            <img src="/assets/openwlm_logo.png" alt="OpenWLM Logo" className="wlm-auth-logo-img" />
@@ -150,21 +191,21 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
         </div>
         
         <form onSubmit={handleSubmit} className="wlm-auth-form">
-          <h2>{isLogin ? 'Connexion' : 'Inscription'}</h2>
+          <h2>{isLogin ? t.auth.login : t.auth.signup}</h2>
           
           <div className="auth-field">
-            <label>Adresse de messagerie :</label>
+            <label>{t.auth.emailAddressLabel}</label>
             <input 
               type="text" 
               value={username} 
               onChange={e => setUsername(e.target.value)} 
-              placeholder="exemple@messenger.com"
+              placeholder={t.auth.emailPlaceholder}
               required 
             />
           </div>
           
           <div className="auth-field">
-            <label>Mot de passe :</label>
+            <label>{t.auth.passwordLabel}</label>
             <input 
               type="password" 
               value={password} 
@@ -177,16 +218,16 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
           {isLogin && (
             <>
               <div className="auth-field">
-                <label>Statut de connexion :</label>
+                <label>{t.auth.statusLabel}</label>
                 <select 
                   value={status} 
                   onChange={e => setStatus(e.target.value)} 
                   className="wlm-auth-select"
                 >
-                  <option value="online">Disponible</option>
-                  <option value="busy">Occupé(e)</option>
-                  <option value="away">Absent(e)</option>
-                  <option value="offline">Hors ligne (Invisible)</option>
+                  <option value="online">{t.auth.statusOnline}</option>
+                  <option value="busy">{t.auth.statusBusy}</option>
+                  <option value="away">{t.auth.statusAway}</option>
+                  <option value="offline">{t.auth.statusOffline}</option>
                 </select>
               </div>
 
@@ -197,11 +238,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
                     checked={rememberMe} 
                     onChange={e => setRememberMe(e.target.checked)} 
                   />
-                  Mémoriser mes clés E2EE sur cet ordinateur
+                  {t.auth.rememberKeys}
                 </label>
                 {rememberMe && (
                   <div style={{ color: '#cc0000', fontSize: '10px', marginTop: '5px', fontWeight: 'bold' }}>
-                    ⚠ Attention : Cela dégrade fortement la sécurité de votre clé privée.
+                    {t.auth.rememberWarning}
                   </div>
                 )}
               </div>
@@ -212,7 +253,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
           {!isLogin && (
             <>
               <div className="auth-field">
-                <label>Surnom :</label>
+                <label>{t.auth.nicknameLabel}</label>
                 <input 
                   type="text" 
                   value={nickname} 
@@ -223,14 +264,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
               
               {captchaData && (
                 <div className="auth-captcha-container">
-                  <label className="auth-captcha-label">Validation Anti-Robot :</label>
+                  <label className="auth-captcha-label">{t.auth.captchaLabel}</label>
                   <div className="auth-captcha-text">{captchaData.text}</div>
                   <input 
                     type="number" 
                     value={captchaAnswer} 
                     onChange={e => setCaptchaAnswer(e.target.value)} 
                     required 
-                    placeholder="Votre réponse" 
+                    placeholder={t.auth.captchaPlaceholder} 
                   />
                 </div>
               )}
@@ -247,10 +288,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
               className="wlm-btn-auth" 
               disabled={isDeriving || (!isLogin && !captchaData)}
             >
-              {isDeriving ? 'Chiffrement sécurisé...' : (isLogin ? 'Se connecter' : "S'inscrire")}
+              {isDeriving ? t.auth.encrypting : (isLogin ? t.auth.signInBtn : t.auth.signUpBtn)}
             </button>
             <span className="auth-toggle" onClick={toggleMode}>
-              {isLogin ? "Pas de compte ? Créer-en un" : "Déjà un compte ? Se connecter"}
+              {isLogin ? t.auth.noAccount : t.auth.hasAccount}
             </span>
           </div>
         </form>

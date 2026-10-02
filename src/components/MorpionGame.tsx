@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
+import { useI18n } from '../i18n';
 
 interface MorpionGameProps {
   socket: Socket | null;
@@ -44,6 +45,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
   onMinimize,
   onGameStateChange
 }) => {
+  const { t } = useI18n();
   const [board, setBoard] = useState<(string | null)[]>(Array(9).fill(null));
   const [mySymbol] = useState<'X' | 'O'>(initialSymbol);
   const opponentSymbol = mySymbol === 'X' ? 'O' : 'X';
@@ -245,13 +247,13 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
     const onGameRestart = (data: { from: number }) => {
       if (data.from !== opponentId) return;
       handleRestart(false);
-      setStatusMessage(`${opponentName} a relancé une nouvelle manche !`);
+      setStatusMessage(t.games.opponentRestarted.replace('{name}', opponentName));
       setTimeout(() => setStatusMessage(''), 4000);
     };
 
     const onGameQuit = (data: { from: number }) => {
       if (data.from !== opponentId) return;
-      alert(`${opponentName} a quitté la partie.`);
+      alert(t.games.opponentQuit.replace('{name}', opponentName));
       onClose();
     };
 
@@ -271,7 +273,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
       socket.off('game_quit', onGameQuit);
       socket.off('game_error', onGameError);
     };
-  }, [socket, opponentId, opponentName, opponentSymbol, handleRestart, onClose]);
+  }, [socket, opponentId, opponentName, opponentSymbol, handleRestart, onClose, t]);
 
   // Synchronisation de l'état du jeu avec le parent pour affichage en mode réduit
   useEffect(() => {
@@ -284,14 +286,14 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
       <div className="wlm-game-header">
         <div className="wlm-game-title">
           <span className="wlm-game-icon">🎮</span>
-          <span>Morpion — Partie contre {opponentName}</span>
+          <span>{t.games.morpionTitle.replace('{name}', opponentName)}</span>
         </div>
         <div className="wlm-game-header-controls">
           {onMinimize && (
             <button 
               className="win-title-control win-minimize-btn" 
               onClick={onMinimize} 
-              title="Réduire le jeu (continuer la discussion)"
+              title={t.games.minimizeTitle}
             >
               _
             </button>
@@ -299,7 +301,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
           <button 
             className="win-title-control win-close-btn" 
             onClick={handleQuit} 
-            title="Quitter la partie"
+            title={t.games.quitGameTitle}
           >
             ✕
           </button>
@@ -308,8 +310,8 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
 
       {/* Barre de retour rapide à la discussion (pratique sur petits écrans et pour réduire) */}
       {onMinimize && (
-        <div className="wlm-game-quick-return-bar" onClick={onMinimize} title="Réduire pour voir la conversation">
-          <span>💬 Réduire le jeu pour discuter</span>
+        <div className="wlm-game-quick-return-bar" onClick={onMinimize} title={t.games.minimizeTitle}>
+          <span>{t.games.minimizeToChat}</span>
           <span className="quick-return-arrow">◀</span>
         </div>
       )}
@@ -323,8 +325,8 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
             <span className={`player-symbol-badge symbol-${mySymbol}`}>{mySymbol}</span>
           </div>
           <div className="player-details">
-            <span className="player-name">{myName} (Moi)</span>
-            <span className="player-score-badge">{myScore} {myScore > 1 ? 'victoires' : 'victoire'}</span>
+            <span className="player-name">{myName} {t.games.meLabel}</span>
+            <span className="player-score-badge">{myScore} {myScore > 1 ? t.games.winPlural : t.games.winSingle}</span>
           </div>
         </div>
 
@@ -332,7 +334,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
         <div className="game-vs-badge">
           <div className="vs-label">VS</div>
           <div className="score-numbers">{myScore} - {opponentScore}</div>
-          {draws > 0 && <div className="draws-count">{draws} nul{draws > 1 ? 's' : ''}</div>}
+          {draws > 0 && <div className="draws-count">{draws} {draws > 1 ? t.games.drawPlural : t.games.drawSingle}</div>}
         </div>
 
         {/* Joueur 2 (Adversaire) */}
@@ -343,7 +345,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
           </div>
           <div className="player-details">
             <span className="player-name">{opponentName}</span>
-            <span className="player-score-badge">{opponentScore} {opponentScore > 1 ? 'victoires' : 'victoire'}</span>
+            <span className="player-score-badge">{opponentScore} {opponentScore > 1 ? t.games.winPlural : t.games.winSingle}</span>
           </div>
         </div>
       </div>
@@ -353,15 +355,15 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
         {statusMessage ? (
           <span>{statusMessage}</span>
         ) : winner === 'me' ? (
-          <span>🎉 Bravo ! Vous remportez cette manche !</span>
+          <span>{t.games.bannerWin}</span>
         ) : winner === 'opponent' ? (
-          <span>{opponentName} a remporté cette manche !</span>
+          <span>{t.games.bannerLoss.replace('{name}', opponentName)}</span>
         ) : winner === 'draw' ? (
-          <span>🤝 Match nul ! Personne ne marque de point.</span>
+          <span>{t.games.bannerDraw}</span>
         ) : isMyTurn ? (
-          <span>👉 C'est à votre tour de jouer ({mySymbol})</span>
+          <span>{t.games.bannerYourTurnSymbol.replace('{symbol}', mySymbol)}</span>
         ) : (
-          <span>⏳ En attente du coup de {opponentName}...</span>
+          <span>{t.games.bannerWaitOpponent.replace('{name}', opponentName)}</span>
         )}
       </div>
 
@@ -375,7 +377,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
               className={`morpion-cell ${cell ? `cell-${cell}` : ''} ${isWinningCell ? 'cell-winning' : ''} ${!cell && isMyTurn && !winner ? 'cell-clickable' : ''}`}
               onClick={() => handleCellClick(idx)}
               disabled={!isMyTurn || cell !== null || winner !== null}
-              title={!cell && isMyTurn ? `Placer ${mySymbol}` : undefined}
+              title={!cell && isMyTurn ? t.games.placeSymbol.replace('{symbol}', mySymbol) : undefined}
             >
               {cell === 'X' && (
                 <span className="symbol-x">✕</span>
@@ -392,11 +394,11 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
       <div className="wlm-game-footer">
         {winner && (
           <button className="win-btn primary-btn" onClick={() => handleRestart(true)}>
-            🔄 Rejouer une manche
+            {t.games.replayRound}
           </button>
         )}
         <button className="win-btn" onClick={handleQuit}>
-          Quitter le jeu
+          {t.games.quitGameBtn}
         </button>
       </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { type EncryptedFileKeys, decryptFileBinary } from '../utils/Security';
+import { useI18n } from '../i18n';
 
 export interface FileDataPayload {
   type: 'file';
@@ -22,11 +23,14 @@ interface FileTransferCardProps {
   isSender: boolean;
 }
 
-const formatBytes = (bytes: number): string => {
-  if (!bytes || bytes === 0) return '0 o';
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+const formatBytes = (bytes: number, lang: 'fr' | 'en' = 'fr'): string => {
+  const byteUnit = lang === 'en' ? 'B' : 'o';
+  const kbUnit = lang === 'en' ? 'KB' : 'Ko';
+  const mbUnit = lang === 'en' ? 'MB' : 'Mo';
+  if (!bytes || bytes === 0) return `0 ${byteUnit}`;
+  if (bytes < 1024) return `${bytes} ${byteUnit}`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${kbUnit}`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} ${mbUnit}`;
 };
 
 const getExtension = (fileName: string): string => {
@@ -48,6 +52,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
   myPrivateKey,
   isSender
 }) => {
+  const { t, language } = useI18n();
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
@@ -61,16 +66,20 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
 
   const calculateRemaining = useCallback(() => {
     const diff = fileData.expiresAt - Date.now();
-    if (diff <= 0) return { expired: true, text: 'Expiré (délai de 4H dépassé)' };
+    if (diff <= 0) return { expired: true, text: t.fileTransfer.expiredText };
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     if (hours > 0) {
-      return { expired: false, text: `Disponible encore ${hours}h ${minutes}min` };
+      return { expired: false, text: t.fileTransfer.availableFor.replace('{time}', `${hours}h ${minutes}min`) };
     }
-    return { expired: false, text: `Disponible encore ${minutes} min` };
-  }, [fileData.expiresAt]);
+    return { expired: false, text: t.fileTransfer.availableFor.replace('{time}', `${minutes} min`) };
+  }, [fileData.expiresAt, t]);
 
   const [remaining, setRemaining] = useState(calculateRemaining);
+
+  useEffect(() => {
+    setRemaining(calculateRemaining());
+  }, [calculateRemaining]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -152,7 +161,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
 
   const handleDownload = async () => {
     if (remaining.expired) {
-      alert("Ce lien de téléchargement a expiré (validité 4H max).");
+      alert(t.fileTransfer.expiredAlert);
       return;
     }
 
@@ -169,7 +178,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
     }
 
     if (!myPrivateKey) {
-      alert("Clé privée de déchiffrement manquante. Veuillez vous reconnecter.");
+      alert(t.fileTransfer.missingKeyAlert);
       return;
     }
 
@@ -226,10 +235,10 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number } };
       if (axiosErr.response?.status === 410) {
-        setErrorMessage("Lien expiré (4h dépassées)");
-        setRemaining({ expired: true, text: 'Expiré (délai de 4H dépassé)' });
+        setErrorMessage(t.fileTransfer.linkExpired);
+        setRemaining({ expired: true, text: t.fileTransfer.expiredText });
       } else {
-        setErrorMessage("Erreur lors du téléchargement/déchiffrement.");
+        setErrorMessage(t.fileTransfer.downloadError);
       }
     } finally {
       setIsDownloading(false);
@@ -250,7 +259,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
           <div 
             className="wlm-image-thumbnail-wrapper" 
             onClick={() => setShowLightbox(true)}
-            title="Cliquer pour agrandir la capture"
+            title={t.fileTransfer.clickToEnlarge}
           >
             <img 
               src={imageUrl} 
@@ -258,14 +267,14 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
               className="wlm-image-thumbnail" 
             />
             <div className="wlm-image-zoom-overlay">
-              <span>🔍 Agrandir</span>
+              <span>🔍 {t.fileTransfer.enlarge}</span>
             </div>
           </div>
         ) : isAutoLoading ? (
           /* Cas B : Déchiffrement auto en cours */
           <div className="wlm-image-loading-box">
             <div className="wlm-image-spinner"></div>
-            <span>Déchiffrement de l'image ({formatBytes(fileData.fileSize)})...</span>
+            <span>{t.fileTransfer.decryptingImage.replace('{size}', formatBytes(fileData.fileSize, language))}</span>
           </div>
         ) : (
           /* Cas C : Fallback si > 10 Mo, erreur ou pas encore déchiffré */
@@ -273,14 +282,14 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
             <div className="wlm-image-fallback-icon">📷</div>
             <div className="wlm-image-fallback-info">
               <span className="wlm-image-fallback-title">
-                {isHeavyImage ? "Image volumineuse (> 10 Mo)" : "Image chiffrée"}
+                {isHeavyImage ? t.fileTransfer.heavyImage : t.fileTransfer.encryptedImage}
               </span>
               <span className="wlm-image-fallback-sub">
                 {remaining.expired 
-                  ? "Délai expiré" 
+                  ? t.fileTransfer.delayExpired 
                   : autoLoadError 
-                    ? "Déchiffrement auto en échec" 
-                    : "Cliquer pour charger l'aperçu"}
+                    ? t.fileTransfer.autoDecryptFailed 
+                    : t.fileTransfer.clickToLoad}
               </span>
             </div>
           </div>
@@ -293,12 +302,12 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
               {fileData.fileName}
             </div>
             <div className="wlm-file-meta">
-              <span>{formatBytes(fileData.fileSize)}</span>
+              <span>{formatBytes(fileData.fileSize, language)}</span>
               <span className={`wlm-file-badge-direction ${isSender ? 'outgoing' : 'incoming'}`}>
-                {isSender ? '📤 Envoyée' : '📥 Reçue'}
+                {isSender ? t.fileTransfer.sentBadge : t.fileTransfer.receivedBadge}
               </span>
-              <span className="wlm-file-badge-e2ee" title="Chiffré de bout en bout avec AES-256 et RSA">🔒 E2EE</span>
-              {remaining.expired && <span className="wlm-file-badge-expired">Expiré</span>}
+              <span className="wlm-file-badge-e2ee" title={t.fileTransfer.e2eeTitle}>{t.fileTransfer.e2eeBadge}</span>
+              {remaining.expired && <span className="wlm-file-badge-expired">{t.fileTransfer.expiredBadge}</span>}
             </div>
           </div>
 
@@ -310,7 +319,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
                 onClick={loadDecryptedImage}
                 disabled={isAutoLoading}
               >
-                {isAutoLoading ? 'Déchiffrement...' : "Afficher l'image"}
+                {isAutoLoading ? t.fileTransfer.decrypting : t.fileTransfer.viewImage}
               </button>
             )}
 
@@ -319,14 +328,14 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
               className="wlm-file-download-btn"
               onClick={handleDownload}
               disabled={isDownloading || remaining.expired}
-              title="Enregistrer le fichier image sur votre ordinateur"
+              title={t.fileTransfer.saveToComputer}
             >
               {isDownloading ? (
-                <span>{downloadProgress !== null && downloadProgress > 0 ? `${downloadProgress}%...` : 'Déchiffrement...'}</span>
+                <span>{downloadProgress !== null && downloadProgress > 0 ? `${downloadProgress}%...` : t.fileTransfer.decrypting}</span>
               ) : isDownloaded ? (
-                <span>✓ Enregistré</span>
+                <span>{t.fileTransfer.saved}</span>
               ) : (
-                <span>⬇ Télécharger</span>
+                <span>{t.fileTransfer.download}</span>
               )}
             </button>
           </div>
@@ -345,7 +354,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
               <div className="wlm-paste-modal-header">
                 <div className="wlm-paste-title-area">
                   <span className="wlm-paste-icon">📷</span>
-                  <span className="wlm-paste-title">{fileData.fileName} ({formatBytes(fileData.fileSize)})</span>
+                  <span className="wlm-paste-title">{fileData.fileName} ({formatBytes(fileData.fileSize, language)})</span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <button 
@@ -354,13 +363,13 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
                     onClick={handleDownload}
                     style={{ fontSize: '11px', padding: '2px 10px' }}
                   >
-                    ⬇ Enregistrer
+                    {t.fileTransfer.save}
                   </button>
                   <button 
                     type="button" 
                     className="win-close-btn" 
                     onClick={() => setShowLightbox(false)} 
-                    title="Fermer (Échap)"
+                    title={`${t.common.close} (Esc)`}
                   >
                     ✕
                   </button>
@@ -382,7 +391,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
   return (
     <div className="wlm-file-card">
       <div className="wlm-file-card-header">
-        <div className="wlm-file-icon" title={`Fichier .${ext}`}>
+        <div className="wlm-file-icon" title={language === 'en' ? `File .${ext}` : `Fichier .${ext}`}>
           {ext}
         </div>
         <div className="wlm-file-info">
@@ -390,13 +399,13 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
             {fileData.fileName}
           </div>
           <div className="wlm-file-meta">
-            <span>{formatBytes(fileData.fileSize)}</span>
+            <span>{formatBytes(fileData.fileSize, language)}</span>
             <span className={`wlm-file-badge-direction ${isSender ? 'outgoing' : 'incoming'}`}>
-              {isSender ? '📤 Envoyé' : '📥 Reçu'}
+              {isSender ? t.fileTransfer.sentBadge : t.fileTransfer.receivedBadge}
             </span>
-            <span className="wlm-file-badge-e2ee" title="Chiffré de bout en bout avec AES-256 et RSA">🔒 E2EE</span>
+            <span className="wlm-file-badge-e2ee" title={t.fileTransfer.e2eeTitle}>{t.fileTransfer.e2eeBadge}</span>
             {remaining.expired ? (
-              <span className="wlm-file-badge-expired">Expiré</span>
+              <span className="wlm-file-badge-expired">{t.fileTransfer.expiredBadge}</span>
             ) : null}
           </div>
         </div>
@@ -405,7 +414,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
       <div className="wlm-file-actions">
         {remaining.expired ? (
           <span className="wlm-file-expiry" style={{ color: '#c5221f' }}>
-            Le lien de 4h a expiré
+            {t.fileTransfer.linkExpired}
           </span>
         ) : (
           <span className="wlm-file-expiry">
@@ -420,12 +429,12 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
         >
           {isDownloading ? (
             <span>
-              {downloadProgress !== null && downloadProgress > 0 ? `${downloadProgress}%...` : 'Déchiffrement...'}
+              {downloadProgress !== null && downloadProgress > 0 ? `${downloadProgress}%...` : t.fileTransfer.decrypting}
             </span>
           ) : isDownloaded ? (
-            <span>✓ Téléchargé</span>
+            <span>{t.fileTransfer.downloaded}</span>
           ) : (
-            <span>⬇ Télécharger</span>
+            <span>{t.fileTransfer.download}</span>
           )}
         </button>
       </div>

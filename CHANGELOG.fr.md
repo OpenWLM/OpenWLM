@@ -36,6 +36,11 @@ Cette version majeure consolide la réécriture moderne de Windows Live Messenge
   - Sons d'origine (connexion, message, wizz, appel, nudge).
   - Clins d'œil animés (Winks), Wizz avec secousse d'écran.
   - Surnom, message personnel (PSM), sélecteur d'avatars et de scènes rétro.
+- **Internationalisation Complète (FR / EN)** :
+  - Fournisseur réactif `I18nProvider` avec bascule instantanée sans rechargement entre le français et l'anglais.
+  - Traduction intégrale de l'authentification, de la liste de contacts, de la barre d'outils, des en-têtes de messages et de la boîte d'options classique Windows Live.
+  - Prise en charge bilingue des mini-jeux (Dames, Morpion), du lecteur de clips vocaux, des appels WebRTC et du gestionnaire d'émoticônes personnalisées.
+  - Zéro régression visuelle ni débordement d'interface, préservant scrupuleusement l'esthétique Windows Aero 2009.
 
 ---
 

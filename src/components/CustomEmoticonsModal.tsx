@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { encryptCustomEmoticon, validateImageSignature } from '../utils/Security';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from '../utils/CustomEmoticonsDB';
+import { useI18n } from '../i18n';
 
 interface CustomEmoticonsModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
   onEmoticonsChange,
   onSelectEmoticon
 }) => {
+  const { t } = useI18n();
   const [myEmoticons, setMyEmoticons] = useState<MyEmoticonRecord[]>([]);
   const [emoticonUrls, setEmoticonUrls] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -134,7 +136,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       // 1. Validation de la signature binaire (magic bytes)
       const sig = validateImageSignature(buffer);
       if (!sig.valid) {
-        setErrorMessage("Format de fichier non reconnu. Veuillez choisir un fichier PNG, WebP, GIF ou JPEG valide.");
+        setErrorMessage(t.customEmoticons.invalidFormat);
         return;
       }
 
@@ -157,12 +159,14 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
         URL.revokeObjectURL(localUrl);
         if (img.naturalWidth > 128 || img.naturalHeight > 128) {
           setErrorMessage(
-            `Le GIF animé dépasse les dimensions maximales (128x128 px). Actuel : ${img.naturalWidth}x${img.naturalHeight} px. Afin de préserver son animation, le redimensionnement automatique des GIF n'est pas appliqué. Veuillez choisir un GIF de 128x128 px maximum.`
+            t.customEmoticons.gifDimensionsExceeded
+              .replace('{width}', img.naturalWidth.toString())
+              .replace('{height}', img.naturalHeight.toString())
           );
           return;
         }
         if (file.size > MAX_GIF_SIZE) {
-          setErrorMessage(`Le GIF animé dépasse la taille maximale autorisée de 1 Mo (actuelle : ${(file.size / 1024).toFixed(1)} Ko).`);
+          setErrorMessage(t.customEmoticons.gifSizeExceeded.replace('{size}', (file.size / 1024).toFixed(1)));
           return;
         }
 
@@ -228,7 +232,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       // Validation du poids final après redimensionnement
       if (finalFile.size > MAX_STATIC_SIZE) {
         setErrorMessage(
-          `L'image statique dépasse la taille maximale autorisée de 256 Ko (actuelle : ${(finalFile.size / 1024).toFixed(1)} Ko). Veuillez choisir une image plus légère.`
+          t.customEmoticons.staticSizeExceeded.replace('{size}', (finalFile.size / 1024).toFixed(1))
         );
         return;
       }
@@ -247,7 +251,10 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
       if (wasResized) {
         setResizeInfo(
-          `Image redimensionnée automatiquement : ${img.naturalWidth}x${img.naturalHeight} → ${finalWidth}x${finalHeight} px (${(finalFile.size / 1024).toFixed(1)} Ko)`
+          t.customEmoticons.autoResized
+            .replace('{from}', `${img.naturalWidth}x${img.naturalHeight}`)
+            .replace('{to}', `${finalWidth}x${finalHeight}`)
+            .replace('{size}', (finalFile.size / 1024).toFixed(1))
         );
       }
 
@@ -257,27 +264,27 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       }
     } catch (err: unknown) {
       console.error("Erreur traitement image:", err);
-      setErrorMessage("Une erreur est survenue lors du traitement du fichier.");
+      setErrorMessage(t.customEmoticons.processingError);
     }
   };
 
   // Soumission et chiffrement E2EE
   const handleSaveEmoticon = async () => {
     if (!selectedFile || !fileBuffer || !imageMeta) {
-      setErrorMessage("Veuillez sélectionner une image valide.");
+      setErrorMessage(t.customEmoticons.selectValidImage);
       return;
     }
 
     const shortcut = shortcutInput.trim();
     const shortcutRegex = /^[\w\-():;@#!?*~[\]{}]{2,32}$/;
     if (shortcut.length < 2 || shortcut.length > 32 || !shortcutRegex.test(shortcut)) {
-      setErrorMessage("Le raccourci doit contenir entre 2 et 32 caractères (ex: (monchat), :rock:, [star]).");
+      setErrorMessage(t.customEmoticons.invalidShortcut);
       return;
     }
 
     // Vérifier les doublons
     if (myEmoticons.some(e => e.shortcut.toLowerCase() === shortcut.toLowerCase())) {
-      setErrorMessage("Vous possédez déjà une émoticône avec ce raccourci.");
+      setErrorMessage(t.customEmoticons.duplicateShortcut);
       return;
     }
 
@@ -327,7 +334,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       const originalBlob = new Blob([fileBuffer], { type: imageMeta.mime });
       await CustomEmoticonsDB.saveCachedAsset(serverEmoticon.id, originalBlob, imageMeta.mime, keyBase64);
 
-      setSuccessMessage(`Émoticône "${shortcut}" créée et chiffrée avec succès !`);
+      setSuccessMessage(t.customEmoticons.createdSuccess.replace('{shortcut}', shortcut));
       resetForm();
       await loadEmoticons();
       onEmoticonsChange();
@@ -342,7 +349,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
   // Suppression d'une émoticône
   const handleDeleteEmoticon = async (id: string, shortcut: string) => {
-    if (!window.confirm(`Voulez-vous vraiment supprimer l'émoticône ${shortcut} ?`)) {
+    if (!window.confirm(t.customEmoticons.confirmDelete.replace('{shortcut}', shortcut))) {
       return;
     }
 
@@ -353,12 +360,12 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
       await CustomEmoticonsDB.deleteMyEmoticon(id);
       await CustomEmoticonsDB.deleteMyEmoticonByShortcut(shortcut);
-      setSuccessMessage(`Émoticône "${shortcut}" supprimée.`);
+      setSuccessMessage(t.customEmoticons.deletedSuccess.replace('{shortcut}', shortcut));
       await loadEmoticons();
       onEmoticonsChange(shortcut);
     } catch (err) {
       console.error("Erreur suppression émoticône:", err);
-      setErrorMessage("Erreur lors de la suppression de l'émoticône.");
+      setErrorMessage(t.customEmoticons.deleteError);
     }
   };
 
@@ -370,22 +377,22 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
         <div className="wlm-paste-modal-header">
           <div className="wlm-paste-title-area">
             <span className="wlm-paste-icon">✨</span>
-            <span className="wlm-paste-title">Gestionnaire des émoticônes personnalisées (E2EE)</span>
+            <span className="wlm-paste-title">{t.customEmoticons.title}</span>
           </div>
-          <button type="button" className="win-close-btn" onClick={onClose} title="Fermer">✕</button>
+          <button type="button" className="win-close-btn" onClick={onClose} title={t.common.close}>✕</button>
         </div>
 
         <div className="wlm-custom-emo-body">
           {/* Section 1 : Formulaire d'ajout */}
           <div className="wlm-custom-emo-add-section">
-            <div className="wlm-custom-emo-subtitle">Ajouter une nouvelle émoticône</div>
+            <div className="wlm-custom-emo-subtitle">{t.customEmoticons.addNewTitle}</div>
             
             <div className="wlm-custom-emo-form-row">
               <div className="wlm-custom-emo-preview-box">
                 {previewUrl ? (
-                  <img src={previewUrl} alt="Aperçu" className="wlm-custom-emo-thumb-preview" />
+                  <img src={previewUrl} alt="Preview" className="wlm-custom-emo-thumb-preview" />
                 ) : (
-                  <span className="wlm-custom-emo-no-preview">Aperçu</span>
+                  <span className="wlm-custom-emo-no-preview">{t.customEmoticons.preview}</span>
                 )}
               </div>
 
@@ -400,18 +407,18 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
                   />
                   {selectedFile && (
                     <button type="button" className="win-btn" onClick={resetForm} style={{ fontSize: '10px' }}>
-                      Réinitialiser
+                      {t.customEmoticons.reset}
                     </button>
                   )}
                 </div>
 
                 <div className="wlm-custom-emo-hints">
-                  Formats : PNG, WebP (≤ 256 Ko), GIF (≤ 1 Mo) • Max 128x128 px
+                  {t.customEmoticons.formatsHint}
                 </div>
 
                 {imageMeta && (
                   <div className="wlm-custom-emo-meta-badge">
-                    {imageMeta.width}x{imageMeta.height} px • {(selectedFile!.size / 1024).toFixed(1)} Ko {imageMeta.isAnimated && '• Animé'}
+                    {imageMeta.width}x{imageMeta.height} px • {(selectedFile!.size / 1024).toFixed(1)} Ko {imageMeta.isAnimated && t.customEmoticons.animated}
                   </div>
                 )}
 
@@ -422,12 +429,12 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
                 )}
 
                 <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Raccourci :</label>
+                  <label style={{ fontSize: '11px', fontWeight: 'bold' }}>{t.customEmoticons.shortcutLabel}</label>
                   <input
                     type="text"
                     value={shortcutInput}
                     onChange={e => setShortcutInput(e.target.value)}
-                    placeholder="Ex: (chat)"
+                    placeholder={t.customEmoticons.shortcutPlaceholder}
                     style={{ width: '130px', padding: '3px 6px', fontSize: '12px' }}
                     maxLength={32}
                   />
@@ -437,7 +444,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
                     onClick={handleSaveEmoticon}
                     disabled={isUploading || !selectedFile}
                   >
-                    {isUploading ? 'Chiffrement...' : 'Enregistrer'}
+                    {isUploading ? t.customEmoticons.encrypting : t.common.save}
                   </button>
                 </div>
               </div>
@@ -454,17 +461,21 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
           {/* Section 2 : Liste des émoticônes de l'utilisateur */}
           <div className="wlm-custom-emo-list-section">
             <div className="wlm-custom-emo-subtitle">
-              Vos émoticônes personnalisées ({myEmoticons.length} / 100)
+              {t.customEmoticons.myCustomEmoticonsTitle.replace('{count}', myEmoticons.length.toString())}
             </div>
 
             {isLoading ? (
               <div style={{ padding: '20px', textAlign: 'center', fontSize: '11px', color: '#666' }}>
-                Chargement de vos émoticônes...
+                {t.customEmoticons.loading}
               </div>
             ) : myEmoticons.length === 0 ? (
               <div className="wlm-custom-emo-empty">
-                Vous n'avez pas encore d'émoticônes personnalisées.<br />
-                Ajoutez-en une ci-dessus pour la partager en toute confidentialité !
+                {t.customEmoticons.emptyHint.split('\n').map((line, idx) => (
+                  <React.Fragment key={idx}>
+                    {line}
+                    {idx === 0 && <br />}
+                  </React.Fragment>
+                ))}
               </div>
             ) : (
               <div className="wlm-custom-emo-grid">
@@ -474,7 +485,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
                     <div 
                       key={emo.id} 
                       className="wlm-custom-emo-item"
-                      title={`Cliquer pour insérer ${emo.shortcut}`}
+                      title={t.customEmoticons.clickToInsert.replace('{shortcut}', emo.shortcut)}
                       onClick={() => onSelectEmoticon && onSelectEmoticon(emo.shortcut)}
                     >
                       <div className="wlm-custom-emo-thumb-container">
@@ -491,7 +502,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
                       <button
                         type="button"
                         className="wlm-custom-emo-del-btn"
-                        title="Supprimer"
+                        title={t.common.delete}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDeleteEmoticon(emo.id, emo.shortcut);
@@ -509,7 +520,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
         <div className="wlm-paste-modal-footer">
           <button type="button" className="win-btn" onClick={onClose}>
-            Fermer
+            {t.common.close}
           </button>
         </div>
       </div>

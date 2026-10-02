@@ -11,7 +11,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron": "electron .",
-    "start": "npm run build && concurrently \"node server/index.js\" \"wait-on http://localhost:3001 && npm run electron\""
+    "start": "npm run build && concurrently \"node server/index.js\" \"wait-on http://localhost:3001 && npm run electron\"",
+    "test:security": "node tests/audit_security_enforcement.js",
+    "test": "npm run test:security"
   },
   "dependencies": {
     "axios": "^1.17.0",

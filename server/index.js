@@ -449,6 +449,19 @@ const hashPassword = (authKeyHex, salt) => {
 };
 
 /**
+ * SÉCURITÉ P3 : Vérification en temps constant du hachage de mot de passe (Anti-Timing Attack).
+ * Utilise crypto.timingSafeEqual sur les buffers binaires pour éliminer toute fuite temporelle.
+ */
+const verifyPasswordHash = (authKeyHex, salt, storedHash) => {
+  if (!authKeyHex || !salt || !storedHash || typeof storedHash !== 'string') return false;
+  const calculatedHash = hashPassword(authKeyHex, salt);
+  const bufCalc = Buffer.from(calculatedHash, 'hex');
+  const bufStored = Buffer.from(storedHash, 'hex');
+  if (bufCalc.length !== bufStored.length) return false;
+  return crypto.timingSafeEqual(bufCalc, bufStored);
+};
+
+/**
  * SÉCURITÉ CENTRALISÉE (AUTORISATION & ANTI-USURPATION) :
  * Vérifie si senderId a le droit d'interagir avec targetId :
  * 1. Les deux identifiants doivent être des entiers strictement positifs et distincts.
@@ -600,6 +613,47 @@ const isValidPath = (path) => {
 const captchas = new Map();
 
 /**
+ * SÉCURITÉ P3 : Nettoyage périodique des structures en mémoire vive (Anti-Fuite Mémoire / DoS RAM).
+ * Purge automatiquement :
+ * 1. Les captchas expirés ou abandonnés.
+ * 2. Les adresses IP inactives dans les rate limiters d'authentification et d'upload.
+ */
+const cleanupMemoryMaps = () => {
+  const now = Date.now();
+  
+  // 1. Purge des captchas expirés
+  for (const [id, data] of captchas.entries()) {
+    if (!data || now > data.expires) {
+      captchas.delete(id);
+    }
+  }
+
+  // 2. Purge des adresses IP inactives dans authRateLimiter (fenêtre 60s)
+  for (const [ip, timestamps] of rateLimitStorage.entries()) {
+    const active = timestamps.filter(ts => now - ts < 60000);
+    if (active.length === 0) {
+      rateLimitStorage.delete(ip);
+    } else {
+      rateLimitStorage.set(ip, active);
+    }
+  }
+
+  // 3. Purge des adresses IP inactives dans uploadRateLimiter (fenêtre 60s)
+  for (const [ip, timestamps] of uploadRateLimitStorage.entries()) {
+    const active = timestamps.filter(ts => now - ts < 60000);
+    if (active.length === 0) {
+      uploadRateLimitStorage.delete(ip);
+    } else {
+      uploadRateLimitStorage.set(ip, active);
+    }
+  }
+};
+
+// Exécution périodique toutes les 5 minutes (ne bloque pas la sortie de node si standalone)
+const memoryCleanupInterval = setInterval(cleanupMemoryMaps, 5 * 60 * 1000);
+if (memoryCleanupInterval.unref) memoryCleanupInterval.unref();
+
+/**
  * --- API ENDPOINTS ---
  */
 
@@ -704,7 +758,7 @@ app.post('/api/login', authRateLimiter, (req, res) => {
 
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   
-  if (user && hashPassword(password, user.salt) === user.password_hash) {
+  if (user && verifyPasswordHash(password, user.salt, user.password_hash)) {
     // Création d'un token valable 24h avec token_version pour révocation
     const tv = user.token_version || 0;
     const token = jwt.sign({ id: user.id, username: user.username, tv }, SECRET, { expiresIn: '24h' });
@@ -993,7 +1047,7 @@ app.post('/api/user/change-password', authenticateToken, (req, res) => {
   const user = db.prepare('SELECT password_hash, salt FROM users WHERE id = ?').get(userId);
   if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
 
-  if (hashPassword(oldKey, user.salt) !== user.password_hash) {
+  if (!verifyPasswordHash(oldKey, user.salt, user.password_hash)) {
     return res.status(401).json({ error: 'Ancien mot de passe incorrect.' });
   }
 

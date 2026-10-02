@@ -3028,24 +3028,30 @@ const App: React.FC = () => {
                   {t.chat.gamesMenu}
                 </span>
                 {showGamesMenu && (
-                  <div className="wlm-games-dropdown" onClick={e => e.stopPropagation()}>
+                  <>
                     <div 
-                      className="wlm-game-menu-item" 
-                      onClick={() => handleInviteGame('checkers')}
-                      title={t.games.checkersTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
-                    >
-                      <span className="msn-game-icon">⚪</span>
-                      <span>{t.games.checkers}</span>
+                      className="wlm-menu-backdrop" 
+                      onClick={(e) => { e.stopPropagation(); setShowGamesMenu(false); }} 
+                    />
+                    <div className="wlm-games-dropdown" onClick={e => e.stopPropagation()}>
+                      <div 
+                        className="wlm-game-menu-item" 
+                        onClick={() => handleInviteGame('checkers')}
+                        title={t.games.checkersTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
+                      >
+                        <span className="msn-game-icon">⚪</span>
+                        <span>{t.games.checkers}</span>
+                      </div>
+                      <div 
+                        className="wlm-game-menu-item" 
+                        onClick={() => handleInviteGame('morpion')}
+                        title={t.games.morpionTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
+                      >
+                        <span className="msn-game-icon">🎮</span>
+                        <span>{t.games.morpion}</span>
+                      </div>
                     </div>
-                    <div 
-                      className="wlm-game-menu-item" 
-                      onClick={() => handleInviteGame('morpion')}
-                      title={t.games.morpionTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
-                    >
-                      <span className="msn-game-icon">🎮</span>
-                      <span>{t.games.morpion}</span>
-                    </div>
-                  </div>
+                  </>
                 )}
               </div>
               <span onClick={() => handleInviteGame('checkers')} style={{cursor:'pointer'}} title={t.games.checkersTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}>{t.chat.activities}</span>

@@ -69,9 +69,9 @@ interface Contact {
 export const SYSTEM_BOT_ID = -1;
 export const SYSTEM_BOT_CONTACT: Contact = {
   id: SYSTEM_BOT_ID,
-  username: 'assistant_openwlm',
-  nickname: 'Assistant OpenWLM',
-  psm: 'En ligne pour vos tests & découverte',
+  username: 'openwlm',
+  nickname: 'OpenWLM',
+  psm: 'En ligne pour vos tests',
   status: 'online',
   avatar: '/assets/usertiles/robot.png',
   scene: '/assets/scenes/0002.png',
@@ -448,7 +448,7 @@ const App: React.FC = () => {
    */
   const togglePrivateMode = (chatId: number) => {
     if (chatId === SYSTEM_BOT_ID) {
-      alert("La discussion avec l'Assistant OpenWLM est déjà 100% locale et n'est jamais enregistrée sur le serveur.");
+      alert("La discussion avec OpenWLM est locale et n'est pas enregistrée sur le serveur.");
       return;
     }
     const activeContact = contacts.find(c => c.id === chatId);
@@ -1079,8 +1079,8 @@ const App: React.FC = () => {
         const welcomeMsg: Message = {
           senderId: SYSTEM_BOT_ID,
           receiverId: user.id,
-          sender: 'Assistant OpenWLM',
-          text: "Bonjour ! Je suis l'Assistant de test OpenWLM. Je suis là pour vous permettre de tester les fonctionnalités en solo.\n\nVous pouvez tester :\n• Votre texte avec son formatage (police, couleur, taille, gras)\n• Les émoticônes classiques et vos émoticônes personnalisées\n• Les sons WLM et le Wizz\n• Une partie de Morpion\n\nTapez /help pour afficher les commandes d'aide ou utilisez les boutons rapides ci-dessous !",
+          sender: 'OpenWLM',
+          text: "Bonjour ! Vous pouvez envoyer un message pour tester l'écho, ou utiliser les boutons ci-dessous pour tester les sons, le Wizz, les émoticônes et le Morpion.",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timestamp: new Date().toISOString()
         };
@@ -1522,7 +1522,7 @@ const App: React.FC = () => {
         let echoNotice = `Écho : ${userText}`;
         const hasCustomEmo = myCustomEmoticons.some(e => userText.includes(e.shortcut));
         if (hasCustomEmo) {
-          echoNotice += "\n\n✨ Votre émoticône personnalisée a bien été reçue et reconnue !";
+          echoNotice += " (émoticône personnalisée reçue)";
         }
 
         setMessages(prev => ({
@@ -1532,7 +1532,7 @@ const App: React.FC = () => {
             {
               senderId: SYSTEM_BOT_ID,
               receiverId: user?.id,
-              sender: 'Assistant OpenWLM',
+              sender: 'OpenWLM',
               text: echoNotice,
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               timestamp: new Date().toISOString()
@@ -1682,7 +1682,7 @@ const App: React.FC = () => {
     if (!myKeys) { alert("Clés E2E non prêtes."); return; }
     if (!activeChatId) { alert("Veuillez sélectionner un contact."); return; }
     if (activeChatId === SYSTEM_BOT_ID) {
-      alert("L'Assistant OpenWLM est un service de test local. Pour partager des fichiers chiffrés E2EE, sélectionnez un contact réel.");
+      alert("OpenWLM est un contact de test. Pour envoyer des fichiers, sélectionnez un contact réel.");
       return;
     }
 
@@ -2059,8 +2059,8 @@ const App: React.FC = () => {
               { 
                 senderId: SYSTEM_BOT_ID,
                 receiverId: user?.id,
-                text: "⚡ Wizz bien reçu ! C'est le vrai son et la vraie secousse WLM.", 
-                sender: 'Assistant OpenWLM',
+                text: "Wizz bien reçu.", 
+                sender: 'OpenWLM',
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 timestamp: new Date().toISOString()
               }
@@ -2348,12 +2348,12 @@ const App: React.FC = () => {
   const handleInviteGame = (gameType: string = 'checkers') => {
     if (!activeChatId || !user) return;
 
-    // Invitation de jeu contre l'Assistant de test (mode solo local)
+    // Invitation de jeu contre OpenWLM (mode solo local)
     if (activeChatId === SYSTEM_BOT_ID) {
       if (gameType === 'morpion') {
         setActiveGame({
           opponentId: SYSTEM_BOT_ID,
-          opponentName: 'Assistant OpenWLM',
+          opponentName: 'OpenWLM',
           mySymbol: 'X',
           isMyTurn: true,
           gameType: 'morpion'
@@ -2367,15 +2367,15 @@ const App: React.FC = () => {
             {
               senderId: SYSTEM_BOT_ID,
               receiverId: user.id,
-              sender: 'Assistant OpenWLM',
-              text: "🎮 Partie de Morpion lancée contre l'Assistant ! C'est à vous de commencer (X).",
+              sender: 'OpenWLM',
+              text: "Partie de Morpion lancée. À vous de jouer (X).",
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               timestamp: new Date().toISOString()
             }
           ]
         }));
       } else {
-        alert("L'Assistant OpenWLM prend en charge le Morpion pour les tests solo.");
+        alert("OpenWLM prend en charge le Morpion pour les tests solo.");
         setShowGamesMenu(false);
       }
       return;
@@ -2395,7 +2395,7 @@ const App: React.FC = () => {
   };
 
   /**
-   * ACTIONS ET COMMANDES DE L'ASSISTANT OPENWLM (TESTS LOCAUX SANS RÉSEAU)
+   * ACTIONS ET COMMANDES D'OPENWLM (TESTS LOCAUX SANS RÉSEAU)
    */
   const handleAssistantAction = (action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'help') => {
     if (action === 'wizz') {
@@ -2413,9 +2413,9 @@ const App: React.FC = () => {
 
     let botResponseText = '';
     if (action === 'emo') {
-      botResponseText = "😃 Test des émoticônes :\nVoici un échantillon des émoticônes classiques WLM :\n:)  :D  ;)  :P  (H)  :@  :$  :O  (A)  :S  (L)  (K)\n\nVous pouvez également créer et m'envoyer vos émoticônes personnalisées (E2EE) !";
+      botResponseText = ":)  :D  ;)  :P  (H)  :@  :$  :O  (A)  :S  (L)  (K)\n(Émoticônes classiques reconnues)";
     } else if (action === 'sons') {
-      botResponseText = "🔊 Test des effets sonores WLM :\n1. Connexion d'un contact (online.mp3)\n2. Nouveau message reçu (type.mp3)\n3. Alerte Wizz (nudge.mp3)\n\nÉcoute en cours...";
+      botResponseText = "Test des sons en cours... (connexion, message, wizz)";
       try {
         SoundManager.play('ONLINE');
         setTimeout(() => {
@@ -2430,7 +2430,7 @@ const App: React.FC = () => {
         console.warn("Erreur lecture son:", e);
       }
     } else if (action === 'help') {
-      botResponseText = "🤖 Commandes et tests disponibles :\n• Envoyez n'importe quel texte pour tester l'écho et votre mise en forme (police, couleur, taille, gras).\n• /emo : afficher les émoticônes WLM classiques et tester le rendu.\n• /wizz : envoyer et recevoir une vibration Wizz.\n• /sons : écouter les effets sonores mythiques de MSN.\n• /morpion : lancer une partie de Morpion contre l'IA.\n• /help : réafficher ce menu d'aide.";
+      botResponseText = "Commandes disponibles :\n• /emo : tester les émoticônes\n• /wizz : envoyer un Wizz\n• /sons : tester les sons\n• /morpion : jouer au Morpion\n• Tout autre texte : écho direct";
     }
 
     if (botResponseText) {
@@ -2443,7 +2443,7 @@ const App: React.FC = () => {
             {
               senderId: SYSTEM_BOT_ID,
               receiverId: user?.id,
-              sender: 'Assistant OpenWLM',
+              sender: 'OpenWLM',
               text: botResponseText,
               time: formattedTime,
               timestamp: nowIso
@@ -2913,20 +2913,20 @@ const App: React.FC = () => {
             </div>
           ))}
 
-          {/* Services & Tests (Repliable, sobre et fidèle à WLM) */}
+          {/* Bot (Repliable, sobre et fidèle à WLM) */}
           <div className="group-header" onClick={() => setIsServicesGroupOpen(!isServicesGroupOpen)}>
             <span style={{ transform: isServicesGroupOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
-            Services & Tests (1)
+            Bot (1)
           </div>
           {isServicesGroupOpen && (
             <div 
               className={`contact-row ${activeChatId === SYSTEM_BOT_ID ? 'active' : ''}`}
               onClick={() => openChat(SYSTEM_BOT_ID)}
-              title="Assistant de test OpenWLM (100% local, aucun trafic réseau)"
+              title="OpenWLM (100% local, aucun trafic réseau)"
             >
               <div className="status-square online"></div>
               <div className="contact-name-txt" style={{ display: 'flex', alignItems: 'center', gap: '3px', overflow: 'hidden' }}>
-                <span style={{ fontWeight: 600 }}>Assistant OpenWLM</span>
+                <span style={{ fontWeight: 600 }}>OpenWLM</span>
                 <span className="wlm-bot-badge">BOT</span>
                 <span className="contact-psm-txt"> - En ligne pour vos tests</span>
               </div>
@@ -2955,7 +2955,7 @@ const App: React.FC = () => {
               </button>
             </div>
             <div style={{ fontSize: '11px', color: '#777', marginTop: '10px' }}>
-              Testez l'écho, les sons, le Wizz, les émoticônes et le Morpion avec l'Assistant OpenWLM.
+              Testez l'écho, les sons, le Wizz, les émoticônes et le Morpion avec OpenWLM.
             </div>
           </div>
         ) : (
@@ -3190,7 +3190,7 @@ const App: React.FC = () => {
                   <div ref={chatEndRef} />
                </div>
 
-               {/* Actions rapides de test pour l'Assistant OpenWLM */}
+               {/* Actions rapides de test pour OpenWLM */}
                {activeChatId === SYSTEM_BOT_ID && (
                  <div className="wlm-bot-quick-actions">
                    <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('emo')} title="Tester les émoticônes classiques">

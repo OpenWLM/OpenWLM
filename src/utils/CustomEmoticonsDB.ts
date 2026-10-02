@@ -98,6 +98,30 @@ class CustomEmoticonsDB {
     });
   }
 
+  public async deleteMyEmoticonByShortcut(shortcut: string): Promise<void> {
+    if (!this.db) await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction([STORE_MY_KEYS, STORE_ASSET_CACHE], 'readwrite');
+      const myStore = tx.objectStore(STORE_MY_KEYS);
+      const cacheStore = tx.objectStore(STORE_ASSET_CACHE);
+      const index = myStore.index('shortcut');
+      const req = index.get(shortcut);
+      req.onsuccess = () => {
+        const record = req.result as MyEmoticonRecord | undefined;
+        if (record) {
+          if (this.memoryUrls.has(record.id)) {
+            URL.revokeObjectURL(this.memoryUrls.get(record.id)!);
+            this.memoryUrls.delete(record.id);
+          }
+          myStore.delete(record.id);
+          cacheStore.delete(record.id);
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => reject(e);
+    });
+  }
+
   // --- GESTION DU CACHE DES ASSETS DÉCHIFFRÉS ---
 
   public async getCachedAsset(assetId: string): Promise<Blob | null> {

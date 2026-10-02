@@ -7,7 +7,7 @@ interface CustomEmoticonsModalProps {
   isOpen: boolean;
   onClose: () => void;
   userToken?: string;
-  onEmoticonsChange: () => void;
+  onEmoticonsChange: (deletedShortcut?: string) => void;
   onSelectEmoticon?: (shortcut: string) => void;
 }
 
@@ -48,6 +48,14 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
       if (res.data.success && Array.isArray(res.data.emoticons)) {
         const serverEmos = res.data.emoticons;
+
+        // Nettoyer localement les clés orphelines en IndexedDB si supprimées du serveur
+        const serverIds = new Set(serverEmos.map((s: any) => s.id));
+        for (const local of localRecords) {
+          if (!serverIds.has(local.id)) {
+            await CustomEmoticonsDB.deleteMyEmoticon(local.id);
+          }
+        }
         
         // Fusionner avec les clés locales correspondantes
         const merged: MyEmoticonRecord[] = [];
@@ -344,9 +352,10 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       });
 
       await CustomEmoticonsDB.deleteMyEmoticon(id);
+      await CustomEmoticonsDB.deleteMyEmoticonByShortcut(shortcut);
       setSuccessMessage(`Émoticône "${shortcut}" supprimée.`);
       await loadEmoticons();
-      onEmoticonsChange();
+      onEmoticonsChange(shortcut);
     } catch (err) {
       console.error("Erreur suppression émoticône:", err);
       setErrorMessage("Erreur lors de la suppression de l'émoticône.");

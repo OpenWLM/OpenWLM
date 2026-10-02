@@ -417,6 +417,7 @@ const App: React.FC = () => {
     width?: number;
     height?: number;
   }>>({});
+  const myCustomShortcutsRef = useRef<Set<string>>(new Set());
 
   // --- ÉTAT DU COLLAGE DE CAPTURE D'ÉCRAN ---
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
@@ -865,7 +866,7 @@ const App: React.FC = () => {
       await CustomEmoticonsDB.init();
       const localRecords = await CustomEmoticonsDB.getMyEmoticons();
       
-      let serverRecords: any[] = [];
+      let serverRecords: any[] | null = null;
       const token = user.token || localStorage.getItem('token');
       if (token) {
         try {
@@ -880,10 +881,20 @@ const App: React.FC = () => {
         }
       }
 
+      // Si la synchronisation serveur a réussi, purger localement les clés supprimées
+      if (serverRecords !== null) {
+        const serverIds = new Set(serverRecords.map(s => s.id));
+        for (const local of localRecords) {
+          if (!serverIds.has(local.id)) {
+            await CustomEmoticonsDB.deleteMyEmoticon(local.id);
+          }
+        }
+      }
+
       const merged: MyEmoticonRecord[] = [];
       const newMap: Record<string, { assetId: string; url: string; shortcut: string; isAnimated?: number; width?: number; height?: number }> = {};
 
-      const listToProcess = serverRecords.length > 0 ? serverRecords : localRecords;
+      const listToProcess = serverRecords !== null ? serverRecords : localRecords;
       for (const item of listToProcess) {
         const local = localRecords.find(l => l.id === item.id);
         const keyBase64 = local?.keyBase64 || (item as any).keyBase64 || '';
@@ -932,11 +943,38 @@ const App: React.FC = () => {
       }
 
       setMyCustomEmoticons(merged);
-      setCustomEmoticonsMap(prev => ({ ...prev, ...newMap }));
+
+      const newShortcutsSet = new Set(Object.keys(newMap));
+      setCustomEmoticonsMap(prev => {
+        const next = { ...prev };
+        // Purger les anciens raccourcis du propriétaire qui n'existent plus
+        for (const oldShortcut of myCustomShortcutsRef.current) {
+          if (!newShortcutsSet.has(oldShortcut)) {
+            delete next[oldShortcut];
+          }
+        }
+        // Ajouter / mettre à jour les raccourcis actuels
+        Object.assign(next, newMap);
+        return next;
+      });
+      myCustomShortcutsRef.current = newShortcutsSet;
     } catch (err) {
       console.error("Erreur loadMyCustomEmoticons:", err);
     }
   }, [user]);
+
+  const handleCustomEmoticonsChange = useCallback((deletedShortcut?: string) => {
+    if (deletedShortcut) {
+      myCustomShortcutsRef.current.delete(deletedShortcut);
+      setCustomEmoticonsMap(prev => {
+        if (!prev[deletedShortcut]) return prev;
+        const next = { ...prev };
+        delete next[deletedShortcut];
+        return next;
+      });
+    }
+    loadMyCustomEmoticons();
+  }, [loadMyCustomEmoticons]);
 
   useEffect(() => {
     if (user?.id) {
@@ -3195,7 +3233,7 @@ const App: React.FC = () => {
         isOpen={showCustomEmoticonsModal}
         onClose={() => setShowCustomEmoticonsModal(false)}
         userToken={user?.token}
-        onEmoticonsChange={loadMyCustomEmoticons}
+        onEmoticonsChange={handleCustomEmoticonsChange}
         onSelectEmoticon={(shortcut) => {
           setInputText(prev => prev + shortcut);
           setShowCustomEmoticonsModal(false);

@@ -1477,6 +1477,64 @@ const createInitialCheckersBoard = () => {
   return b;
 };
 
+const createEmptyPuissance4Board = () => {
+  return Array.from({ length: 6 }, () => Array(7).fill(null));
+};
+
+const isPuissance4BoardFull = (board) => {
+  for (let c = 0; c < 7; c++) {
+    if (board[0][c] === null) return false;
+  }
+  return true;
+};
+
+const checkPuissance4Winner = (board) => {
+  const ROWS = 6;
+  const COLS = 7;
+
+  // 1. Horizontale
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c <= COLS - 4; c++) {
+      const p = board[r][c];
+      if (p && p === board[r][c + 1] && p === board[r][c + 2] && p === board[r][c + 3]) {
+        return { winner: p, winningCells: [[r, c], [r, c + 1], [r, c + 2], [r, c + 3]] };
+      }
+    }
+  }
+
+  // 2. Verticale
+  for (let r = 0; r <= ROWS - 4; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const p = board[r][c];
+      if (p && p === board[r + 1][c] && p === board[r + 2][c] && p === board[r + 3][c]) {
+        return { winner: p, winningCells: [[r, c], [r + 1, c], [r + 2, c], [r + 3, c]] };
+      }
+    }
+  }
+
+  // 3. Diagonale descendante (\)
+  for (let r = 0; r <= ROWS - 4; r++) {
+    for (let c = 0; c <= COLS - 4; c++) {
+      const p = board[r][c];
+      if (p && p === board[r + 1][c + 1] && p === board[r + 2][c + 2] && p === board[r + 3][c + 3]) {
+        return { winner: p, winningCells: [[r, c], [r + 1, c + 1], [r + 2, c + 2], [r + 3, c + 3]] };
+      }
+    }
+  }
+
+  // 4. Diagonale montante (/)
+  for (let r = 3; r < ROWS; r++) {
+    for (let c = 0; c <= COLS - 4; c++) {
+      const p = board[r][c];
+      if (p && p === board[r - 1][c + 1] && p === board[r - 2][c + 2] && p === board[r - 3][c + 3]) {
+        return { winner: p, winningCells: [[r, c], [r - 1, c + 1], [r - 2, c + 2], [r - 3, c + 3]] };
+      }
+    }
+  }
+
+  return null;
+};
+
 /**
  * Middleware Socket.IO pour authentifier via Token
  */
@@ -1781,7 +1839,7 @@ io.on('connection', (socket) => {
       const senderUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
       if (!senderUser) return;
 
-      const safeGameType = (gameType === 'checkers') ? 'checkers' : 'morpion';
+      const safeGameType = (gameType === 'checkers' || gameType === 'puissance4') ? gameType : 'morpion';
       
       // SÉCURITÉ : Enregistrer l'invitation avec expiration (60 secondes)
       const inviteKey = `${socket.user.id}_${target}`;
@@ -1826,7 +1884,7 @@ io.on('connection', (socket) => {
 
     if (targetSocketId && acceptorUser && targetUser) {
       const gameKey = getGameKey(target, socket.user.id);
-      const chosenGameType = invite.gameType || (gameType === 'checkers' ? 'checkers' : 'morpion');
+      const chosenGameType = invite.gameType || (gameType === 'checkers' ? 'checkers' : gameType === 'puissance4' ? 'puissance4' : 'morpion');
 
       if (chosenGameType === 'checkers') {
         const initialBoard = createInitialCheckersBoard();
@@ -1858,6 +1916,37 @@ io.on('connection', (socket) => {
           mySymbol: 'B',
           isMyTurn: false,
           gameType: 'checkers'
+        });
+      } else if (chosenGameType === 'puissance4') {
+        const initialBoard = createEmptyPuissance4Board();
+        activeGames.set(gameKey, {
+          gameType: 'puissance4',
+          playerRed: target,             // L'initiateur a les Rouges
+          playerYellow: socket.user.id,  // L'accepteur a les Jaunes
+          turn: target,                  // Les Rouges commencent
+          board: initialBoard,
+          status: 'playing',
+          scores: { [target]: 0, [socket.user.id]: 0 }
+        });
+
+        // L'initiateur a les Rouges et a le premier tour
+        io.to(targetSocketId).emit('game_started', {
+          opponentId: socket.user.id,
+          opponentName: acceptorUser.nickname || acceptorUser.username,
+          myColor: 'red',
+          mySymbol: 'R',
+          isMyTurn: true,
+          gameType: 'puissance4'
+        });
+
+        // L'accepteur a les Jaunes et attend son tour
+        socket.emit('game_started', {
+          opponentId: target,
+          opponentName: targetUser.nickname || targetUser.username,
+          myColor: 'yellow',
+          mySymbol: 'Y',
+          isMyTurn: false,
+          gameType: 'puissance4'
         });
       } else {
         // Morpion
@@ -2081,6 +2170,91 @@ io.on('connection', (socket) => {
     });
   });
 
+  // 4c. Transmission et validation d'un coup de Puissance 4 (Connect Four)
+  socket.on('puissance4_move', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const userId = socket.user.id;
+    const { target, col } = data || {};
+
+    const gameKey = getGameKey(userId, target);
+    const game = activeGames.get(gameKey);
+
+    // SÉCURITÉ 1 : Vérifier qu'une session active de Puissance 4 existe
+    if (!game || game.status !== 'playing' || game.gameType !== 'puissance4') {
+      return socket.emit('game_error', { message: "Aucune partie de Puissance 4 active avec ce contact." });
+    }
+
+    // SÉCURITÉ 2 : Vérifier que c'est bien le tour du joueur connecté
+    if (game.turn !== userId) {
+      return socket.emit('game_error', { message: "Ce n'est pas votre tour de jouer !" });
+    }
+
+    // SÉCURITÉ 3 : Vérifier la colonne (0 à 6)
+    const colIndex = parseInt(col, 10);
+    if (isNaN(colIndex) || colIndex < 0 || colIndex > 6) {
+      return socket.emit('game_error', { message: "Coup invalide : colonne hors limites." });
+    }
+
+    // SÉCURITÉ 4 (GRAVITÉ & ANTI-TRICHE) : Trouver la première rangée libre de bas en haut (ligne 5 vers 0)
+    let targetRow = -1;
+    for (let r = 5; r >= 0; r--) {
+      if (game.board[r][colIndex] === null) {
+        targetRow = r;
+        break;
+      }
+    }
+
+    if (targetRow === -1) {
+      return socket.emit('game_error', { message: "Coup invalide : cette colonne est déjà pleine !" });
+    }
+
+    // SÉCURITÉ 5 : Déterminer le symbole légitime depuis l'état serveur
+    const legitSymbol = (game.playerRed === userId) ? 'R' : 'Y';
+    const nextTurnUserId = (userId === game.playerRed) ? game.playerYellow : game.playerRed;
+
+    // Enregistrement autoritaire
+    game.board[targetRow][colIndex] = legitSymbol;
+    game.turn = nextTurnUserId;
+
+    // Vérifier les conditions de victoire
+    const winResult = checkPuissance4Winner(game.board);
+    let winner = null;
+    let winningCells = null;
+
+    if (winResult) {
+      winner = winResult.winner;
+      winningCells = winResult.winningCells;
+      game.status = 'finished';
+      if (winner === 'R') game.scores[game.playerRed]++;
+      if (winner === 'Y') game.scores[game.playerYellow]++;
+    } else if (isPuissance4BoardFull(game.board)) {
+      winner = 'draw';
+      game.status = 'finished';
+    }
+
+    // Transmission du coup validé à l'adversaire
+    const targetSocketId = onlineUsers.get(target);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('puissance4_move', {
+        from: userId,
+        row: targetRow,
+        col: colIndex,
+        symbol: legitSymbol,
+        winner,
+        winningCells
+      });
+    }
+
+    // Confirmation au joueur
+    socket.emit('puissance4_move_confirmed', {
+      row: targetRow,
+      col: colIndex,
+      symbol: legitSymbol,
+      winner,
+      winningCells
+    });
+  });
+
   // 5. Demande de nouvelle manche / Recommencer
   socket.on('game_restart', (data) => {
     if (!socket.user || !socket.user.id) return;
@@ -2094,6 +2268,10 @@ io.on('connection', (socket) => {
         game.board = createInitialCheckersBoard();
         game.status = 'playing';
         game.turn = game.playerWhite; // Les Blancs reprennent le premier tour
+      } else if (game.gameType === 'puissance4' || gameType === 'puissance4') {
+        game.board = createEmptyPuissance4Board();
+        game.status = 'playing';
+        game.turn = game.playerRed; // Les Rouges reprennent le premier tour
       } else {
         game.board = Array(9).fill(null);
         game.status = 'playing';
@@ -2141,15 +2319,19 @@ io.on('connection', (socket) => {
     }
 
     if (disconnectedUserId) {
-      // Nettoyer les sessions de jeu actives de cet utilisateur (Morpion ou Dames)
+      // Nettoyer les sessions de jeu actives de cet utilisateur (Morpion, Dames ou Puissance 4)
       for (const [key, game] of activeGames.entries()) {
         const isPlayer = game.gameType === 'checkers'
           ? (game.playerWhite === disconnectedUserId || game.playerBlack === disconnectedUserId)
+          : game.gameType === 'puissance4'
+          ? (game.playerRed === disconnectedUserId || game.playerYellow === disconnectedUserId)
           : (game.playerX === disconnectedUserId || game.playerO === disconnectedUserId);
 
         if (isPlayer) {
           const opponentUserId = game.gameType === 'checkers'
             ? (game.playerWhite === disconnectedUserId ? game.playerBlack : game.playerWhite)
+            : game.gameType === 'puissance4'
+            ? (game.playerRed === disconnectedUserId ? game.playerYellow : game.playerRed)
             : (game.playerX === disconnectedUserId ? game.playerO : game.playerX);
           const opponentSocketId = onlineUsers.get(opponentUserId);
           if (opponentSocketId) {

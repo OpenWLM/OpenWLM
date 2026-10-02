@@ -9,6 +9,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.0] - 2026-10-02
+
+### 🎮 Features
+- **Puissance 4 (Connect Four) 1v1 Mini-Game**:
+  - Full 7x6 board with authentic late-2000s Aero retro design (molded blue casing, glossy red and yellow discs).
+  - Authoritative server-side validation: turn enforcement, gravity row calculation, column overflow rejection, win and draw detection.
+  - Smooth gravity drop animations, winning 4-disc pulse glow, and hover column guides.
+  - Native bilingual support (FR/EN) for turn announcements, banners, and tooltips.
+  - Integrated in chat games menu, invite banners, docked pill, and bot test assistant (`/p4` or `/puissance4`).
+  - Mobile responsive scaling with zero horizontal clipping.
+  - Discrete inline player color indicator next to player nicknames.
+
 ## [1.0.0] - 2026-10-02
 
 This major release consolidates the modern recreation of late-2000s instant messaging (Aero theme) with production-grade security hardening, a built-in test assistant contact ("OpenWLM"), and authoritative automated regression testing.

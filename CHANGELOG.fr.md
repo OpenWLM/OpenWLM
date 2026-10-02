@@ -9,6 +9,18 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [1.1.0] - 2026-10-02
+
+### 🎮 Fonctionnalités
+- **Mini-jeu Puissance 4 (Connect Four) 1v1** :
+  - Plateau 7x6 avec esthétique rétro Aero authentique (cadre bleu biseauté, jetons 3D brillants rouges et jaunes).
+  - Validation faisant autorité côté serveur : respect des tours, calcul de gravité, rejet de colonne pleine, détection automatique des victoires et matchs nuls.
+  - Animation fluide de chute de jetons, surbrillance scintillante des 4 pions vainqueurs, et guide visuel au survol.
+  - Support bilingue natif (FR/EN) pour les bannières de jeu, les scores et les infobulles.
+  - Intégration complète dans le chat (menu Jeux, bannières d'invitation, barre réduite, assistant bot `/p4` ou `/puissance4`).
+  - Rendu responsive mobile anti-overflow.
+  - Pastilles de couleur discrètes élégamment intégrées sur la ligne du pseudo des joueurs.
+
 ## [1.0.0] - 2026-10-02
 
 Cette version majeure consolide la réécriture moderne de la messagerie instantanée rétro fin des années 2000 (thème Aero) avec un durcissement de sécurité de niveau production, un contact d'assistance de test intégré ("OpenWLM"), et une couverture de tests de non-régression automatisée.

@@ -21,6 +21,7 @@ import VideoCall from './components/VideoCall';
 import FileTransferCard, { type FileDataPayload, isImageFile } from './components/FileTransferCard';
 import MorpionGame from './components/MorpionGame';
 import CheckersGame from './components/CheckersGame';
+import Puissance4Game from './components/Puissance4Game';
 import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
@@ -579,12 +580,12 @@ const App: React.FC = () => {
   const [isAudioOnly, setIsAudioOnly] = useState(false);
   const [iceCandidatesBuffer, setIceCandidatesBuffer] = useState<any[]>([]);
 
-  // --- ÉTAT DES JEUX (ACTIVITÉS MSN : MORPION & JEU DE DAMES) ---
+  // --- ÉTAT DES JEUX (ACTIVITÉS MSN : MORPION, DAMES & PUISSANCE 4) ---
   const [activeGame, setActiveGame] = useState<{
     opponentId: number;
     opponentName: string;
     mySymbol?: string;
-    myColor?: 'white' | 'black';
+    myColor?: 'white' | 'black' | 'red' | 'yellow';
     isMyTurn: boolean;
     gameType: string;
   } | null>(null);
@@ -1374,7 +1375,7 @@ const App: React.FC = () => {
         try { SoundManager.play('ONLINE'); } catch {}
       });
 
-      newSocket.on('game_started', (data: { opponentId: number; opponentName: string; mySymbol?: string; myColor?: 'white' | 'black'; isMyTurn: boolean; gameType: string }) => {
+      newSocket.on('game_started', (data: { opponentId: number; opponentName: string; mySymbol?: string; myColor?: 'white' | 'black' | 'red' | 'yellow'; isMyTurn: boolean; gameType: string }) => {
         setIncomingGameInvite(null);
         setOutgoingGameInvite(null);
         setActiveGame(data);
@@ -1526,6 +1527,10 @@ const App: React.FC = () => {
       }
       if (lower === '/morpion' || lower === '/game' || lower === '/jeu') {
         handleAssistantAction('morpion');
+        return;
+      }
+      if (lower === '/p4' || lower === '/puissance4' || lower === '/connect4') {
+        handleAssistantAction('puissance4');
         return;
       }
 
@@ -2373,7 +2378,7 @@ const App: React.FC = () => {
   };
 
   /**
-   * GESTION DES JEUX MULTI-JOUEURS (MORPION & JEU DE DAMES)
+   * GESTION DES JEUX MULTI-JOUEURS (MORPION, DAMES & PUISSANCE 4)
    */
   const handleInviteGame = (gameType: string = 'checkers') => {
     if (!activeChatId || !user) return;
@@ -2404,8 +2409,33 @@ const App: React.FC = () => {
             }
           ]
         }));
+      } else if (gameType === 'puissance4') {
+        setActiveGame({
+          opponentId: SYSTEM_BOT_ID,
+          opponentName: 'OpenWLM',
+          mySymbol: 'R',
+          myColor: 'red',
+          isMyTurn: true,
+          gameType: 'puissance4'
+        });
+        setIsGameMinimized(false);
+        setShowGamesMenu(false);
+        setMessages(prev => ({
+          ...prev,
+          [SYSTEM_BOT_ID]: [
+            ...(prev[SYSTEM_BOT_ID] || []),
+            {
+              senderId: SYSTEM_BOT_ID,
+              receiverId: user.id,
+              sender: 'OpenWLM',
+              text: "Partie de Puissance 4 lancée. À vous de jouer (Rouge 🔴).",
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              timestamp: new Date().toISOString()
+            }
+          ]
+        }));
       } else {
-        alert("OpenWLM prend en charge le Morpion pour les tests solo.");
+        alert("OpenWLM prend en charge le Morpion et le Puissance 4 pour les tests solo.");
         setShowGamesMenu(false);
       }
       return;
@@ -2414,7 +2444,7 @@ const App: React.FC = () => {
     if (!socket) return;
     const contact = contacts.find(c => c.id === activeChatId);
     if (!contact || contact.status === 'offline') {
-      const gameLabel = gameType === 'checkers' ? 'au Jeu de dames' : 'au Morpion';
+      const gameLabel = gameType === 'checkers' ? 'au Jeu de dames' : (gameType === 'puissance4' ? 'au Puissance 4' : 'au Morpion');
       alert(`Ce contact doit être en ligne pour jouer ${gameLabel}.`);
       return;
     }
@@ -2427,7 +2457,7 @@ const App: React.FC = () => {
   /**
    * ACTIONS ET COMMANDES D'OPENWLM (TESTS LOCAUX SANS RÉSEAU)
    */
-  const handleAssistantAction = (action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'help') => {
+  const handleAssistantAction = (action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'puissance4' | 'help') => {
     if (action === 'wizz') {
       handleNudge(false);
       return;
@@ -2435,6 +2465,11 @@ const App: React.FC = () => {
 
     if (action === 'morpion') {
       handleInviteGame('morpion');
+      return;
+    }
+
+    if (action === 'puissance4') {
+      handleInviteGame('puissance4');
       return;
     }
 
@@ -2460,7 +2495,7 @@ const App: React.FC = () => {
         console.warn("Erreur lecture son:", e);
       }
     } else if (action === 'help') {
-      botResponseText = "Commandes disponibles :\n• /emo : tester les émoticônes\n• /wizz : envoyer un Wizz\n• /sons : tester les sons\n• /morpion : jouer au Morpion\n• Tout autre texte : écho direct";
+      botResponseText = "Commandes disponibles :\n• /emo : tester les émoticônes\n• /wizz : envoyer un Wizz\n• /sons : tester les sons\n• /morpion : jouer au Morpion\n• /puissance4 (ou /p4) : jouer au Puissance 4\n• Tout autre texte : écho direct";
     }
 
     if (botResponseText) {
@@ -3036,6 +3071,14 @@ const App: React.FC = () => {
                     <div className="wlm-games-dropdown" onClick={e => e.stopPropagation()}>
                       <div 
                         className="wlm-game-menu-item" 
+                        onClick={() => handleInviteGame('puissance4')}
+                        title={t.games.puissance4Title.replace('{name}', activeContact.nickname || activeContact.username || '')}
+                      >
+                        <span className="msn-game-icon">🔴</span>
+                        <span>{t.games.puissance4}</span>
+                      </div>
+                      <div 
+                        className="wlm-game-menu-item" 
                         onClick={() => handleInviteGame('checkers')}
                         title={t.games.checkersTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
                       >
@@ -3061,7 +3104,9 @@ const App: React.FC = () => {
                   style={{ cursor: 'pointer', color: '#0055aa', fontWeight: 'bold' }}
                   title={t.chat.resumeTooltip}
                 >
-                  {activeGame.gameType === 'checkers' ? t.chat.resumeCheckers : t.chat.resumeMorpion}
+                  {activeGame.gameType === 'checkers' 
+                    ? t.chat.resumeCheckers 
+                    : (activeGame.gameType === 'puissance4' ? t.chat.resumePuissance4 : t.chat.resumeMorpion)}
                 </span>
               )}
 
@@ -3113,10 +3158,14 @@ const App: React.FC = () => {
                 {incomingGameInvite && incomingGameInvite.from === activeChatId && (
                   <div className="wlm-game-invite-banner">
                     <div className="wlm-game-invite-info">
-                      <span className="wlm-game-invite-icon">{incomingGameInvite.gameType === 'checkers' ? '⚪' : '🎮'}</span>
+                      <span className="wlm-game-invite-icon">
+                        {incomingGameInvite.gameType === 'checkers' ? '⚪' : (incomingGameInvite.gameType === 'puissance4' ? '🔴' : '🎮')}
+                      </span>
                       <div className="wlm-game-invite-text">
                         <span className="wlm-game-invite-title">
-                          {incomingGameInvite.gameType === 'checkers' ? t.games.inviteCheckersTitle : t.games.inviteMorpionTitle}
+                          {incomingGameInvite.gameType === 'checkers' 
+                            ? t.games.inviteCheckersTitle 
+                            : (incomingGameInvite.gameType === 'puissance4' ? t.games.invitePuissance4Title : t.games.inviteMorpionTitle)}
                         </span>
                         <span className="wlm-game-invite-sub">{t.games.inviteLivePrompt.replace('{name}', incomingGameInvite.fromName)}</span>
                       </div>
@@ -3135,7 +3184,9 @@ const App: React.FC = () => {
                       <span className="wlm-game-invite-icon">⏳</span>
                       <div className="wlm-game-invite-text">
                         <span className="wlm-game-invite-title">
-                          {outgoingGameInvite.gameType === 'checkers' ? t.games.invitePendingCheckers : t.games.invitePendingMorpion}
+                          {outgoingGameInvite.gameType === 'checkers' 
+                            ? t.games.invitePendingCheckers 
+                            : (outgoingGameInvite.gameType === 'puissance4' ? t.games.invitePendingPuissance4 : t.games.invitePendingMorpion)}
                         </span>
                         <span className="wlm-game-invite-sub">{t.games.inviteSentWaiting.replace('{name}', outgoingGameInvite.targetName)}</span>
                       </div>
@@ -3153,10 +3204,12 @@ const App: React.FC = () => {
                     title={t.games.dockedExpand}
                   >
                     <div className="docked-pill-info">
-                      <span className="docked-pill-icon">{activeGame.gameType === 'checkers' ? '⚪' : '🎮'}</span>
+                      <span className="docked-pill-icon">
+                        {activeGame.gameType === 'checkers' ? '⚪' : (activeGame.gameType === 'puissance4' ? '🔴' : '🎮')}
+                      </span>
                       <div className="docked-pill-texts">
                         <span className="docked-pill-title">
-                          {t.games.dockedTitle.replace('{game}', activeGame.gameType === 'checkers' ? t.games.checkers : t.games.morpion).replace('{name}', activeGame.opponentName)}
+                          {t.games.dockedTitle.replace('{game}', activeGame.gameType === 'checkers' ? t.games.checkers : (activeGame.gameType === 'puissance4' ? t.games.puissance4 : t.games.morpion)).replace('{name}', activeGame.opponentName)}
                         </span>
                         <span className="docked-pill-score">
                           {t.games.dockedScore.replace('{myScore}', gameSummary.myScore.toString()).replace('{opponentScore}', gameSummary.opponentScore.toString())}
@@ -3243,6 +3296,9 @@ const App: React.FC = () => {
                    </button>
                    <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('morpion')} title={t.bot.chipMorpion}>
                      {t.bot.chipMorpion}
+                   </button>
+                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('puissance4')} title={t.bot.chipPuissance4}>
+                     {t.bot.chipPuissance4}
                    </button>
                    <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('help')} title={t.bot.chipHelp}>
                      {t.bot.chipHelp}
@@ -3390,7 +3446,26 @@ const App: React.FC = () => {
                   myId={user?.id || 0}
                   myName={myNickname || user?.nickname || 'Moi'}
                   myAvatar={myAvatar}
-                  myColor={activeGame.myColor || (activeGame.mySymbol === 'W' ? 'white' : 'black')}
+                  myColor={(activeGame.myColor === 'white' || activeGame.myColor === 'black') ? activeGame.myColor : (activeGame.mySymbol === 'W' ? 'white' : 'black')}
+                  initialIsMyTurn={activeGame.isMyTurn}
+                  onClose={() => {
+                    setActiveGame(null);
+                    setIsGameMinimized(false);
+                  }}
+                  onMinimize={() => setIsGameMinimized(true)}
+                  onGameStateChange={(summary) => setGameSummary(summary)}
+                />
+              ) : activeGame.gameType === 'puissance4' ? (
+                <Puissance4Game
+                  socket={activeGame.opponentId === SYSTEM_BOT_ID ? null : socket}
+                  isBotOpponent={activeGame.opponentId === SYSTEM_BOT_ID}
+                  opponentId={activeGame.opponentId}
+                  opponentName={activeGame.opponentName}
+                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                  myId={user?.id || 0}
+                  myName={myNickname || user?.nickname || 'Moi'}
+                  myAvatar={myAvatar}
+                  myColor={activeGame.myColor === 'yellow' ? 'yellow' : 'red'}
                   initialIsMyTurn={activeGame.isMyTurn}
                   onClose={() => {
                     setActiveGame(null);

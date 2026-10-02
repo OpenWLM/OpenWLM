@@ -2084,6 +2084,248 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   font-style: italic;
 }
 
+/* --- PUISSANCE 4 (CONNECT FOUR / MINI-JEU WLM AERO) --- */
+.p4-player-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  max-width: 105px;
+  line-height: 1.2;
+}
+
+.p4-player-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.p4-player-dot.dot-red {
+  background: radial-gradient(circle at 35% 30%, #ff6b6b 0%, #d90429 65%, #800000 100%);
+  border: 1px solid #730000;
+  box-shadow: 0 1px 2px rgba(160, 0, 0, 0.3);
+}
+
+.p4-player-dot.dot-yellow {
+  background: radial-gradient(circle at 35% 30%, #fffa8a 0%, #ffd100 65%, #a87200 100%);
+  border: 1px solid #805700;
+  box-shadow: 0 1px 2px rgba(160, 120, 0, 0.35);
+}
+
+.p4-board-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 6px 12px 6px;
+  user-select: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.p4-hover-indicator-row {
+  display: flex;
+  width: 100%;
+  max-width: 294px;
+  height: 22px;
+  margin-bottom: 2px;
+  box-sizing: border-box;
+}
+
+.p4-hover-slot {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  height: 22px;
+}
+
+.p4-ghost-disc {
+  font-size: 13px;
+  font-weight: bold;
+  line-height: 1;
+  animation: p4BounceGhost 0.6s infinite alternate ease-in-out;
+}
+
+.p4-ghost-disc.disc-red {
+  color: #d90429;
+  text-shadow: 0 1px 4px rgba(217, 4, 41, 0.5);
+}
+
+.p4-ghost-disc.disc-yellow {
+  color: #e5b800;
+  text-shadow: 0 1px 4px rgba(229, 184, 0, 0.6);
+}
+
+@keyframes p4BounceGhost {
+  0% { transform: translateY(-2px); }
+  100% { transform: translateY(2px); }
+}
+
+.p4-grid-frame {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  max-width: 294px;
+  background: linear-gradient(180deg, #1d6bba 0%, #0d47a1 45%, #082d6b 100%);
+  border: 4px solid #062354;
+  border-radius: 10px;
+  padding: 6px 3px;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.45), inset 0 -3px 6px rgba(0, 0, 0, 0.5), 0 6px 16px rgba(0, 25, 60, 0.3);
+  box-sizing: border-box;
+}
+
+.p4-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 1px;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.p4-column.col-clickable {
+  cursor: pointer;
+}
+
+.p4-column.col-clickable:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.p4-column.col-full {
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
+.p4-hole {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: radial-gradient(circle at 50% 50%, #061933 65%, #020c1a 100%);
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.85), 0 1px 1px rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.p4-empty-slot {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.p4-disc {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  position: relative;
+  animation: p4DropDisc 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.p4-disc::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(255, 255, 255, 0.4);
+  top: 5px;
+  left: 5px;
+  pointer-events: none;
+}
+
+.p4-disc.disc-red {
+  background: radial-gradient(circle at 35% 30%, #ff6b6b 0%, #d90429 55%, #7a0000 100%);
+  border: 2px solid #580000;
+  box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.5), inset 0 -2px 4px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.p4-disc.disc-yellow {
+  background: radial-gradient(circle at 35% 30%, #fffa8a 0%, #ffd100 55%, #a87200 100%);
+  border: 2px solid #734c00;
+  box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.6), inset 0 -2px 4px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.p4-disc.disc-last {
+  filter: brightness(1.08);
+}
+
+.p4-disc.disc-winning {
+  animation: p4WinDiscPulse 0.75s infinite alternate ease-in-out !important;
+  box-shadow: 0 0 12px #ffff33, inset 0 0 8px #ffffff !important;
+  border-color: #ffffff !important;
+  z-index: 3;
+}
+
+@keyframes p4DropDisc {
+  0% { transform: translateY(-160px); opacity: 0.6; }
+  85% { transform: translateY(2px); }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes p4WinDiscPulse {
+  0% { transform: scale(1); filter: brightness(1); }
+  100% { transform: scale(1.1); filter: brightness(1.3); }
+}
+
+/* Puissance 4 : Adaptation responsive mobile anti-overflow */
+@media (max-width: 440px) {
+  .p4-grid-frame {
+    max-width: 100%;
+    padding: 4px 2px;
+  }
+
+  .p4-hover-indicator-row {
+    max-width: 100%;
+  }
+
+  .p4-hole {
+    width: 28px;
+    height: 28px;
+  }
+
+  .p4-disc {
+    width: 26px;
+    height: 26px;
+  }
+
+  .p4-disc::after {
+    width: 14px;
+    height: 14px;
+    top: 4px;
+    left: 4px;
+  }
+}
+
+@media (max-width: 340px) {
+  .p4-hole {
+    width: 25px;
+    height: 25px;
+  }
+
+  .p4-disc {
+    width: 23px;
+    height: 23px;
+  }
+
+  .p4-disc::after {
+    width: 12px;
+    height: 12px;
+    top: 3px;
+    left: 3px;
+  }
+}
+
 /* --- MODALE DE CONFIRMATION DE COLLAGE DE SCREENSHOT (AERO / MSN) --- */
 .wlm-paste-modal {
   width: 440px;

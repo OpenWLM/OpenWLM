@@ -39,6 +39,7 @@ build/Release
 
 # Dependency directories
 node_modules/
+node_modules
 jspm_packages/
 
 # Snowpack dependency directory (https://snowpack.dev/)
@@ -145,8 +146,15 @@ vite.config.ts.timestamp-*
 # Local uploads and databases
 uploads/
 messenger.db*
+*.db
+*.sqlite
+*.sqlite3
 
 # Local secrets and env files
 .jwt_secret
 .env*
+
+# Backups and scratch
+*.tar.gz
+scratch/
 

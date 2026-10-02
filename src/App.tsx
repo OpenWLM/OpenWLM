@@ -2310,8 +2310,20 @@ const App: React.FC = () => {
    */
   const handleLogout = async (reason?: string) => {
     if (reason) console.warn("[Session] Déconnexion:", reason); 
+    const currentToken = localStorage.getItem('token');
     if (socket) {
       socket.emit('manual_disconnect');
+    }
+    // SÉCURITÉ : Révocation du token côté serveur via l'endpoint dédié
+    if (currentToken) {
+      try {
+        await fetch('/api/logout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
+      } catch (e) {
+        console.warn('[Logout] Erreur appel /api/logout:', e);
+      }
     }
     // SÉCURITÉ : Purger le token JWT côté client
     localStorage.removeItem('token');

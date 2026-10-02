@@ -618,6 +618,22 @@ app.get('/api/user/me', authenticateToken, (req, res) => {
 });
 
 /**
+ * Déconnexion explicite et révocation immédiate de session côté serveur
+ * Incrémente atomiquement token_version en BDD : tout token JWT émis antérieurement
+ * pour cet utilisateur est immédiatement invalidé (HTTP 401 sur l'API, rejet sur WebSocket).
+ */
+app.post('/api/logout', authenticateToken, (req, res) => {
+  try {
+    db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', req.user.id);
+    broadcastStatusToContacts(req.user.id, { id: req.user.id, userId: req.user.id, status: 'offline' });
+    res.json({ success: true, message: "Session révoquée avec succès côté serveur." });
+  } catch (err) {
+    console.error("Erreur logout serveur:", err);
+    res.status(500).json({ error: "Erreur lors de la révocation de session." });
+  }
+});
+
+/**
  * Générer un défi mathématique simple pour l'inscription
  */
 app.get('/api/captcha', (req, res) => {
@@ -2129,7 +2145,7 @@ io.on('connection', (socket) => {
     }
 
     try {
-      db.prepare('UPDATE users SET status = ? WHERE id = ?').run('offline', userId);
+      db.prepare('UPDATE users SET status = ?, token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run('offline', userId);
       broadcastStatusToContacts(userId, { id: userId, userId, status: 'offline' });
     } catch (err) { console.error(err); }
   });

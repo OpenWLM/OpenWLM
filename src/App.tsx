@@ -2362,7 +2362,7 @@ const App: React.FC = () => {
                 <img 
                   key={`custom-${shortcut}-${i}`} 
                   src={emoInfo.url} 
-                  className={isEmoticonsOnly ? "custom-emoticon-large" : "inline-emoticon custom-emoticon"} 
+                  className={isEmoticonsOnly ? "custom-emoticon-large" : "custom-emoticon"} 
                   alt={shortcut} 
                   title={shortcut} 
                 />

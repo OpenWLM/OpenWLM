@@ -875,6 +875,7 @@ const App: React.FC = () => {
             localStorage.setItem('wlm_user', JSON.stringify({ ...loggedInUser, rememberMe: true }));
             localStorage.setItem('token', loggedInUser.token);
             setIsDeviceRemembered(true);
+            setPersistenceNotice(t.auth.deviceRememberedSuccess);
           } else {
             console.warn("[E2EE Storage] Échec persistance locale:", saveRes.error);
             // EXIGENCE UX ABSOLUE : La connexion n'est JAMAIS bloquée par l'échec de persistance
@@ -2996,11 +2997,6 @@ const App: React.FC = () => {
         <div className="wlm-branding">
           <div className="msn-butterfly"></div>
           <div className="wlm-logo-text">Open<span>WLM</span></div>
-          {isDeviceRemembered && (
-            <span className="wlm-device-badge" title={t.auth.deviceRememberedBadge}>
-              🔒 {t.auth.deviceRememberedBadge}
-            </span>
-          )}
           {canInstallPWA && (
             <button 
               className="pwa-install-btn" 
@@ -3043,6 +3039,18 @@ const App: React.FC = () => {
                 <span className="status-trigger" onClick={(e) => { e.stopPropagation(); setShowStatusMenu(!showStatusMenu); }}>
                   <span className="status-label">({getStatusLabel(myStatus)}) ▼</span>
                 </span>
+
+                {isDeviceRemembered && (
+                  <span 
+                    className="wlm-e2ee-device-icon" 
+                    title={t.auth.deviceRememberedTooltip}
+                    aria-label={t.auth.deviceRememberedTooltip}
+                  >
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                      <path d="M8 1a3.5 3.5 0 0 0-3.5 3.5V6H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-.5V4.5A3.5 3.5 0 0 0 8 1zm2 5H6V4.5a2 2 0 1 1 4 0V6z"/>
+                    </svg>
+                  </span>
+                )}
 
                 {/* Menu déroulant de Statut et Options */}
                 {showStatusMenu && (

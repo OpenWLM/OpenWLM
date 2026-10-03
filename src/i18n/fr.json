@@ -32,6 +32,8 @@
     "rememberWarning": "ℹ Vos clés privées seront mémorisées dans le stockage sécurisé de cet appareil.",
     "rememberPersistenceFailed": "Connexion réussie, mais les clés E2EE n’ont pas pu être mémorisées sur cet appareil.",
     "deviceRememberedBadge": "Appareil mémorisé (E2EE)",
+    "deviceRememberedTooltip": "Clés E2EE mémorisées sur cet appareil",
+    "deviceRememberedSuccess": "Clés E2EE mémorisées sur cet appareil.",
     "forgetDevice": "Oublier cet appareil",
     "forgetDeviceSuccess": "Cet appareil a été oublié. Vos clés E2EE locales ont été supprimées.",
     "nicknameLabel": "Surnom :",

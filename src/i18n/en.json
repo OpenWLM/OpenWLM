@@ -32,6 +32,8 @@
     "rememberWarning": "ℹ Your private keys will be stored in this device's secure storage.",
     "rememberPersistenceFailed": "Signed in successfully, but E2EE keys could not be saved on this device.",
     "deviceRememberedBadge": "Device remembered (E2EE)",
+    "deviceRememberedTooltip": "E2EE keys saved on this device",
+    "deviceRememberedSuccess": "E2EE keys saved on this device.",
     "forgetDevice": "Forget this device",
     "forgetDeviceSuccess": "This device has been forgotten. Your local E2EE keys have been removed.",
     "nicknameLabel": "Nickname:",

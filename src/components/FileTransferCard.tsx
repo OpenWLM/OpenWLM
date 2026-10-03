@@ -19,7 +19,7 @@ export interface FileDataPayload {
 
 interface FileTransferCardProps {
   fileData: FileDataPayload;
-  myPrivateKey?: JsonWebKey | null;
+  myPrivateKey?: JsonWebKey | CryptoKey | null;
   isSender: boolean;
 }
 

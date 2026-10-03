@@ -2970,3 +2970,107 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
   background: #cce4f7;
   transform: translateY(1px);
 }
+
+/* --- TOAST DE PERSISTANCE E2EE (STYLE AERO MSN) --- */
+.wlm-toast-persistence {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  max-width: 360px;
+  min-width: 280px;
+  background: linear-gradient(180deg, #ffffff 0%, #edf4fc 100%);
+  border: 1px solid #7ea2c6;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 45, 90, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 10000;
+  animation: wlmToastSlideIn 0.25s ease-out;
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+}
+
+@keyframes wlmToastSlideIn {
+  from {
+    transform: translateY(15px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.wlm-toast-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.wlm-toast-icon {
+  font-size: 14px;
+  color: #005a9e;
+  font-weight: bold;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #dbeaf7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #a3c4e2;
+}
+
+.wlm-toast-text {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #1a3959;
+  font-weight: 500;
+}
+
+.wlm-toast-close {
+  background: none;
+  border: none;
+  color: #728da5;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.wlm-toast-close:hover {
+  background: #d5e5f5;
+  color: #c0392b;
+}
+
+.wlm-device-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #004b8d;
+  background: rgba(0, 75, 141, 0.08);
+  border: 1px solid rgba(0, 75, 141, 0.25);
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-left: 8px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+@media (max-width: 600px) {
+  .wlm-toast-persistence {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: none;
+    min-width: auto;
+  }
+}
+

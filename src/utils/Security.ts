@@ -117,17 +117,43 @@ export const encryptMessagePayload = async (
   };
 };
 
+export type PrivateKeySource = JsonWebKey | CryptoKey;
+
 /**
- * Déchiffre un payload de message reçu
+ * Importe un JWK de clé privée RSA en tant que CryptoKey native.
+ * Par défaut, extractable est mis à false pour empêcher toute exfiltration hors du navigateur.
+ */
+export const importPrivateCryptoKey = async (
+  privateKeyJwk: JsonWebKey,
+  extractable: boolean = false
+): Promise<CryptoKey> => {
+  return await window.crypto.subtle.importKey(
+    'jwk',
+    privateKeyJwk,
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    extractable,
+    ['decrypt']
+  );
+};
+
+export const isPrivateKeyCryptoKey = (key: unknown): key is CryptoKey =>
+  (typeof CryptoKey !== 'undefined' && key instanceof CryptoKey) ||
+  (typeof key === 'object' && key !== null && 'type' in key && (key as { type: string }).type === 'private');
+
+/**
+ * Déchiffre un payload de message reçu.
+ * Accepte indifféremment un JsonWebKey ou une CryptoKey native (déjà importée/non extractible).
  */
 export const decryptMessagePayload = async <T = Record<string, unknown>>(
   encryptedData: EncryptedMessagePayload, 
-  myPrivateKeyJwk: JsonWebKey, 
+  myPrivateKey: PrivateKeySource, 
   isSender: boolean
 ): Promise<T | null> => {
   try {
-    // 1. Importer notre clé privée
-    const myKey = await window.crypto.subtle.importKey('jwk', myPrivateKeyJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+    // 1. Obtenir la CryptoKey (réutilisation directe si déjà une CryptoKey)
+    const myKey: CryptoKey = isPrivateKeyCryptoKey(myPrivateKey)
+      ? myPrivateKey
+      : await window.crypto.subtle.importKey('jwk', myPrivateKey as JsonWebKey, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
 
     // 2. Sélectionner la clé AES chiffrée nous concernant
     const encryptedAesKeyBase64 = isSender ? encryptedData.keySender : encryptedData.keyReceiver;
@@ -311,10 +337,13 @@ export const encryptForLocal = async (dataObj: unknown, publicKeyJwk: JsonWebKey
 
 /**
  * Déchiffre des données depuis le stockage local
+ * Accepte indifféremment un JsonWebKey ou une CryptoKey native.
  */
-export const decryptFromLocal = async <T = unknown>(localData: LocalEncryptedData, privateKeyJwk: JsonWebKey): Promise<T | null> => {
+export const decryptFromLocal = async <T = unknown>(localData: LocalEncryptedData, privateKey: PrivateKeySource): Promise<T | null> => {
   try {
-    const privKey = await window.crypto.subtle.importKey('jwk', privateKeyJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+    const privKey: CryptoKey = isPrivateKeyCryptoKey(privateKey)
+      ? privateKey
+      : await window.crypto.subtle.importKey('jwk', privateKey as JsonWebKey, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
     const encryptedKey = base64ToArrayBuffer(localData.key);
     const rawAesKey = await window.crypto.subtle.decrypt({ name: 'RSA-OAEP' }, privKey, encryptedKey);
     const aesKey = await window.crypto.subtle.importKey('raw', rawAesKey, { name: 'AES-GCM' }, false, ['decrypt']);
@@ -370,15 +399,18 @@ export const encryptFileBinary = async (
 
 /**
  * Déchiffre un fichier binaire reçu depuis le serveur via la clé privée de l'utilisateur (RSA)
+ * Accepte indifféremment un JsonWebKey ou une CryptoKey native.
  */
 export const decryptFileBinary = async (
   encryptedBuffer: ArrayBuffer,
   fileKeys: EncryptedFileKeys,
-  myPrivateKeyJwk: JsonWebKey,
+  myPrivateKey: PrivateKeySource,
   isSender: boolean
 ): Promise<ArrayBuffer | null> => {
   try {
-    const myKey = await window.crypto.subtle.importKey('jwk', myPrivateKeyJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+    const myKey: CryptoKey = isPrivateKeyCryptoKey(myPrivateKey)
+      ? myPrivateKey
+      : await window.crypto.subtle.importKey('jwk', myPrivateKey as JsonWebKey, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
     const encryptedAesKeyBase64 = isSender ? fileKeys.keySender : fileKeys.keyReceiver;
     if (!encryptedAesKeyBase64) return null;
 

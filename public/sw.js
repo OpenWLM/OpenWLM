@@ -4,7 +4,7 @@
  * et la mise en cache haute-performance des sons et icônes rétro.
  */
 
-const CACHE_NAME = 'openwlm-v2';
+const CACHE_NAME = 'openwlm-v3';
 
 // Ressources critiques pré-mises en cache au démarrage
 const PRECACHE_ASSETS = [

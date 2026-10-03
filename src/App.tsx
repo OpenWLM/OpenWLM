@@ -14,8 +14,10 @@ import {
   decryptPrivateKeyVault,
   deriveZeroKnowledgeKeys,
   encryptFileBinary,
-  decryptCustomEmoticon
+  decryptCustomEmoticon,
+  importPrivateCryptoKey
 } from './utils/Security';
+import E2EEKeyStorage from './utils/E2EEKeyStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
 import FileTransferCard, { type FileDataPayload, isImageFile } from './components/FileTransferCard';
@@ -371,15 +373,10 @@ const App: React.FC = () => {
   };
 
   // --- ÉTAT UTILISATEUR & AUTHENTIFICATION ---
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('wlm_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) { 
-      console.error("Erreur lecture wlm_user localstorage:", e);
-      return null; 
-    }
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(true);
+  const [isDeviceRemembered, setIsDeviceRemembered] = useState<boolean>(false);
+  const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null);
 
   // --- ÉTAT SOCKET & NAVIGATION ---
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -662,8 +659,8 @@ const App: React.FC = () => {
 
   // --- ÉTAT DE LA SÉCURITÉ (E2E) ---
   const [publicKeysCache, setPublicKeysCache] = useState<Record<number, any>>({});
-  const [myKeys, setMyKeys] = useState<{ publicKeyJwk: any, privateKeyJwk: any } | null>(null);
-  const myKeysRef = useRef<{ publicKeyJwk: any, privateKeyJwk: any } | null>(null);
+  const [myKeys, setMyKeys] = useState<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey } | null>(null);
+  const myKeysRef = useRef<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey } | null>(null);
   useEffect(() => { myKeysRef.current = myKeys; }, [myKeys]);
 
   // --- CONFIGURATION DE LA POLICE ---
@@ -703,12 +700,113 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // --- RESTAURATION DE LA SESSION PERSISTANTE E2EE AU DÉMARRAGE ---
+  useEffect(() => {
+    let isCancelled = false;
+
+    const restorePersistentSession = async () => {
+      try {
+        const savedUserStr = localStorage.getItem('wlm_user');
+        const savedToken = localStorage.getItem('token');
+
+        if (!savedUserStr) {
+          if (!isCancelled) setIsAuthInitializing(false);
+          return;
+        }
+
+        const savedUser: User = JSON.parse(savedUserStr);
+        if (!savedUser || !savedUser.id || !savedUser.rememberMe) {
+          if (!isCancelled) setIsAuthInitializing(false);
+          return;
+        }
+
+        const token = savedUser.token || savedToken;
+        if (!token) {
+          console.warn("[E2EE Session] Aucun token disponible pour la session mémorisée.");
+          localStorage.removeItem('wlm_user');
+          localStorage.removeItem('token');
+          if (!isCancelled) setIsAuthInitializing(false);
+          return;
+        }
+
+        // Tenter de récupérer les clés E2EE persistées dans IndexedDB
+        const keyRes = await E2EEKeyStorage.getKeys(savedUser.id);
+        if (keyRes.success && keyRes.data) {
+          const { publicKeyJwk, privateCryptoKey } = keyRes.data;
+
+          // Vérification de concordance avec la clé publique du profil si existante
+          let isKeyMatch = true;
+          if (savedUser.public_key) {
+            try {
+              const serverPub = typeof savedUser.public_key === 'string'
+                ? JSON.parse(savedUser.public_key)
+                : savedUser.public_key;
+              if (JSON.stringify(serverPub) !== JSON.stringify(publicKeyJwk)) {
+                console.warn("[E2EE Session] Clé locale désynchronisée de la clé publique serveur.");
+                isKeyMatch = false;
+              }
+            } catch {
+              isKeyMatch = false;
+            }
+          }
+
+          if (isKeyMatch) {
+            console.log("[E2EE Session] Session et clés restaurées avec succès depuis cet appareil.");
+            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            if (!isCancelled) {
+              setMyKeys({
+                publicKeyJwk,
+                privateKey: privateCryptoKey,
+                privateKeyJwk: privateCryptoKey as any
+              });
+              setUser({ ...savedUser, token });
+              setIsDeviceRemembered(true);
+            }
+          } else {
+            console.warn("[E2EE Session] Clés locales périmées, nettoyage de la persistance.");
+            await E2EEKeyStorage.removeKeys(savedUser.id);
+            localStorage.removeItem('wlm_user');
+            localStorage.removeItem('token');
+          }
+        } else {
+          console.warn("[E2EE Session] Clés locales introuvables ou corrompues:", keyRes.error);
+          localStorage.removeItem('wlm_user');
+          localStorage.removeItem('token');
+        }
+      } catch (err) {
+        console.error("[E2EE Session] Erreur lors de la restauration de la session:", err);
+        localStorage.removeItem('wlm_user');
+        localStorage.removeItem('token');
+      } finally {
+        if (!isCancelled) {
+          setIsAuthInitializing(false);
+        }
+      }
+    };
+
+    restorePersistentSession();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  // Auto-effacement du message de notification de persistance après 8s
+  useEffect(() => {
+    if (!persistenceNotice) return;
+    const timer = setTimeout(() => {
+      setPersistenceNotice(null);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [persistenceNotice]);
+
   /**
    * INITIALISATION ZERO-KNOWLEDGE LORS DE LA CONNEXION
    * 1. Reçoit loggedInUser et vaultKey (CryptoKey AES-GCM 256 bits non exportable).
-   * 2. Si le coffre existe : déchiffre la clé privée RSA avec vaultKey.
-   * 3. Si premier login : génère les clés RSA, chiffre la clé privée avec vaultKey et envoie le coffre au serveur.
-   * 4. Stocke la clé privée RSA UNIQUEMENT en RAM (useState/useRef).
+   * 2. Déchiffre ou génère la paire de clés RSA.
+   * 3. Importe la clé privée RSA en CryptoKey NON EXTRACTIBLE (extractable: false).
+   * 4. Si rememberMe est coché : tente la persistance sécurisée dans IndexedDB.
+   *    EXIGENCE ABSOLUE : Si la persistance échoue, la connexion RÉUSSIT quand même sans blocage.
    */
   const handleUserLogin = async (loggedInUser: any, vaultKey: CryptoKey) => {
     if (loggedInUser.token) {
@@ -716,7 +814,8 @@ const App: React.FC = () => {
     }
 
     try {
-      let keys: { publicKeyJwk: any; privateKeyJwk: any } | null = null;
+      let pubJwk: JsonWebKey;
+      let privJwk: JsonWebKey | null = null;
 
       if (loggedInUser.encrypted_private_key) {
         console.log("[Zero-Knowledge] Déchiffrement du coffre de clés privées...");
@@ -724,37 +823,81 @@ const App: React.FC = () => {
           ? JSON.parse(loggedInUser.encrypted_private_key)
           : loggedInUser.encrypted_private_key;
 
-        const privJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
+        privJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
         if (!privJwk) {
           alert("Échec du déchiffrement du coffre de clés privées. Mot de passe incorrect ou coffre altéré.");
           return;
         }
 
-        const pubJwk = typeof loggedInUser.public_key === 'string'
+        pubJwk = typeof loggedInUser.public_key === 'string'
           ? JSON.parse(loggedInUser.public_key)
           : loggedInUser.public_key;
-
-        keys = { publicKeyJwk: pubJwk, privateKeyJwk: privJwk };
       } else {
         console.log("[Zero-Knowledge] Génération de la première paire de clés RSA...");
-        keys = await generateKeyPair();
-        const vault = await encryptPrivateKeyVault(keys.privateKeyJwk, vaultKey);
+        const keyPair = await generateKeyPair();
+        pubJwk = keyPair.publicKeyJwk;
+        privJwk = keyPair.privateKeyJwk;
+
+        const vault = await encryptPrivateKeyVault(privJwk, vaultKey);
         await axios.post('/api/user/keys', {
           userId: loggedInUser.id,
-          publicKey: keys.publicKeyJwk,
+          publicKey: pubJwk,
           encryptedPrivateKey: vault
         });
-        loggedInUser.public_key = keys.publicKeyJwk;
+        loggedInUser.public_key = pubJwk;
         loggedInUser.encrypted_private_key = vault;
       }
 
+      // Importation de la clé privée en CryptoKey native NON EXTRACTIBLE (protection anti-XSS)
+      const privateCryptoKey = await importPrivateCryptoKey(privJwk, false);
+
+      const keys = {
+        publicKeyJwk: pubJwk,
+        privateKey: privateCryptoKey,
+        privateKeyJwk: privateCryptoKey as any
+      };
+
+      // 1. Initialisation de la session en mémoire vive
       setMyKeys(keys);
       setUser(loggedInUser);
 
+      // 2. Gestion de la persistance locale sur cet appareil
       if (loggedInUser.rememberMe) {
-        localStorage.setItem('wlm_user', JSON.stringify(loggedInUser));
+        try {
+          const saveRes = await E2EEKeyStorage.saveKeys(
+            loggedInUser.id,
+            loggedInUser.username,
+            pubJwk,
+            privateCryptoKey
+          );
+
+          if (saveRes.success) {
+            localStorage.setItem('wlm_user', JSON.stringify({ ...loggedInUser, rememberMe: true }));
+            localStorage.setItem('token', loggedInUser.token);
+            setIsDeviceRemembered(true);
+          } else {
+            console.warn("[E2EE Storage] Échec persistance locale:", saveRes.error);
+            // EXIGENCE UX ABSOLUE : La connexion n'est JAMAIS bloquée par l'échec de persistance
+            localStorage.removeItem('wlm_user');
+            localStorage.removeItem('token');
+            setIsDeviceRemembered(false);
+            setPersistenceNotice(t.auth.rememberPersistenceFailed);
+          }
+        } catch (saveErr) {
+          console.warn("[E2EE Storage] Exception persistance locale:", saveErr);
+          localStorage.removeItem('wlm_user');
+          localStorage.removeItem('token');
+          setIsDeviceRemembered(false);
+          setPersistenceNotice(t.auth.rememberPersistenceFailed);
+        }
       } else {
+        // Case non cochée : purge stricte de tout stockage durable pour cet utilisateur
+        try {
+          await E2EEKeyStorage.removeKeys(loggedInUser.id);
+        } catch {}
         localStorage.removeItem('wlm_user');
+        localStorage.removeItem('token');
+        setIsDeviceRemembered(false);
       }
     } catch (err) {
       console.error("[Zero-Knowledge] Erreur initialisation clés:", err);
@@ -2350,11 +2493,39 @@ const App: React.FC = () => {
     localStorage.removeItem('wlm_user'); 
     localStorage.removeItem('wlm_open_chats');
     localStorage.removeItem('wlm_active_chat');
+    // SÉCURITÉ : Purger les clés E2EE mémorisées sur cet appareil
+    try { 
+      if (user?.id) {
+        await E2EEKeyStorage.removeKeys(user.id);
+      }
+    } catch (e) { 
+      console.warn('[Logout] Erreur purge E2EEKeyStorage:', e); 
+    }
     // SÉCURITÉ : Purger le cache IndexedDB des émoticônes personnalisées (clés + assets déchiffrés)
     try { await CustomEmoticonsDB.clearAll(); } catch (e) { console.warn('[Logout] Erreur purge CustomEmoticonsDB:', e); }
     setMyKeys(null);
     setUser(null);
     window.location.reload(); 
+  };
+
+  /**
+   * OUBLIER CET APPAREIL (Suppression des clés locales sans déconnexion forcée)
+   */
+  const handleForgetDevice = async () => {
+    try {
+      if (user?.id) {
+        await E2EEKeyStorage.removeKeys(user.id);
+      }
+      localStorage.removeItem('wlm_user');
+      localStorage.removeItem('token');
+      setIsDeviceRemembered(false);
+      if (user) {
+        setUser({ ...user, rememberMe: false });
+      }
+      setPersistenceNotice(t.auth.forgetDeviceSuccess);
+    } catch (e) {
+      console.warn('[Session] Erreur lors de l\'oubli de l\'appareil:', e);
+    }
   };
 
   /**
@@ -2764,9 +2935,29 @@ const App: React.FC = () => {
    * RENDU DU COMPOSANT
    */
 
+  // Écran de chargement élégant pendant la vérification du coffre-fort local E2EE
+  if (isAuthInitializing) {
+    return (
+      <div className="wlm-auth-container">
+        <div className="wlm-auth-box" style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <img src="/assets/openwlm_logo.png" alt="OpenWLM Logo" className="wlm-auth-logo-img" style={{ width: 64, height: 64, margin: '0 auto 15px', display: 'block' }} />
+          <div className="wlm-logo-text-large" style={{ marginBottom: 12 }}>OpenWLM</div>
+          <div style={{ fontSize: '12px', color: '#004b8d', fontWeight: 'bold' }}>
+            {t.auth.signingIn || "Connexion en cours..."}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Redirection vers l'authentification si aucun utilisateur n'est connecté ou si les clés ne sont pas en mémoire
   if (!user || !myKeys) {
-    return <Auth onLogin={handleUserLogin} initialUsername={user?.username || ''} />;
+    let fallbackUsername = '';
+    try {
+      const saved = localStorage.getItem('wlm_user');
+      if (saved) fallbackUsername = JSON.parse(saved)?.username || '';
+    } catch {}
+    return <Auth onLogin={handleUserLogin} initialUsername={user?.username || fallbackUsername} />;
   }
 
   // Détermination du contact actif pour l'affichage de la discussion
@@ -2805,6 +2996,11 @@ const App: React.FC = () => {
         <div className="wlm-branding">
           <div className="msn-butterfly"></div>
           <div className="wlm-logo-text">Open<span>WLM</span></div>
+          {isDeviceRemembered && (
+            <span className="wlm-device-badge" title={t.auth.deviceRememberedBadge}>
+              🔒 {t.auth.deviceRememberedBadge}
+            </span>
+          )}
           {canInstallPWA && (
             <button 
               className="pwa-install-btn" 
@@ -2880,6 +3076,15 @@ const App: React.FC = () => {
                       🌐 {language === 'fr' ? 'English (EN)' : 'Français (FR)'}
                     </div>
                     <div className="dropdown-item" onClick={() => handleLogout()}>{t.auth.logout}</div>
+                    {isDeviceRemembered && (
+                      <div 
+                        className="dropdown-item" 
+                        onClick={() => { handleForgetDevice(); setShowStatusMenu(false); }}
+                        style={{ color: '#b33927' }}
+                      >
+                        🔓 {t.auth.forgetDevice}
+                      </div>
+                    )}
                     <div className="dropdown-item separator"></div>
                     <div className="dropdown-item" onClick={() => { setShowAvatarModal(true); setShowStatusMenu(false); }}>{t.roster.changeAvatar}</div>
                     <div className="dropdown-item" onClick={() => { setShowSceneModal(true); setShowStatusMenu(false); }}>{t.roster.changeScene}</div>
@@ -4003,6 +4208,24 @@ const App: React.FC = () => {
           ) : (
             <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, true)}>{t.roster.contextBlock}</div>
           )}
+        </div>
+      )}
+
+      {/* Toast de notification non-bloquante (persistance des clés, oubli appareil, etc.) */}
+      {persistenceNotice && (
+        <div className="wlm-toast-persistence" role="status" aria-live="polite">
+          <div className="wlm-toast-content">
+            <span className="wlm-toast-icon">ℹ</span>
+            <span className="wlm-toast-text">{persistenceNotice}</span>
+          </div>
+          <button 
+            type="button" 
+            className="wlm-toast-close"
+            onClick={() => setPersistenceNotice(null)}
+            title={t.common.cancel || "Fermer"}
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

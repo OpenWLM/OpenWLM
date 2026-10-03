@@ -241,7 +241,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
                   {t.auth.rememberKeys}
                 </label>
                 {rememberMe && (
-                  <div style={{ color: '#cc0000', fontSize: '10px', marginTop: '5px', fontWeight: 'bold' }}>
+                  <div style={{ color: '#005a9e', fontSize: '10px', marginTop: '4px', lineHeight: '1.3' }}>
                     {t.auth.rememberWarning}
                   </div>
                 )}

@@ -44,9 +44,9 @@ OpenWLM has undergone an extensive security audit and rigorous end-to-end harden
    - Asymmetric RSA-OAEP 2048-bit encryption for session key exchange.
    - Symmetric AES-256-GCM encryption for messages, file transfers, and custom emoticons.
    - Zero-Knowledge architecture: the server never has access to plaintext messages or private decryption keys.
-2. **Zero Web Storage Secrets & Hardware-Isolated Vault (`IndexedDB + Web Crypto`)**:
-   - Zero tokens, RSA private keys, JWKs, or crypto blobs in `localStorage` or `sessionStorage`.
-   - The device vault (`WLM_DeviceVault_v1`) stores the private key as a native `CryptoKey` with `extractable: false`, using IndexedDB structured cloning. Even in the event of an XSS flaw, browser engines strictly forbid exporting the key via `crypto.subtle.exportKey()`.
+2. **Hardened Client Storage & Non-Extractable CryptoKey Vault (`IndexedDB + Web Crypto`)**:
+   - Eliminates JWT tokens, raw RSA private keys, JWKs, and crypto blobs from `localStorage` and `sessionStorage`.
+   - The device vault (`WLM_DeviceVault_v1`) stores the private key as a native `CryptoKey` with `extractable: false` via IndexedDB structured cloning. Private key material is designed to prevent direct browser-side export through standard Web Crypto APIs (`crypto.subtle.exportKey()`), which significantly reduces exfiltration risk and helps contain sensitive material outside Web Storage.
    - `wlm_user` in `localStorage` is strictly restricted to an explicit whitelist of non-sensitive display fields (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
 3. **Server-Side Session Hardening with `HttpOnly; SameSite=Strict` Cookies**:
    - JWT tokens are issued as secure `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` cookies (`Secure` in HTTPS/Cloudflare production).

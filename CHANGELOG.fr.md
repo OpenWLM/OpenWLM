@@ -12,20 +12,20 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 ## [1.3.0] - 2026-10-03
 
 ### 🔒 Sécurité & Persistance Client
-- **Architecture de stockage web étanche (Zero Secret dans le Web Storage)** :
-  - Élimination intégrale des jetons JWT, clés privées RSA, JWK, coffres chiffrés et blobs cryptographiques de `localStorage` et `sessionStorage`.
-  - Restriction stricte de `wlm_user` dans `localStorage` à une liste blanche de champs d'affichage non sensibles : `{ id, username, nickname, avatar, scene, status, rememberMe }`.
+- **Architecture de stockage web durcie (surface d'exposition minimale)** :
+  - Élimination des jetons JWT, clés privées RSA brutes, JWK, coffres chiffrés et blobs cryptographiques de `localStorage` et `sessionStorage`.
+  - Restriction de `wlm_user` dans `localStorage` à une liste blanche stricte de champs d'affichage non sensibles : `{ id, username, nickname, avatar, scene, status, rememberMe }`.
   - Nettoyeur proactif d'hygiène au démarrage purgeant automatiquement tout résidu historique ou clé non autorisée des versions antérieures.
-- **Coffre-fort E2EE isolé (`IndexedDB + Web Crypto`)** :
+- **Coffre-fort E2EE local (`IndexedDB + Web Crypto`)** :
   - Implémentation du coffre d'appareil `WLM_DeviceVault_v1` utilisant le clonage structuré natif d'IndexedDB pour persister la clé privée sous forme d'objet natif `CryptoKey` avec `extractable: false`.
-  - Barrière anti-exfiltration absolue : même en cas de faille applicative XSS, le moteur cryptographique du navigateur interdit formellement tout appel à `crypto.subtle.exportKey()`, rendant impossible le vol de la clé privée.
+  - Résistance accrue contre l'exfiltration : le matériel cryptographique de la clé privée est conçu pour ne pas être exportable via les API Web Crypto standard (les appels directs à `crypto.subtle.exportKey()` sont rejetés par le moteur du navigateur), ce qui réduit significativement le risque d'exfiltration directe et améliore la protection contre le vol de stockage par injection de script (XSS).
 - **Durcissement des sessions serveur par cookie `HttpOnly; SameSite=Strict`** :
   - Émission automatique par l'endpoint `/api/login` du cookie de session `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h`.
   - Prise en charge transparente et unifiée des cookies sur toutes les routes Express et la négociation WebSocket (`io.use`).
   - Révocation instantanée côté serveur et suppression du cookie lors de la déconnexion (`/api/logout`).
 - **Expérience utilisateur robuste "Mémoriser mes clés E2EE sur cet appareil"** :
   - Wording bilingue modernisé et adapté au mobile : *"Mémoriser mes clés E2EE sur cet appareil"* / *"Remember my E2EE keys on this device"*.
-  - Exigence UX absolue : la connexion n'est jamais bloquée en cas d'échec de persistance locale (quota dépassé, navigation privée) ; la session continue en mémoire vive avec un toast explicatif non bloquant.
+  - Approche UX non bloquante : la connexion n'est pas interrompue en cas d'indisponibilité du stockage local (quota dépassé, navigation privée) ; la session se poursuit normalement en mémoire vive avec un toast explicatif.
   - Fonctionnalité *"Oublier cet appareil"* : suppression propre du trousseau IndexedDB, purge des marqueurs locaux et bascule en session mémoire seule sans déconnexion forcée.
 - **Indicateur rétro Aero raffiné et discret** :
   - Remplacement du badge texte lourd par une mini-icône cadenas SVG de 12px intégrée à côté du statut utilisateur avec infobulle au survol, respectant l'alignement WLM et le responsive mobile.

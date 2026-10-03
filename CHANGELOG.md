@@ -12,20 +12,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.3.0] - 2026-10-03
 
 ### 🔒 Security & Client Persistence
-- **Zero Web Storage Secrets Architecture**:
-  - Eliminated all JWT tokens, RSA private keys, JWKs, encrypted key vaults, and cryptographic blobs from browser `localStorage` and `sessionStorage`.
+- **Hardened Client Storage Architecture**:
+  - Eliminated JWT tokens, raw RSA private keys, JWKs, encrypted key vaults, and cryptographic blobs from browser `localStorage` and `sessionStorage`.
   - Restricted `wlm_user` in `localStorage` strictly to an explicit whitelist of non-sensitive display fields: `{ id, username, nickname, avatar, scene, status, rememberMe }`.
-  - Implemented proactive startup hygiene garbage collection that continuously scrubs residual tokens, private keys, and unauthorized storage keys left over from previous versions.
+  - Implemented proactive startup hygiene sweeps that scrub residual tokens, legacy private keys, and unauthorized storage keys left over from previous versions.
 - **Hardware-Isolated E2EE Key Storage (`IndexedDB + Web Crypto`)**:
   - Implemented secure device vault `WLM_DeviceVault_v1` using native IndexedDB structured clones to persist private RSA keys as non-extractable `CryptoKey` objects (`extractable: false`).
-  - Strict anti-exfiltration guarantee: even under arbitrary application script injection / XSS vulnerabilities, browser cryptographic engines refuse any call to `crypto.subtle.exportKey()`, making private key theft impossible.
+  - Strengthened defense against direct key theft: private key material is not exportable through standard Web Crypto APIs (direct calls to `crypto.subtle.exportKey()` are rejected by browser engines), which significantly reduces exfiltration risk and helps contain sensitive material outside Web Storage.
 - **Server-Side Session Hardening with `HttpOnly; SameSite=Strict` Cookies**:
   - Login endpoint (`/api/login`) automatically issues session tokens via secure `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` cookies.
   - Transparent dual-fallback authentication across all Express endpoints and Socket.IO handshakes (`io.use`), accepting both cookie headers and in-memory authorization headers.
   - Instant session revocation and cookie purge on logout (`/api/logout`).
 - **Resilient "Remember Keys on this Device" UX**:
   - Modernized mobile-friendly wording: *"Remember my E2EE keys on this device"* / *"Mémoriser mes clés E2EE sur cet appareil"*.
-  - Strict non-blocking authentication guarantee: if local persistence fails (e.g. quota limits, private browsing sandboxes), user login succeeds immediately in memory with a friendly non-blocking notification toast.
+  - Non-blocking authentication design: if local persistence encounters an error (e.g. storage quota limits, private browsing sandbox), user login continues smoothly in memory with a friendly non-blocking notification toast.
   - *"Forget this device"* (`Oublier cet appareil`): cleanly removes cryptographic keys from IndexedDB, purges local markers, and transitions active session to memory-only without forced logout.
 - **Discreet Retro Aero Indicator**:
   - Replaced bulky textual topbar badge with a minimalist 12px SVG padlock icon adjacent to the user status selector, with comprehensive hover tooltips preserving retro Aero aesthetics and mobile responsiveness.

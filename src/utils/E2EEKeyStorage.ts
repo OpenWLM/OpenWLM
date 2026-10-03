@@ -5,11 +5,11 @@
  * 1. Stocke les clés privées en tant qu'objets natifs CryptoKey avec { extractable: false }.
  * 2. Utilise le clonage structuré (Structured Clone) natif d'IndexedDB pour persister la CryptoKey.
  * 3. AUCUNE clé privée brute (JWK, PKCS#8, base64) n'est jamais stockée dans localStorage ou sessionStorage.
- * 4. Frontière de défense XSS : Même en cas de vulnérabilité XSS applicative, le moteur cryptographique
- *    du navigateur refuse tout appel à crypto.subtle.exportKey() sur une clé non extractible.
- *    L'attaquant ne peut pas exfiltrer la clé privée hors de l'appareil.
- * 5. Résilience absolue : Toutes les méthodes gèrent les exceptions (quota, navigation privée, indisponibilité IDB)
- *    sans jamais bloquer le flux d'authentification de l'utilisateur.
+ * 4. Défense en profondeur contre l'exfiltration : Le moteur cryptographique du navigateur
+ *    refuse l'exportation de clés non extractibles via crypto.subtle.exportKey(),
+ *    ce qui réduit significativement le risque d'exfiltration directe par rapport à un stockage classique.
+ * 5. Tolérance aux pannes : Toutes les méthodes gèrent les exceptions (quota, navigation privée, indisponibilité IDB)
+ *    sans interrompre le flux d'authentification de l'utilisateur.
  */
 
 export interface DeviceKeyRecord {

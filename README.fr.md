@@ -44,9 +44,9 @@ OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement 
    - Chiffrement asymétrique RSA-OAEP 2048 bits pour l'échange de clés de session.
    - Chiffrement symétrique AES-256-GCM pour les messages, fichiers et émoticônes.
    - Le serveur ne voit jamais le texte en clair ni les clés de déchiffrement (Zero-Knowledge).
-2. **Stockage web étanche & Coffre matériel isolé (`IndexedDB + Web Crypto`)** :
-   - Zéro jeton, zéro clé privée RSA, zéro JWK ni blob cryptographique dans `localStorage` ou `sessionStorage`.
-   - Le coffre local (`WLM_DeviceVault_v1`) persiste la clé privée sous forme de `CryptoKey` native avec `extractable: false` via le clonage structuré IndexedDB. Même en cas de faille XSS, les navigateurs interdisent tout export via `crypto.subtle.exportKey()`.
+2. **Stockage client durci & Coffre local (`IndexedDB + Web Crypto`)** :
+   - Élimination des jetons JWT, clés privées RSA brutes, JWK et blobs cryptographiques de `localStorage` et `sessionStorage`.
+   - Le coffre local (`WLM_DeviceVault_v1`) persiste la clé privée sous forme de `CryptoKey` native avec `extractable: false` via le clonage structuré IndexedDB. Le matériel cryptographique de la clé privée est conçu pour ne pas être exportable via les API Web Crypto standard (`crypto.subtle.exportKey()`), ce qui réduit significativement le risque d'exfiltration directe par rapport à un stockage classique et aide à maintenir les données sensibles à l'écart du Web Storage.
    - `wlm_user` dans `localStorage` est strictement restreint aux champs d'affichage non sensibles (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
 3. **Durcissement des sessions serveur par cookie `HttpOnly; SameSite=Strict`** :
    - Émission de jetons JWT sécurisés sous forme de cookies `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` (`Secure` en production HTTPS / Cloudflare).

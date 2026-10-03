@@ -30,6 +30,35 @@ import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
 
+axios.defaults.withCredentials = true;
+
+/**
+ * SANITISATION STRICTE DU PROFIL UTILISATEUR POUR LE STOCKAGE WEB
+ * Selon les règles strictes d'architecture de sécurité OpenWLM :
+ * wlm_user ne peut contenir au maximum que :
+ * - id
+ * - username
+ * - nickname
+ * - avatar
+ * - scene
+ * - status
+ * - rememberMe
+ * AUCUN token, AUCUNE clé, AUCUN coffre, AUCUN payload crypto.
+ */
+export const sanitizeUserForStorage = (u: any): Record<string, any> => {
+  if (!u) return {};
+  const sanitized: Record<string, any> = {
+    id: Number(u.id),
+    username: String(u.username || '')
+  };
+  if (u.nickname !== undefined) sanitized.nickname = String(u.nickname);
+  if (u.avatar !== undefined) sanitized.avatar = String(u.avatar);
+  if (u.scene !== undefined) sanitized.scene = String(u.scene);
+  if (u.status !== undefined) sanitized.status = String(u.status);
+  if (u.rememberMe !== undefined) sanitized.rememberMe = Boolean(u.rememberMe);
+  return sanitized;
+};
+
 /**
  * INTERFACES
  */
@@ -51,7 +80,7 @@ interface User {
   avatar?: string;
   scene?: string;
   status?: string;
-  token: string;
+  token?: string;
   encrypted_private_key?: string;
   public_key?: string;
   global_private?: number;
@@ -515,7 +544,7 @@ const App: React.FC = () => {
       setUser(newUser);
 
       if (newUser.rememberMe) {
-        localStorage.setItem('wlm_user', JSON.stringify(newUser));
+        localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage(newUser)));
       }
     } catch (err) { 
       console.error("Échec de synchronisation du profil:", err); 
@@ -683,17 +712,55 @@ const App: React.FC = () => {
   // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
   useEffect(() => {
     try {
+      const FORBIDDEN_STORAGE_KEYS = [
+        'token',
+        'encrypted_private_key',
+        'encryptedPrivateKey',
+        'vault',
+        'vaultKey',
+        'privateKey',
+        'privateKeyJwk',
+        'privateCryptoKey',
+        'public_key',
+        'publicKey'
+      ];
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith('wlm_priv_') || k.startsWith('wlm_keys_') || k.startsWith('wlm_pub_'))) {
+        if (k && (
+          k.startsWith('wlm_priv_') || 
+          k.startsWith('wlm_keys_') || 
+          k.startsWith('wlm_pub_') ||
+          k.startsWith('wlm_vault_') ||
+          FORBIDDEN_STORAGE_KEYS.includes(k)
+        )) {
           localStorage.removeItem(k);
         }
       }
       for (let i = sessionStorage.length - 1; i >= 0; i--) {
         const k = sessionStorage.key(i);
-        if (k && (k.startsWith('wlm_priv_') || k.startsWith('wlm_keys_') || k.startsWith('wlm_pub_'))) {
+        if (k && (
+          k.startsWith('wlm_priv_') || 
+          k.startsWith('wlm_keys_') || 
+          k.startsWith('wlm_pub_') ||
+          k.startsWith('wlm_vault_') ||
+          FORBIDDEN_STORAGE_KEYS.includes(k)
+        )) {
           sessionStorage.removeItem(k);
         }
+      }
+
+      // Vérifier et nettoyer wlm_user s'il contient des champs interdits
+      const rawUser = localStorage.getItem('wlm_user');
+      if (rawUser) {
+        try {
+          const parsed = JSON.parse(rawUser);
+          if (parsed && typeof parsed === 'object') {
+            const sanitized = sanitizeUserForStorage(parsed);
+            if (Object.keys(parsed).some(k => !['id', 'username', 'nickname', 'avatar', 'scene', 'status', 'rememberMe'].includes(k))) {
+              localStorage.setItem('wlm_user', JSON.stringify(sanitized));
+            }
+          }
+        } catch {}
       }
     } catch (e) {
       console.warn("[Sécurité] Nettoyage stockage résiduel:", e);
@@ -707,40 +774,54 @@ const App: React.FC = () => {
     const restorePersistentSession = async () => {
       try {
         const savedUserStr = localStorage.getItem('wlm_user');
-        const savedToken = localStorage.getItem('token');
 
         if (!savedUserStr) {
           if (!isCancelled) setIsAuthInitializing(false);
           return;
         }
 
-        const savedUser: User = JSON.parse(savedUserStr);
+        const savedUser: Partial<User> = JSON.parse(savedUserStr);
         if (!savedUser || !savedUser.id || !savedUser.rememberMe) {
           if (!isCancelled) setIsAuthInitializing(false);
           return;
         }
 
-        const token = savedUser.token || savedToken;
-        if (!token) {
-          console.warn("[E2EE Session] Aucun token disponible pour la session mémorisée.");
+        // 1. Tenter de synchroniser la session avec le serveur via le cookie HttpOnly
+        let sessionToken = '';
+        let serverUser: any = null;
+        try {
+          const res = await axios.get('/api/user/me');
+          if (res.data && res.data.success && res.data.user) {
+            serverUser = res.data.user;
+            sessionToken = res.data.token || '';
+          }
+        } catch (authErr) {
+          console.warn("[E2EE Session] Session serveur expirée ou invalide:", authErr);
+        }
+
+        if (!serverUser) {
+          console.warn("[E2EE Session] Session expirée ou invalide côté serveur.");
           localStorage.removeItem('wlm_user');
-          localStorage.removeItem('token');
           if (!isCancelled) setIsAuthInitializing(false);
           return;
         }
 
-        // Tenter de récupérer les clés E2EE persistées dans IndexedDB
+        if (sessionToken) {
+          axios.defaults.headers.common['Authorization'] = `Bearer ${sessionToken}`;
+        }
+
+        // 2. Tenter de récupérer les clés E2EE persistées dans IndexedDB
         const keyRes = await E2EEKeyStorage.getKeys(savedUser.id);
         if (keyRes.success && keyRes.data) {
           const { publicKeyJwk, privateCryptoKey } = keyRes.data;
 
-          // Vérification de concordance avec la clé publique du profil si existante
+          // Vérification de concordance avec la clé publique du profil serveur
           let isKeyMatch = true;
-          if (savedUser.public_key) {
+          if (serverUser.public_key) {
             try {
-              const serverPub = typeof savedUser.public_key === 'string'
-                ? JSON.parse(savedUser.public_key)
-                : savedUser.public_key;
+              const serverPub = typeof serverUser.public_key === 'string'
+                ? JSON.parse(serverUser.public_key)
+                : serverUser.public_key;
               if (JSON.stringify(serverPub) !== JSON.stringify(publicKeyJwk)) {
                 console.warn("[E2EE Session] Clé locale désynchronisée de la clé publique serveur.");
                 isKeyMatch = false;
@@ -752,31 +833,36 @@ const App: React.FC = () => {
 
           if (isKeyMatch) {
             console.log("[E2EE Session] Session et clés restaurées avec succès depuis cet appareil.");
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
             if (!isCancelled) {
               setMyKeys({
                 publicKeyJwk,
                 privateKey: privateCryptoKey,
                 privateKeyJwk: privateCryptoKey as any
               });
-              setUser({ ...savedUser, token });
+              setUser({ ...serverUser, token: sessionToken, rememberMe: true });
               setIsDeviceRemembered(true);
             }
+            localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...serverUser, rememberMe: true })));
           } else {
             console.warn("[E2EE Session] Clés locales périmées, nettoyage de la persistance.");
             await E2EEKeyStorage.removeKeys(savedUser.id);
-            localStorage.removeItem('wlm_user');
-            localStorage.removeItem('token');
+            localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...serverUser, rememberMe: false })));
+            if (!isCancelled) {
+              setUser({ ...serverUser, token: sessionToken, rememberMe: false });
+              setIsDeviceRemembered(false);
+            }
           }
         } else {
           console.warn("[E2EE Session] Clés locales introuvables ou corrompues:", keyRes.error);
-          localStorage.removeItem('wlm_user');
-          localStorage.removeItem('token');
+          localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...serverUser, rememberMe: false })));
+          if (!isCancelled) {
+            setUser({ ...serverUser, token: sessionToken, rememberMe: false });
+            setIsDeviceRemembered(false);
+          }
         }
       } catch (err) {
         console.error("[E2EE Session] Erreur lors de la restauration de la session:", err);
         localStorage.removeItem('wlm_user');
-        localStorage.removeItem('token');
       } finally {
         if (!isCancelled) {
           setIsAuthInitializing(false);
@@ -872,22 +958,19 @@ const App: React.FC = () => {
           );
 
           if (saveRes.success) {
-            localStorage.setItem('wlm_user', JSON.stringify({ ...loggedInUser, rememberMe: true }));
-            localStorage.setItem('token', loggedInUser.token);
+            localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...loggedInUser, rememberMe: true })));
             setIsDeviceRemembered(true);
             setPersistenceNotice(t.auth.deviceRememberedSuccess);
           } else {
             console.warn("[E2EE Storage] Échec persistance locale:", saveRes.error);
             // EXIGENCE UX ABSOLUE : La connexion n'est JAMAIS bloquée par l'échec de persistance
             localStorage.removeItem('wlm_user');
-            localStorage.removeItem('token');
             setIsDeviceRemembered(false);
             setPersistenceNotice(t.auth.rememberPersistenceFailed);
           }
         } catch (saveErr) {
           console.warn("[E2EE Storage] Exception persistance locale:", saveErr);
           localStorage.removeItem('wlm_user');
-          localStorage.removeItem('token');
           setIsDeviceRemembered(false);
           setPersistenceNotice(t.auth.rememberPersistenceFailed);
         }
@@ -897,7 +980,6 @@ const App: React.FC = () => {
           await E2EEKeyStorage.removeKeys(loggedInUser.id);
         } catch {}
         localStorage.removeItem('wlm_user');
-        localStorage.removeItem('token');
         setIsDeviceRemembered(false);
       }
     } catch (err) {
@@ -920,6 +1002,10 @@ const App: React.FC = () => {
         const res = await axios.get(`/api/user/me`);
         if (res.data && res.data.user) {
           currentUser = { ...user, ...res.data.user };
+          if (res.data.token) {
+            currentUser.token = res.data.token;
+            axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+          }
           setUser(currentUser);
           
           if (currentUser.global_private !== undefined) {
@@ -927,7 +1013,7 @@ const App: React.FC = () => {
           }
 
           if (currentUser.rememberMe) {
-            localStorage.setItem('wlm_user', JSON.stringify(currentUser));
+            localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage(currentUser)));
           }
         }
       } catch (err) {
@@ -962,7 +1048,7 @@ const App: React.FC = () => {
     receivedMap: Record<string, CustomEmoticonPayload>
   ) => {
     if (!receivedMap || typeof receivedMap !== 'object') return;
-    const token = user?.token || localStorage.getItem('token');
+    const token = user?.token;
 
     for (const [shortcut, info] of Object.entries(receivedMap)) {
       if (!info || !info.assetId || !info.key) continue;
@@ -1046,7 +1132,7 @@ const App: React.FC = () => {
       const localRecords = await CustomEmoticonsDB.getMyEmoticons();
       
       let serverRecords: any[] | null = null;
-      const token = user.token || localStorage.getItem('token');
+      const token = user.token;
       if (token) {
         try {
           const res = await axios.get('/api/emoticons/custom/my', {
@@ -2474,26 +2560,29 @@ const App: React.FC = () => {
    */
   const handleLogout = async (reason?: string) => {
     if (reason) console.warn("[Session] Déconnexion:", reason); 
-    const currentToken = localStorage.getItem('token');
+    const currentToken = user?.token;
     if (socket) {
       socket.emit('manual_disconnect');
     }
-    // SÉCURITÉ : Révocation du token côté serveur via l'endpoint dédié
-    if (currentToken) {
-      try {
-        await fetch('/api/logout', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${currentToken}` }
-        });
-      } catch (e) {
-        console.warn('[Logout] Erreur appel /api/logout:', e);
-      }
+    // SÉCURITÉ : Révocation du token côté serveur via l'endpoint dédié et suppression du cookie HttpOnly
+    try {
+      await fetch('/api/logout', {
+        method: 'POST',
+        headers: currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {},
+        credentials: 'include'
+      });
+    } catch (e) {
+      console.warn('[Logout] Erreur appel /api/logout:', e);
     }
-    // SÉCURITÉ : Purger le token JWT côté client
-    localStorage.removeItem('token');
-    localStorage.removeItem('wlm_user'); 
-    localStorage.removeItem('wlm_open_chats');
-    localStorage.removeItem('wlm_active_chat');
+    // SÉCURITÉ : Purge complète du stockage JS
+    try {
+      localStorage.removeItem('token');
+      localStorage.removeItem('wlm_user'); 
+      localStorage.removeItem('wlm_open_chats');
+      localStorage.removeItem('wlm_active_chat');
+      sessionStorage.clear();
+    } catch {}
+
     // SÉCURITÉ : Purger les clés E2EE mémorisées sur cet appareil
     try { 
       if (user?.id) {
@@ -2519,6 +2608,7 @@ const App: React.FC = () => {
       }
       localStorage.removeItem('wlm_user');
       localStorage.removeItem('token');
+      sessionStorage.clear();
       setIsDeviceRemembered(false);
       if (user) {
         setUser({ ...user, rememberMe: false });

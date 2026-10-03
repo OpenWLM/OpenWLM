@@ -571,12 +571,35 @@ const uploadRateLimiter = (req, res, next) => {
   next();
 };
 
+const parseCookies = (cookieHeader) => {
+  const list = {};
+  if (!cookieHeader || typeof cookieHeader !== 'string') return list;
+  cookieHeader.split(';').forEach(cookie => {
+    const parts = cookie.split('=');
+    const name = parts.shift()?.trim();
+    if (!name) return;
+    const value = parts.join('=').trim();
+    try {
+      list[name] = decodeURIComponent(value);
+    } catch {
+      list[name] = value;
+    }
+  });
+  return list;
+};
+
 /**
  * Middleware d'authentification par JWT
  */
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+
+  // Fallback sécurisé : Cookie HttpOnly (SameSite=Strict)
+  if (!token && req.headers.cookie) {
+    const cookies = parseCookies(req.headers.cookie);
+    token = cookies.token;
+  }
   
   if (!token) return res.status(401).json({ error: "Non autorisé. Token manquant." });
 
@@ -665,7 +688,11 @@ app.get('/api/user/me', authenticateToken, (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
     if (!user) return res.status(404).json({ error: "Utilisateur non trouvé." });
     
-    res.json({ success: true, user: toPrivateUserDTO(user) });
+    // Génère/rafraîchit le token JWT pour la session mémoire vive (RAM / Socket)
+    const tv = user.token_version || 0;
+    const token = jwt.sign({ id: user.id, username: user.username, tv }, SECRET, { expiresIn: '24h' });
+
+    res.json({ success: true, token, user: toPrivateUserDTO(user) });
   } catch (err) {
     res.status(500).json({ error: "Erreur serveur." });
   }
@@ -675,16 +702,40 @@ app.get('/api/user/me', authenticateToken, (req, res) => {
  * Déconnexion explicite et révocation immédiate de session côté serveur
  * Incrémente atomiquement token_version en BDD : tout token JWT émis antérieurement
  * pour cet utilisateur est immédiatement invalidé (HTTP 401 sur l'API, rejet sur WebSocket).
+ * Efface également le cookie de session HttpOnly; SameSite=Strict.
  */
-app.post('/api/logout', authenticateToken, (req, res) => {
-  try {
-    db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', req.user.id);
-    broadcastStatusToContacts(req.user.id, { id: req.user.id, userId: req.user.id, status: 'offline' });
-    res.json({ success: true, message: "Session révoquée avec succès côté serveur." });
-  } catch (err) {
-    console.error("Erreur logout serveur:", err);
-    res.status(500).json({ error: "Erreur lors de la révocation de session." });
+app.post('/api/logout', (req, res) => {
+  let token = req.headers['authorization']?.split(' ')[1];
+  if (!token && req.headers.cookie) {
+    const cookies = parseCookies(req.headers.cookie);
+    token = cookies.token;
   }
+
+  if (token) {
+    try {
+      const payload = jwt.verify(token, SECRET);
+      if (payload && payload.id) {
+        db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', payload.id);
+        broadcastStatusToContacts(payload.id, { id: payload.id, userId: payload.id, status: 'offline' });
+      }
+    } catch (e) {
+      // Ignorer si token invalide/expiré au moment de la déconnexion
+    }
+  }
+
+  const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const isCloudflare = Boolean(req.headers['cf-ray'] || isHttps);
+  const isProductionMode = isProd || isCloudflare;
+  const isSecure = isProductionMode && isHttps;
+
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'strict',
+    path: '/'
+  });
+
+  res.json({ success: true, message: "Session révoquée avec succès côté serveur." });
 });
 
 /**
@@ -763,6 +814,20 @@ app.post('/api/login', authRateLimiter, (req, res) => {
     const tv = user.token_version || 0;
     const token = jwt.sign({ id: user.id, username: user.username, tv }, SECRET, { expiresIn: '24h' });
     
+    // SÉCURITÉ : Définition du cookie de session HttpOnly; SameSite=Strict
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const isCloudflare = Boolean(req.headers['cf-ray'] || isHttps);
+    const isProductionMode = isProd || isCloudflare;
+    const isSecure = isProductionMode && isHttps;
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000,
+      path: '/'
+    });
+
     // SÉCURITÉ : DTO pour éviter de fuiter hash/salt
     res.json({ success: true, token, user: toPrivateUserDTO(user) });
   } else {
@@ -1539,7 +1604,11 @@ const checkPuissance4Winner = (board) => {
  * Middleware Socket.IO pour authentifier via Token
  */
 io.use((socket, next) => {
-  const token = socket.handshake.auth?.token;
+  let token = socket.handshake.auth?.token;
+  if (!token && socket.handshake.headers?.cookie) {
+    const cookies = parseCookies(socket.handshake.headers.cookie);
+    token = cookies.token;
+  }
   if (!token) return next(new Error("Erreur d'authentification : Token manquant"));
 
   jwt.verify(token, SECRET, (err, payload) => {

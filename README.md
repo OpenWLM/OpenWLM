@@ -26,7 +26,7 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 - **Progressive Web App (PWA)**: Fully installable as a standalone desktop or mobile application with offline Service Worker asset caching, web app manifest, and retro Aero taskbar icon integration.
 - **Built-in Assistant & Test Contact ("OpenWLM")**: Dedicated virtual system contact (ID `-1`) with an empty-state quickstart button, allowing new users to test chat, emoticons, sounds, Wizz/nudges, Tic-Tac-Toe, and Connect Four (`/p4`) immediately without needing a second account.
 - **Secure Instant Messaging**: Rich text support, classic legacy emoticons, and custom end-to-end encrypted emoticons.
-- **Display Name & Status Emoticons**: Authentic support for classic emoticons directly inside user display names and personal status messages (PSM), rendered seamlessly across contact rosters, chat tabs, conversation headers, and game scoreboards with zero layout distortion.
+- **Display Name & Status Emoticons**: Authentic support for classic emoticons directly inside user display names and personal status messages (PSM), rendered seamlessly across contact rosters, chat tabs, conversation headers, and game scoreboards with true alpha-transparent PNG & APNG assets.
 - **Audio & Video Calls (WebRTC)**: Real-time peer-to-peer voice and video calls with encrypted signaling.
 - **Voice Clips**: Record and stream end-to-end encrypted audio messages.
 - **Winks & Nudges**: Animated full-screen winks and screen-shaking Wizz effects.

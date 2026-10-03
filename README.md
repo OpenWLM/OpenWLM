@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.jpg" alt="OpenWLM Logo" width="200" />
+  <img src="logo.png" alt="OpenWLM Logo" width="200" />
 </p>
 
 <p align="center">

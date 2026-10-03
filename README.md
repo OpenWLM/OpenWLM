@@ -38,26 +38,32 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 
 ## 🔐 Architecture & Security Hardening
 
-OpenWLM has undergone an extensive security audit and rigorous backend hardening:
+OpenWLM has undergone an extensive security audit and rigorous end-to-end hardening:
 
 1. **End-to-End Encryption (E2EE Zero-Knowledge)**:
    - Asymmetric RSA-OAEP 2048-bit encryption for session key exchange.
    - Symmetric AES-256-GCM encryption for messages, file transfers, and custom emoticons.
    - Zero-Knowledge architecture: the server never has access to plaintext messages or private decryption keys.
-2. **Centralized Access Authorization (`canInteract`)**:
+2. **Zero Web Storage Secrets & Hardware-Isolated Vault (`IndexedDB + Web Crypto`)**:
+   - Zero tokens, RSA private keys, JWKs, or crypto blobs in `localStorage` or `sessionStorage`.
+   - The device vault (`WLM_DeviceVault_v1`) stores the private key as a native `CryptoKey` with `extractable: false`, using IndexedDB structured cloning. Even in the event of an XSS flaw, browser engines strictly forbid exporting the key via `crypto.subtle.exportKey()`.
+   - `wlm_user` in `localStorage` is strictly restricted to an explicit whitelist of non-sensitive display fields (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
+3. **Server-Side Session Hardening with `HttpOnly; SameSite=Strict` Cookies**:
+   - JWT tokens are issued as secure `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` cookies (`Secure` in HTTPS/Cloudflare production).
+   - Unified dual authentication fallback on Express endpoints and Socket.IO handshakes (`io.use`).
+   - Server-side token version revocation (`token_version`) and cookie purging on `/api/logout`.
+4. **Centralized Access Authorization (`canInteract`)**:
    - Strict mutual contact verification and bidirectional block checking before any interaction (messages, nudges, calls, files, games).
-3. **Identity Spoofing Prevention**:
+5. **Identity Spoofing Prevention**:
    - Strict validation of sender identity via verified JWT tokens (`socket.user.id === senderId`).
    - Display nicknames are systematically recalculated server-side from the SQL database (client-provided names are never trusted).
-4. **Authoritative Off-The-Record (Private Mode)**:
+6. **Authoritative Off-The-Record (Private Mode)**:
    - Server-enforced non-persistence: if either user in a conversation enables global private mode (`global_private = 1`), messages are never persisted to disk, overriding any client manipulation.
-5. **Instant JWT Session Revocation (`token_version`)**:
-   - Instant token invalidation via server-side database versioning upon user logout (`/api/logout` and `manual_disconnect`) or password change.
-6. **Rate Limiting & Abuse Prevention**:
+7. **Rate Limiting & Abuse Prevention**:
    - Strict **1 GB** storage quota per account for active shared files.
    - Tiered rate limiters: authentication (10 req/min), file uploads (5 req/min), nudges (3/min), winks (7/min), messages (20 / 10s).
    - Automated in-memory garbage collection every 5 minutes purging expired captchas and inactive client IPs.
-7. **Timing-Safe Cryptography**:
+8. **Timing-Safe Cryptography**:
    - Password hashes verified in constant time using `crypto.timingSafeEqual` to neutralize timing attack vulnerabilities.
 
 ---

@@ -38,26 +38,32 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgi
 
 ## 🔐 Sécurité & Architecture (Security Hardened)
 
-OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement rigoureux :
+OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement de bout en bout :
 
 1. **Chiffrement de bout en bout (E2EE Zero-Knowledge)** :
    - Chiffrement asymétrique RSA-OAEP 2048 bits pour l'échange de clés de session.
    - Chiffrement symétrique AES-256-GCM pour les messages, fichiers et émoticônes.
    - Le serveur ne voit jamais le texte en clair ni les clés de déchiffrement (Zero-Knowledge).
-2. **Autorisation centralisée (`canInteract`)** :
+2. **Stockage web étanche & Coffre matériel isolé (`IndexedDB + Web Crypto`)** :
+   - Zéro jeton, zéro clé privée RSA, zéro JWK ni blob cryptographique dans `localStorage` ou `sessionStorage`.
+   - Le coffre local (`WLM_DeviceVault_v1`) persiste la clé privée sous forme de `CryptoKey` native avec `extractable: false` via le clonage structuré IndexedDB. Même en cas de faille XSS, les navigateurs interdisent tout export via `crypto.subtle.exportKey()`.
+   - `wlm_user` dans `localStorage` est strictement restreint aux champs d'affichage non sensibles (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
+3. **Durcissement des sessions serveur par cookie `HttpOnly; SameSite=Strict`** :
+   - Émission de jetons JWT sécurisés sous forme de cookies `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` (`Secure` en production HTTPS / Cloudflare).
+   - Prise en charge transparente et unifiée des cookies sur toutes les routes Express et la négociation WebSocket (`io.use`).
+   - Révocation instantanée côté serveur (`token_version`) et suppression du cookie lors de la déconnexion (`/api/logout`).
+4. **Autorisation centralisée (`canInteract`)** :
    - Vérification stricte des relations de contact mutuel et de l'absence de blocage avant toute interaction (messages, wizz, appels, fichiers, jeux).
-3. **Prévention de l'usurpation d'identité (Anti-Spoofing)** :
-   - Validation stricte de l'identité émettrice via le token JWT certifié.
+5. **Prévention de l'usurpation d'identité (Anti-Spoofing)** :
+   - Validation stricte de l'identité émettrice via le token JWT certifié (`socket.user.id === senderId`).
    - Les pseudonymes affichés sont systématiquement recalculés depuis la base de données SQL côté serveur.
-4. **Mode Privé (Off-The-Record) autoritaire** :
+6. **Mode Privé (Off-The-Record) autoritaire** :
    - Forçage côté serveur de la non-persistance si un contact a activé le mode privé global (`global_private = 1`).
-5. **Révocation instantanée des sessions JWT (`token_version`)** :
-   - Invalidation immédiate des jetons côté serveur lors de la déconnexion (`/api/logout` et `manual_disconnect`) ou du changement de mot de passe.
-6. **Protection contre les abus & déni de service** :
+7. **Protection contre les abus & déni de service** :
    - Quota de stockage strict de **1 Go** par compte utilisateur pour les fichiers partagés.
    - Rate limiting étagé : authentification (10 req/min), uploads (5 req/min), wizz (3/min), winks (7/min), messages (20 / 10s).
    - Nettoyage automatique toutes les 5 minutes des structures mémoire (captchas, adresses IP inactives).
-7. **Comparaisons cryptographiques sécurisées** :
+8. **Comparaisons cryptographiques sécurisées** :
    - Vérification des hashs PBKDF2 en temps constant (`crypto.timingSafeEqual`) pour neutraliser les attaques par analyse temporelle.
 
 ---

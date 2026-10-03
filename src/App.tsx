@@ -26,6 +26,7 @@ import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
+import { formatNickname } from './utils/NicknameFormatter';
 
 /**
  * INTERFACES
@@ -2840,7 +2841,7 @@ const App: React.FC = () => {
                     onKeyDown={e => e.key === 'Enter' && (setIsEditingNickname(false), syncProfile({ nickname: myNickname }))} 
                   />
                 ) : (
-                  <span className="nickname-display" onClick={() => setIsEditingNickname(true)} title={t.roster.editTooltip}>{myNickname}</span>
+                  <span className="nickname-display" onClick={() => setIsEditingNickname(true)} title={t.roster.editTooltip}>{formatNickname(myNickname)}</span>
                 )}
                 
                 <span className="status-trigger" onClick={(e) => { e.stopPropagation(); setShowStatusMenu(!showStatusMenu); }}>
@@ -2901,7 +2902,7 @@ const App: React.FC = () => {
                 />
               ) : (
                 <div className="user-psm-display" onClick={() => setIsEditingPSM(true)} title={t.roster.editTooltip}>
-                  {myPSM || t.roster.defaultPsm}
+                  {formatNickname(myPSM) || t.roster.defaultPsm}
                 </div>
               )}
             </div>
@@ -2930,7 +2931,7 @@ const App: React.FC = () => {
                {pendingInvites.map(invite => (
                  <div key={invite.id} className="contact-row pending">
                     <div className="status-square offline"></div>
-                    <div className="contact-name-txt" style={{flex: 1, marginLeft: '10px'}}>{invite.nickname || invite.username}</div>
+                    <div className="contact-name-txt" style={{flex: 1, marginLeft: '10px'}}>{formatNickname(invite.nickname || invite.username)}</div>
                     <div style={{display:'flex', gap:'5px', marginRight: '10px'}}>
                       <button className="win-btn mini" onClick={() => handleAcceptInvite(invite.id)}>{t.roster.accept}</button>
                       <button className="win-btn mini secondary" onClick={() => handleDeclineInvite(invite.id)}>{t.roster.decline}</button>
@@ -2954,8 +2955,8 @@ const App: React.FC = () => {
             >
               <div className={`status-square ${contact.status || 'online'}`}></div>
               <div className="contact-name-txt">
-                {contact.nickname || contact.username} 
-                {contact.psm && <span className="contact-psm-txt"> - {contact.psm}</span>}
+                {formatNickname(contact.nickname || contact.username)} 
+                {contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>}
               </div>
             </div>
           ))}
@@ -2974,8 +2975,8 @@ const App: React.FC = () => {
             >
               <div className={`status-square offline`}></div>
               <div className="contact-name-txt" style={{color: contact.blocked ? '#f44336' : '#999'}}>
-                {contact.nickname || contact.username} 
-                {contact.psm && <span className="contact-psm-txt"> - {contact.psm}</span>} 
+                {formatNickname(contact.nickname || contact.username)} 
+                {contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>} 
                 {contact.blocked ? <span style={{fontSize:'10px', marginLeft: '5px'}}>{t.roster.blockedSuffix}</span> : ''}
               </div>
             </div>
@@ -3040,7 +3041,7 @@ const App: React.FC = () => {
                     onClick={() => setActiveChatId(id)}
                   >
                     <span className="tab-name">
-                      {contact?.isBot ? '🤖 ' : ''}{contact?.nickname || contact?.username || 'Discussion'}{activeGame?.opponentId === id ? ' 🎮' : ''}
+                      {contact?.isBot ? '🤖 ' : ''}{formatNickname(contact?.nickname || contact?.username || 'Discussion')}{activeGame?.opponentId === id ? ' 🎮' : ''}
                     </span>
                     <span className="chat-tab-close" onClick={(e) => closeChat(e, id)}>✕</span>
                   </div>
@@ -3143,13 +3144,13 @@ const App: React.FC = () => {
                      </div>
                      <div className="conv-info">
                         <div className="conv-name">
-                          {activeContact.nickname || activeContact.username}
+                          {formatNickname(activeContact.nickname || activeContact.username)}
                           {activeContact.id === SYSTEM_BOT_ID && <span className="wlm-bot-badge">{t.bot.badge}</span>}
                           <span style={{fontSize:'12px', fontWeight:'normal', marginLeft: '10px'}}>
                             ({(activeContact.status === 'offline' || !activeContact.id) ? t.status.offline : t.status.online})
                           </span>
                         </div>
-                        <div className="conv-psm">{activeContact.psm || ((activeContact.status === 'offline' || !activeContact.id) ? '' : t.status.online)}</div>
+                        <div className="conv-psm">{formatNickname(activeContact.psm) || ((activeContact.status === 'offline' || !activeContact.id) ? '' : t.status.online)}</div>
                      </div>
                   </div>
                </div>
@@ -3167,7 +3168,7 @@ const App: React.FC = () => {
                             ? t.games.inviteCheckersTitle 
                             : (incomingGameInvite.gameType === 'puissance4' ? t.games.invitePuissance4Title : t.games.inviteMorpionTitle)}
                         </span>
-                        <span className="wlm-game-invite-sub">{t.games.inviteLivePrompt.replace('{name}', incomingGameInvite.fromName)}</span>
+                        <span className="wlm-game-invite-sub">{formatNickname(t.games.inviteLivePrompt.replace('{name}', incomingGameInvite.fromName))}</span>
                       </div>
                     </div>
                     <div className="wlm-game-invite-actions">
@@ -3188,7 +3189,7 @@ const App: React.FC = () => {
                             ? t.games.invitePendingCheckers 
                             : (outgoingGameInvite.gameType === 'puissance4' ? t.games.invitePendingPuissance4 : t.games.invitePendingMorpion)}
                         </span>
-                        <span className="wlm-game-invite-sub">{t.games.inviteSentWaiting.replace('{name}', outgoingGameInvite.targetName)}</span>
+                        <span className="wlm-game-invite-sub">{formatNickname(t.games.inviteSentWaiting.replace('{name}', outgoingGameInvite.targetName))}</span>
                       </div>
                     </div>
                     <div className="wlm-game-invite-actions">
@@ -3209,7 +3210,7 @@ const App: React.FC = () => {
                       </span>
                       <div className="docked-pill-texts">
                         <span className="docked-pill-title">
-                          {t.games.dockedTitle.replace('{game}', activeGame.gameType === 'checkers' ? t.games.checkers : (activeGame.gameType === 'puissance4' ? t.games.puissance4 : t.games.morpion)).replace('{name}', activeGame.opponentName)}
+                          {formatNickname(t.games.dockedTitle.replace('{game}', activeGame.gameType === 'checkers' ? t.games.checkers : (activeGame.gameType === 'puissance4' ? t.games.puissance4 : t.games.morpion)).replace('{name}', activeGame.opponentName))}
                         </span>
                         <span className="docked-pill-score">
                           {t.games.dockedScore.replace('{myScore}', gameSummary.myScore.toString()).replace('{opponentScore}', gameSummary.opponentScore.toString())}
@@ -3218,7 +3219,7 @@ const App: React.FC = () => {
                       <span className={`docked-pill-badge ${gameSummary.isMyTurn ? 'badge-my-turn' : 'badge-wait'}`}>
                         {gameSummary.winner 
                           ? (gameSummary.winner === 'me' ? t.games.dockedWon : gameSummary.winner === 'opponent' ? t.games.dockedLost : t.games.dockedDraw)
-                          : (gameSummary.isMyTurn ? t.games.dockedYourTurn : t.games.dockedOpponentTurn.replace('{name}', activeGame.opponentName))}
+                          : (gameSummary.isMyTurn ? t.games.dockedYourTurn : formatNickname(t.games.dockedOpponentTurn.replace('{name}', activeGame.opponentName)))}
                       </span>
                     </div>
                     <div className="docked-pill-actions" onClick={e => e.stopPropagation()}>
@@ -3261,7 +3262,7 @@ const App: React.FC = () => {
                        ) : (
                          <>
                            <div className={`msg-name ${isSender ? 'me' : ''}`}>
-                             {m.fileData ? fileHeaderLabel : `${senderDisplayName} ${t.chat.says}`}
+                             {m.fileData ? formatNickname(fileHeaderLabel) : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}
                            </div>
                            {m.fileData ? (
                              <FileTransferCard 

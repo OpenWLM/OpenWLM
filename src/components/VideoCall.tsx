@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
 import { useI18n } from '../i18n';
+import { formatNickname } from '../utils/NicknameFormatter';
 
 interface VideoCallProps {
   socket: Socket | null;
@@ -234,7 +235,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     <div className="wlm-video-modal" style={styles.overlay}>
       <div className="wlm-video-box" style={styles.modal}>
         <div className="win-modal-header" style={styles.header}>
-          <span>{t.videoCall.conversationWith.replace('{type}', audioOnly ? t.videoCall.audio : t.videoCall.video).replace('{name}', contactName)}</span>
+          <span>{formatNickname(t.videoCall.conversationWith.replace('{type}', audioOnly ? t.videoCall.audio : t.videoCall.video).replace('{name}', contactName))}</span>
           <button className="win-close-btn" onClick={handleEndCall}>✕</button>
         </div>
         
@@ -246,10 +247,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
           {(callStatus !== 'connected' || audioOnly) && (
             <div style={styles.statusOverlay}>
               {audioOnly && callStatus === 'connected' ? t.videoCall.audioInProgress :
-               callStatus === 'calling' ? t.videoCall.calling.replace('{name}', contactName) : 
+               callStatus === 'calling' ? formatNickname(t.videoCall.calling.replace('{name}', contactName)) : 
                callStatus === 'ringing' ? (
                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-                   <div>{t.videoCall.ringing.replace('{name}', contactName)}</div>
+                   <div>{formatNickname(t.videoCall.ringing.replace('{name}', contactName))}</div>
                    <div style={{ display: 'flex', gap: '30px' }}>
                      <button onClick={handleAcceptCall} style={{ background: '#25D366', color: 'white', border: 'none', borderRadius: '50%', width: '60px', height: '60px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                        <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>

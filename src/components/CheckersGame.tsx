@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
 import { useI18n } from '../i18n';
+import { formatNickname } from '../utils/NicknameFormatter';
 
 export type Piece = 'w' | 'W' | 'b' | 'B' | null;
 
@@ -386,7 +387,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       <div className="wlm-game-header">
         <div className="wlm-game-title">
           <span className="wlm-game-icon">⚪</span>
-          <span>{t.games.checkersTitle.replace('{name}', opponentName)}</span>
+          <span>{formatNickname(t.games.checkersTitle.replace('{name}', opponentName))}</span>
         </div>
         <div className="wlm-game-header-controls">
           {onMinimize && (
@@ -425,7 +426,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
             <span className={`checkers-color-dot ${isWhite ? 'dot-white' : 'dot-black'}`} title={isWhite ? t.games.whitePieces : t.games.blackPieces} />
           </div>
           <div className="player-details">
-            <span className="player-name">{myName} {t.games.meLabel}</span>
+            <span className="player-name">{formatNickname(myName)} {t.games.meLabel}</span>
             <span className="player-score-badge">{pieceCounts.mine} {pieceCounts.mine > 1 ? t.games.piecePlural : t.games.pieceSingle}</span>
           </div>
         </div>
@@ -443,7 +444,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
             <span className={`checkers-color-dot ${!isWhite ? 'dot-white' : 'dot-black'}`} title={!isWhite ? t.games.whitePieces : t.games.blackPieces} />
           </div>
           <div className="player-details">
-            <span className="player-name">{opponentName}</span>
+            <span className="player-name">{formatNickname(opponentName)}</span>
             <span className="player-score-badge">{pieceCounts.opponent} {pieceCounts.opponent > 1 ? t.games.piecePlural : t.games.pieceSingle}</span>
           </div>
         </div>
@@ -452,15 +453,15 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       {/* Bannière de statut de tour */}
       <div className={`game-turn-banner ${winner ? `banner-${winner}` : isMyTurn ? 'banner-my-turn' : 'banner-wait'}`}>
         {statusMessage ? (
-          <span>{statusMessage}</span>
+          <span>{formatNickname(statusMessage)}</span>
         ) : winner === 'me' ? (
           <span>{t.games.bannerWin}</span>
         ) : winner === 'opponent' ? (
-          <span>{t.games.bannerLoss.replace('{name}', opponentName)}</span>
+          <span>{formatNickname(t.games.bannerLoss.replace('{name}', opponentName))}</span>
         ) : isMyTurn ? (
           <span>{t.games.bannerYourTurnColor.replace('{color}', isWhite ? t.games.whiteLabel : t.games.blackLabel)}</span>
         ) : (
-          <span>{t.games.bannerWaitOpponent.replace('{name}', opponentName)}</span>
+          <span>{formatNickname(t.games.bannerWaitOpponent.replace('{name}', opponentName))}</span>
         )}
       </div>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
 import { useI18n } from '../i18n';
+import { formatNickname } from '../utils/NicknameFormatter';
 
 interface MorpionGameProps {
   socket: Socket | null;
@@ -286,7 +287,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
       <div className="wlm-game-header">
         <div className="wlm-game-title">
           <span className="wlm-game-icon">🎮</span>
-          <span>{t.games.morpionTitle.replace('{name}', opponentName)}</span>
+          <span>{formatNickname(t.games.morpionTitle.replace('{name}', opponentName))}</span>
         </div>
         <div className="wlm-game-header-controls">
           {onMinimize && (
@@ -325,7 +326,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
             <span className={`player-symbol-badge symbol-${mySymbol}`}>{mySymbol}</span>
           </div>
           <div className="player-details">
-            <span className="player-name">{myName} {t.games.meLabel}</span>
+            <span className="player-name">{formatNickname(myName)} {t.games.meLabel}</span>
             <span className="player-score-badge">{myScore} {myScore > 1 ? t.games.winPlural : t.games.winSingle}</span>
           </div>
         </div>
@@ -344,7 +345,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
             <span className={`player-symbol-badge symbol-${opponentSymbol}`}>{opponentSymbol}</span>
           </div>
           <div className="player-details">
-            <span className="player-name">{opponentName}</span>
+            <span className="player-name">{formatNickname(opponentName)}</span>
             <span className="player-score-badge">{opponentScore} {opponentScore > 1 ? t.games.winPlural : t.games.winSingle}</span>
           </div>
         </div>
@@ -353,17 +354,17 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
       {/* Bannière de statut de jeu */}
       <div className={`game-turn-banner ${winner ? `banner-${winner}` : isMyTurn ? 'banner-my-turn' : 'banner-wait'}`}>
         {statusMessage ? (
-          <span>{statusMessage}</span>
+          <span>{formatNickname(statusMessage)}</span>
         ) : winner === 'me' ? (
           <span>{t.games.bannerWin}</span>
         ) : winner === 'opponent' ? (
-          <span>{t.games.bannerLoss.replace('{name}', opponentName)}</span>
+          <span>{formatNickname(t.games.bannerLoss.replace('{name}', opponentName))}</span>
         ) : winner === 'draw' ? (
           <span>{t.games.bannerDraw}</span>
         ) : isMyTurn ? (
           <span>{t.games.bannerYourTurnSymbol.replace('{symbol}', mySymbol)}</span>
         ) : (
-          <span>{t.games.bannerWaitOpponent.replace('{name}', opponentName)}</span>
+          <span>{formatNickname(t.games.bannerWaitOpponent.replace('{name}', opponentName))}</span>
         )}
       </div>
 

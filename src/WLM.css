@@ -220,7 +220,7 @@ body, html {
 .status-square.busy { background: var(--wlm-busy); }
 .status-square.offline { background: var(--wlm-offline); }
 
-.contact-name-txt { font-size: 12px; color: #333; }
+.contact-name-txt { font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .contact-psm-txt { font-size: 11px; color: #999; margin-left: 5px; }
 
 /* --- CONVERSATION WINDOW --- */
@@ -420,6 +420,22 @@ body, html {
 
 .inline-emoticon {
   width: 19px; height: 19px; vertical-align: middle; margin: 0 2px;
+}
+
+/* Émoticônes rétro dans les pseudos & noms d'affichage (WLM / MSN) */
+.nickname-emoticon {
+  display: inline-block;
+  height: 1.2em;
+  width: 1.2em;
+  max-height: 16px;
+  max-width: 16px;
+  min-height: 11px;
+  min-width: 11px;
+  vertical-align: -0.18em;
+  margin: 0 1.5px;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
 }
 
 

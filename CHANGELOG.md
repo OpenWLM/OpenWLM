@@ -9,6 +9,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.0] - 2026-10-03
+
+### ✨ Features
+- **Emoticons in User Nicknames & PSM**:
+  - Authentic support for classic late-2000s emoticons inside user nicknames, display names, and personal status messages (PSM).
+  - Comprehensive UI integration: profile editor, contact roster (online, offline, pending), chat tabs, conversation header, message sender titles, game invite banners, docked game pill, scoreboard cards, and WebRTC audio/video calls.
+  - Safe, XSS-free React node parsing with zero HTML injection (`dangerouslySetInnerHTML` never used).
+  - Fast-path regex optimization ensuring instant zero-allocation rendering for plain text names without emoticons.
+  - Typographic `em`-based relative scaling (`1.2em`, max 16px, min 11px) with `-0.18em` vertical alignment strictly preserving line heights and retro Aero visual aesthetics.
+  - Graceful text fallback for unrecognized codes and responsive ellipsis truncation for narrow mobile screens.
+
 ## [1.1.0] - 2026-10-02
 
 ### 🎮 Features

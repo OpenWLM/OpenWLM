@@ -9,6 +9,17 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [1.2.0] - 2026-10-03
+
+### ✨ Fonctionnalités
+- **Émoticônes dans les pseudos et messages de statut (PSM)** :
+  - Support fidèle et nostalgique des émoticônes rétro emblématiques directement au sein des pseudonymes et messages de statut personnel (PSM).
+  - Intégration globale dans toute l'interface : profil personnel, liste de contacts (en ligne, hors ligne, invitations en attente), onglets de conversation, en-tête de chat, nom d'expéditeur des messages, bannières d'invitation, bandeau réduit de jeu (docked pill), tableaux des scores (Puissance 4, Morpion, Dames) et appels audio/vidéo.
+  - Formateur modulaire sécurisé sans injection HTML (composants React stricts, zéro risque XSS).
+  - Optimisation Fast-Path par expression régulière garantissant un rendu instantané et sans allocation pour les pseudos textuels classiques.
+  - Dimensionnement typographique proportionnel en unités relatives `em` (`1.2em`, max 16px, min 11px) et calage vertical `-0.18em` préservant les hauteurs de ligne et l'alignement Aero.
+  - Conservation du texte brut pour les codes non reconnus et troncature propre anti-overflow sur mobile.
+
 ## [1.1.0] - 2026-10-02
 
 ### 🎮 Fonctionnalités

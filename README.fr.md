@@ -26,6 +26,7 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgi
 - **Application Web Progressive (PWA)** : Totalement installable en tant qu'application autonome sur ordinateur ou mobile avec mise en cache hors-ligne des assets via Service Worker, manifeste web et intégration d'icônes rétro Aero dans la barre des tâches.
 - **Assistant de test intégré ("OpenWLM")** : Contact système virtuel (ID `-1`) avec état d'accueil central, permettant de tester immédiatement le chat, les émoticônes, les sons, le Wizz, le Morpion et le Puissance 4 (`/p4`) sans second compte.
 - **Messagerie Instantanée Sécurisée** : Texte riche, émoticônes classiques d'origine et émoticônes personnalisées E2EE.
+- **Émoticônes dans les pseudos & statuts** : Affichage authentique des émoticônes d'origine directement dans les noms d'affichage et messages de statut personnel (PSM), rendu propre et aligné dans la liste de contacts, les onglets, les en-têtes et les tableaux des scores sans décalage de mise en page.
 - **Audio & Vidéo (WebRTC)** : Appels vocaux et vidéo en direct avec signalisation chiffrée.
 - **Messages Vocaux** : Enregistrement et lecture de clips vocaux chiffrés.
 - **Winks & Wizz** : Clins d'œil animés et Wizz secouant la fenêtre.

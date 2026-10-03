@@ -16,8 +16,10 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
   - Disparition complète des halos blancs, cadres rectangulaires et contours crénelés autour des émoticônes sur fond coloré (Aero bleu `#3B84D1`) ou sombre.
   - Conversion des 59 émoticônes statiques du format GIF 8-bit opaque vers le format PNG 32-bit RGBA avec anti-aliasing alpha progressif et dé-matting des contours.
   - Conversion des 10 émoticônes animées (`cry_smile`, `wink_smile`, `party`, `Sleepy`, `thinking`, `eye-rolling`, `idk`, `Lightning`, `bat`, `cake`) en Animated PNG (APNG) avec canal alpha 8-bit natif par image et respect strict du nombre de frames et des délais en millisecondes d'origine.
-  - Préservation intégrale du pixel-art rétro des années 2000, des éléments intérieurs blancs (dents, yeux, ailes, reflets, rayons lumineux), des dimensions et du responsive mobile.
   - Mise à jour du placeholder de la fenêtre d'ajout de contact vers `pseudo@openwlm.dev`.
+- **Vraie transparence alpha pour le logo papillon OpenWLM** :
+  - Suppression complète du cadre rectangulaire blanc opaque autour de `openwlm_logo.png`, particulièrement visible en mode sombre sur la page de connexion.
+  - Détourage précis par inondation BFS et dé-matting multi-passes orthogonal des contours sans altérer la netteté, les reflets gloss supérieurs des ailes, ni l'espace négatif central entre les ailes.
 
 ## [1.2.0] - 2026-10-03
 

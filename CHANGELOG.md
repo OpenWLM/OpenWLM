@@ -16,8 +16,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   - Eliminated white rectangular halos, opaque borders, and matte fringes around all emoticons when rendered on colored (Aero blue `#3B84D1`) or dark backgrounds.
   - Converted all 59 static emoticon assets from legacy 8-bit GIF89a to full 32-bit RGBA PNG files with anti-aliased alpha transparency and edge de-matting.
   - Converted all 10 animated emoticon assets (`cry_smile`, `wink_smile`, `party`, `Sleepy`, `thinking`, `eye-rolling`, `idk`, `Lightning`, `bat`, `cake`) to native Animated PNG (APNG) with 8-bit per-frame alpha transparency while strictly preserving authentic frame counts and millisecond animation timings.
-  - Preserved authentic late-2000s pixel art, internal white elements (teeth, eyes, wings, rays), dimensions, and responsive scaling.
   - Updated Add Contact modal placeholder from legacy hotmail to `pseudo@openwlm.dev`.
+- **True Alpha Transparency for OpenWLM Butterfly Logo**:
+  - Eliminated the opaque off-white rectangular bounding box around `openwlm_logo.png` visible on dark mode and colored backgrounds.
+  - Implemented smooth perimeter BFS flood-fill and multi-pass orthogonal edge de-matting against the background, preserving 100% of the authentic butterfly colors, shapes, gloss reflections, and negative space between wings.
 
 ## [1.2.0] - 2026-10-03
 

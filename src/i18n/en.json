@@ -267,6 +267,7 @@
   "modals": {
     "addContactTitle": "Add a contact",
     "contactEmailLabel": "Contact email address:",
+    "contactEmailPlaceholder": "pseudo@openwlm.dev",
     "changeSceneTitle": "Change your scene",
     "changeBgTitle": "Change background",
     "bgNone": "None",

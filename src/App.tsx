@@ -3690,7 +3690,7 @@ const App: React.FC = () => {
             <div className="win-modal-header"><span>{t.modals.addContactTitle}</span><button className="win-close-btn" onClick={() => setShowAddContactModal(false)}>✕</button></div>
             <div className="auth-field" style={{ padding: '20px' }}>
               <label>{t.modals.contactEmailLabel}</label>
-              <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="exemple@hotmail.com" style={{ width: '100%', marginTop: '5px' }} />
+              <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder={t.modals.contactEmailPlaceholder || "pseudo@openwlm.dev"} style={{ width: '100%', marginTop: '5px' }} />
             </div>
             <div style={{ marginTop: '20px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '0 20px 20px' }}>
               <button className="win-btn" onClick={handleInvite}>{t.common.ok}</button>

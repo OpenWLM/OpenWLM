@@ -267,6 +267,7 @@
   "modals": {
     "addContactTitle": "Ajouter un contact",
     "contactEmailLabel": "Adresse de messagerie du contact :",
+    "contactEmailPlaceholder": "pseudo@openwlm.dev",
     "changeSceneTitle": "Modifier votre décor",
     "changeBgTitle": "Modifier l'arrière-plan",
     "bgNone": "Aucun",

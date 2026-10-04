@@ -136,7 +136,13 @@ test('CSS Verification: WLM Desktop Toast is styled with Aero Glass and hidden o
   assert.strictEqual(css.includes('.wlm-desktop-toast-container'), true);
 
   // Must contain Aero glass gradients
-  assert.strictEqual(css.includes('linear-gradient(180deg, #f2f7fd 0%, #dbecfa 30%, #c1ddf7 70%, #d2e7fa 100%)'), true);
+  assert.strictEqual(css.includes('rgba(234, 244, 253, 0.92)'), true, 'Should include polished Aero glass gradient');
+
+  // Must not have uppercase title
+  assert.strictEqual(css.includes('.wlm-desktop-toast-title {\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  font-size: 11px;'), true, 'Toast title should be 11px and natural case');
+
+  // Must have Aero close button
+  assert.strictEqual(css.includes('.wlm-desktop-toast-close-btn'), true, 'Should include Aero close button');
 
   // Must be hidden on screens <= 768px
   const mobileRuleRegex = /@media\s*\(\s*max-width\s*:\s*768px\s*\)\s*\{[\s\S]*?\.wlm-desktop-toast-container\s*\{[\s\S]*?display\s*:\s*none\s*!important;/;

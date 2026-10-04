@@ -3682,12 +3682,12 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 
 .wlm-desktop-toast-container {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  bottom: 20px;
+  right: 20px;
   z-index: 99999;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   pointer-events: none;
 }
 
@@ -3701,43 +3701,45 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .wlm-desktop-toast {
   pointer-events: auto;
   width: 275px;
-  min-height: 72px;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #f2f7fd 0%, #dbecfa 30%, #c1ddf7 70%, #d2e7fa 100%);
-  border: 1px solid #7ea8d6;
-  border-radius: 7px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(234, 244, 253, 0.92) 26%, rgba(208, 229, 249, 0.94) 30%, rgba(189, 218, 246, 0.95) 70%, rgba(202, 226, 249, 0.96) 100%);
+  border: 1px solid #729dc7;
+  border-radius: 6px;
   box-shadow: 
-    0 6px 20px rgba(8, 40, 85, 0.28),
+    0 5px 18px rgba(8, 32, 64, 0.28),
+    0 1px 3px rgba(8, 32, 64, 0.15),
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(160, 200, 240, 0.5);
-  padding: 8px 10px 10px 10px;
+    inset 0 0 1px rgba(255, 255, 255, 0.5);
+  padding: 0;
+  overflow: hidden;
   cursor: pointer;
   user-select: none;
   font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-  transition: filter 0.15s ease, transform 0.15s ease;
+  transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .wlm-desktop-toast:hover {
-  filter: brightness(1.03);
+  filter: brightness(1.02);
   transform: translateY(-2px);
   box-shadow: 
-    0 8px 24px rgba(8, 40, 85, 0.35),
+    0 7px 22px rgba(8, 32, 64, 0.35),
+    0 2px 5px rgba(8, 32, 64, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.98),
-    inset 0 -1px 0 rgba(160, 200, 240, 0.6);
+    inset 0 0 1px rgba(255, 255, 255, 0.7);
 }
 
 .wlm-desktop-toast.wlm-desktop-toast-enter {
-  animation: wlmDesktopToastSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: wlmDesktopToastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .wlm-desktop-toast.wlm-desktop-toast-exit {
-  animation: wlmDesktopToastSlideOut 0.24s ease-in forwards;
+  animation: wlmDesktopToastSlideOut 0.22s ease-in forwards;
 }
 
 @keyframes wlmDesktopToastSlideIn {
   0% {
     opacity: 0;
-    transform: translateY(28px) scale(0.96);
+    transform: translateY(24px) scale(0.96);
   }
   100% {
     opacity: 1;
@@ -3752,7 +3754,7 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   }
   100% {
     opacity: 0;
-    transform: translateY(16px) scale(0.95);
+    transform: translateY(14px) scale(0.95);
   }
 }
 
@@ -3760,59 +3762,70 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
-  border-bottom: 1px solid rgba(126, 168, 214, 0.35);
-  padding-bottom: 3px;
+  padding: 4px 8px 4px 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(225, 240, 255, 0.4) 100%);
+  border-bottom: 1px solid rgba(140, 179, 219, 0.6);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .wlm-desktop-toast-title {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #29578d;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1c4470;
+  letter-spacing: 0.2px;
+  line-height: 1;
 }
 
 .wlm-desktop-toast-logo {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   object-fit: contain;
+  flex-shrink: 0;
 }
 
 .wlm-desktop-toast-close-btn {
-  background: transparent;
-  border: none;
-  font-size: 11px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(213, 230, 247, 0.8) 100%);
+  border: 1px solid #8eb6dc;
+  font-size: 9px;
   font-weight: bold;
-  color: #5578a0;
+  color: #42668d;
   cursor: pointer;
-  padding: 1px 4px;
+  width: 16px;
+  height: 14px;
+  padding: 0;
   line-height: 1;
-  border-radius: 2px;
-  transition: background 0.15s ease, color 0.15s ease;
+  border-radius: 2.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: all 0.15s ease;
 }
 
 .wlm-desktop-toast-close-btn:hover {
-  background: rgba(220, 50, 50, 0.15);
-  color: #b71c1c;
+  background: linear-gradient(180deg, #f8a5a5 0%, #e84c4c 50%, #c82323 100%);
+  border-color: #9c1515;
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 3px rgba(180, 0, 0, 0.3);
 }
 
 .wlm-desktop-toast-body {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 9px;
+  padding: 6px 9px 8px 9px;
 }
 
 .wlm-desktop-toast-avatar-box {
-  width: 42px;
-  height: 42px;
-  border-radius: 4px;
-  border: 1px solid #8ab0d6;
+  width: 38px;
+  height: 38px;
+  border-radius: 3.5px;
+  border: 1px solid #8ab3dc;
   background: #ffffff;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1), 0 1px 0 rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12), 0 1px 0 rgba(255, 255, 255, 0.9);
   overflow: hidden;
   flex-shrink: 0;
   display: flex;
@@ -3834,7 +3847,7 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 }
 
 .wlm-desktop-toast-sender {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #0c4a8a;
   white-space: nowrap;
@@ -3844,18 +3857,20 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 }
 
 .wlm-desktop-toast-action {
-  font-size: 10px;
-  color: #4b7099;
-  font-style: italic;
+  font-size: 9.5px;
+  font-weight: normal;
+  font-style: normal;
+  color: #517090;
   line-height: 1.2;
   margin-bottom: 2px;
 }
 
 .wlm-desktop-toast-message {
   font-size: 11px;
-  color: #1a2a3a;
-  line-height: 1.3;
-  max-height: 2.6em;
+  font-weight: normal;
+  color: #152332;
+  line-height: 1.25;
+  max-height: 2.5em;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -3863,4 +3878,5 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   -webkit-box-orient: vertical;
   word-break: break-word;
 }
+
 

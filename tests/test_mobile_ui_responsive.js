@@ -154,3 +154,37 @@ test('Profile Header Rendering: Mobile media query provides antialiasing and loc
   assert.match(css, /\.user-psm-display\s*\{[^}]*text-shadow:\s*none;/);
 });
 
+test('Emoticon Rendering: 1:1 integer pixel sizing without 22px fractional scaling', () => {
+  const css = fs.readFileSync(path.join(rootDir, 'src/WLM.css'), 'utf8');
+
+  // Confirm no occurrence of 22px on emoticon images anywhere in CSS
+  assert.ok(!css.match(/\.emoticon-item img\s*\{[^}]*22px/), 'No 22px scaling on emoticon-item img');
+
+  // Inline emoticons in chat messages: 19x19, vertical-align: -3px, pixelated rendering
+  assert.match(css, /\.inline-emoticon\s*\{[^}]*width:\s*19px;/);
+  assert.match(css, /\.inline-emoticon\s*\{[^}]*height:\s*19px;/);
+  assert.match(css, /\.inline-emoticon\s*\{[^}]*vertical-align:\s*-3px;/);
+  assert.match(css, /\.inline-emoticon\s*\{[^}]*image-rendering:\s*pixelated;/);
+  assert.match(css, /\.inline-emoticon\s*\{[^}]*image-rendering:\s*crisp-edges;/);
+
+  // Quick picker emoticons: 19x19 with pixelated rendering
+  assert.match(css, /\.emoticon-item img\s*\{[^}]*width:\s*19px;/);
+  assert.match(css, /\.emoticon-item img\s*\{[^}]*height:\s*19px;/);
+  assert.match(css, /\.emoticon-item img\s*\{[^}]*image-rendering:\s*pixelated;/);
+
+  // Nickname & custom emoticons have crisp pixelated rendering
+  assert.match(css, /\.nickname-emoticon\s*\{[^}]*image-rendering:\s*pixelated;/);
+  assert.match(css, /\.custom-emoticon\s*\{[^}]*image-rendering:\s*pixelated;/);
+});
+
+test('Emoticon JSX: Explicit 19x19 attributes prevent layout shifts and fractional scaling', () => {
+  const appTsx = fs.readFileSync(path.join(rootDir, 'src/App.tsx'), 'utf8');
+
+  // Standard inline emoticons have width={19} and height={19}
+  assert.match(appTsx, /className="inline-emoticon"[^>]*width=\{19\}[^>]*height=\{19\}/);
+
+  // Picker item emoticons have width={19} and height={19}
+  assert.match(appTsx, /className="emoticon-item"[^>]*>[\s\S]*?<img[^>]*width=\{19\}[^>]*height=\{19\}/);
+});
+
+

@@ -470,7 +470,19 @@ body, html {
 }
 
 .inline-emoticon {
-  width: 19px; height: 19px; vertical-align: middle; margin: 0 2px;
+  width: 19px;
+  height: 19px;
+  max-width: 19px;
+  max-height: 19px;
+  vertical-align: -3px;
+  margin: 0 2px;
+  display: inline-block;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+  transform: none;
+  filter: none;
 }
 
 /* Émoticônes rétro dans les pseudos & noms d'affichage (WLM / MSN) */
@@ -487,6 +499,9 @@ body, html {
   object-fit: contain;
   pointer-events: none;
   user-select: none;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
 }
 
 
@@ -517,7 +532,23 @@ body, html {
   cursor: pointer; border: 1px solid transparent;
 }
 .emoticon-item:hover { background: #e1eff7; border-color: #99b4d1; }
-.emoticon-item img { width: 19px; height: 19px; object-fit: contain; }
+.emoticon-item img {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+
+.emoticon-item-large img {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
 
 /* --- WINDOWS STYLE MODAL --- */
 .win-style-modal {
@@ -1365,8 +1396,12 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   }
 
   .emoticon-item img {
-    width: 22px;
-    height: 22px;
+    width: 19px;
+    height: 19px;
+    object-fit: contain;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
   }
 
   /* Bug 2: Font Selection Panel on Mobile */
@@ -3092,9 +3127,13 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .custom-emoticon {
   max-width: 32px;
   max-height: 26px;
-  vertical-align: middle;
+  vertical-align: -3px;
   object-fit: contain;
   margin: 0 2px;
+  display: inline-block;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
 }
 
 

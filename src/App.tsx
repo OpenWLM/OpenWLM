@@ -3007,6 +3007,9 @@ const App: React.FC = () => {
                   src={`/assets/emoticons/${EMOTICON_MAP[shortcut]}`} 
                   className="inline-emoticon" 
                   alt={shortcut} 
+                  width={19}
+                  height={19}
+                  draggable={false}
                 />
               );
             }
@@ -3708,7 +3711,7 @@ const App: React.FC = () => {
                               <div className="emoticon-grid">
                                 {EMOTICONS_LIST.slice(0, 15).map((emo, idx) => (
                                   <div key={idx} className="emoticon-item" title={emo.shortcut} onClick={() => { setInputText(prev => prev + emo.shortcut); setShowEmoticonMenu(false); }}>
-                                    <img src={`/assets/emoticons/${emo.file}`} alt={emo.shortcut} />
+                                    <img src={`/assets/emoticons/${emo.file}`} alt={emo.shortcut} width={19} height={19} draggable={false} />
                                   </div>
                                 ))}
                               </div>
@@ -3963,7 +3966,7 @@ const App: React.FC = () => {
                 <div className="emoticon-all-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '10px' }}>
                   {EMOTICONS_LIST.map((emo, idx) => (
                     <div key={idx} className="emoticon-item-large" title={emo.shortcut} onClick={() => { setInputText(prev => prev + emo.shortcut); setShowAllEmoticonsModal(false); }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-                      <img src={`/assets/emoticons/${emo.file}`} alt={emo.shortcut} style={{ width: '19px', height: '19px' }} />
+                      <img src={`/assets/emoticons/${emo.file}`} alt={emo.shortcut} width={19} height={19} draggable={false} />
                       <span style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>{emo.shortcut}</span>
                     </div>
                   ))}

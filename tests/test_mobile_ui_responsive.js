@@ -114,3 +114,43 @@ test('Viewport calculations: Components fit without horizontal scroll on 320px, 
     }
   }
 });
+
+test('Profile Header Rendering: Zero blurry 0 0 5px white text-shadow in WLM.css', () => {
+  const css = fs.readFileSync(path.join(rootDir, 'src/WLM.css'), 'utf8');
+
+  // Verify that the diffuse blurry text-shadow has been completely eradicated
+  assert.ok(!css.includes('text-shadow: 0 0 5px white'), 'No diffuse 0 0 5px white text-shadow should remain');
+});
+
+test('Profile Header Rendering: Dominant nickname, clear status, and crisp typography', () => {
+  const css = fs.readFileSync(path.join(rootDir, 'src/WLM.css'), 'utf8');
+
+  // User name is dominant with weight 600 and rich navy color
+  assert.match(css, /\.user-name-status\s*\{[^}]*font-weight:\s*600;/);
+  assert.match(css, /\.user-name-status\s*\{[^}]*color:\s*#0b1e31;/);
+
+  // Nickname display handles overflow gracefully
+  assert.match(css, /\.nickname-display\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
+
+  // Status label has high-contrast slate color and weight 500
+  assert.match(css, /\.status-label\s*\{[^}]*color:\s*#27435b;[^}]*font-weight:\s*500;/);
+
+  // Status trigger prevents unwanted wrapping
+  assert.match(css, /\.status-trigger\s*\{[^}]*flex-shrink:\s*0;[^}]*white-space:\s*nowrap;/);
+
+  // PSM display is crisp and clean
+  assert.match(css, /\.user-psm-display\s*\{[^}]*color:\s*#2e4357;/);
+});
+
+test('Profile Header Rendering: Mobile media query provides antialiasing and local contrast backing', () => {
+  const css = fs.readFileSync(path.join(rootDir, 'src/WLM.css'), 'utf8');
+
+  // Mobile rules for user-info-text
+  assert.match(css, /\.user-info-text\s*\{[^}]*-webkit-font-smoothing:\s*antialiased;/);
+  assert.match(css, /\.user-info-text\s*\{[^}]*text-rendering:\s*optimizeLegibility;/);
+
+  // Mobile text-shadow: none on status and psm to prevent fuzzy subpixel halo
+  assert.match(css, /\.status-label\s*\{[^}]*text-shadow:\s*none;/);
+  assert.match(css, /\.user-psm-display\s*\{[^}]*text-shadow:\s*none;/);
+});
+

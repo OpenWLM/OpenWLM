@@ -152,13 +152,64 @@ body, html {
 
 .wlm-avatar-glass img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
 
-.user-info-text { display: flex; flex-direction: column; flex: 1; min-width: 0; margin-left: 12px; }
-.user-name-status { 
-  font-size: 14px; font-weight: 500; color: #1e1e1e; position: relative; 
-  text-shadow: 0 0 5px white;
-  display: flex; align-items: baseline; gap: 3px;
+.user-info-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  margin-left: 12px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
-.status-label { font-size: 11px; color: #555; }
+.user-name-status { 
+  font-size: 14px;
+  font-weight: 600;
+  color: #0b1e31;
+  position: relative; 
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.nickname-display {
+  font-weight: 600;
+  color: #0b1e31;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nickname-display:hover {
+  text-decoration: underline;
+}
+.user-name-input {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0b1e31;
+  background: white;
+  border: 1px solid #99b4d1;
+  padding: 1px 4px;
+  border-radius: 2px;
+  outline: none;
+  font-family: inherit;
+}
+.status-trigger {
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+}
+.status-label {
+  font-size: 11.5px;
+  color: #27435b;
+  font-weight: 500;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.status-trigger:hover .status-label {
+  color: #004b8d;
+}
 
 .status-icon-box {
   width: 14px; height: 14px; border: 1px solid rgba(0,0,0,0.3); border-radius: 3px;
@@ -994,13 +1045,13 @@ body, html {
   background: #fbfbfb;
 }
 
-input.user-psm-integrated { background-color: transparent !important; border: 1px solid transparent !important; box-shadow: none !important; outline: none !important; -webkit-appearance: none; font-size: 11px; color: #333; width: 100%; padding: 2px 4px; margin-top: 3px; text-shadow: 0 0 5px white; cursor: pointer; transition: all 0.2s; }
-input.user-psm-integrated:hover { background-color: rgba(255, 255, 255, 0.3) !important; border: 1px solid rgba(153, 180, 209, 0.5) !important; }
+input.user-psm-integrated { background-color: transparent !important; border: 1px solid transparent !important; box-shadow: none !important; outline: none !important; -webkit-appearance: none; font-size: 11.5px; color: #2e4357; width: 100%; padding: 2px 4px; margin-top: 3px; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); cursor: pointer; transition: all 0.2s; }
+input.user-psm-integrated:hover { background-color: rgba(255, 255, 255, 0.45) !important; border: 1px solid rgba(153, 180, 209, 0.6) !important; }
 input.user-psm-integrated:focus { background-color: white !important; border: 1px solid #99b4d1 !important; text-shadow: none; }
 
-.user-psm-display { font-size: 11px; color: #333; padding: 2px 4px; cursor: pointer; text-shadow: 0 0 5px white; min-height: 1.2em; transition: all 0.2s; }
-.user-psm-display:hover { background: rgba(255,255,255,0.4); outline: 1px solid rgba(153,180,209,0.5); }
-.user-psm-input { font-size: 11px; color: #333; background: white; border: 1px solid #99b4d1; padding: 1px 4px; outline: none; width: 100%; box-sizing: border-box; }
+.user-psm-display { font-size: 11.5px; color: #2e4357; padding: 2px 4px; cursor: pointer; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); min-height: 1.2em; transition: all 0.2s; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-psm-display:hover { background: rgba(255,255,255,0.45); outline: 1px solid rgba(153,180,209,0.6); border-radius: 2px; }
+.user-psm-input { font-size: 11.5px; color: #2e4357; background: white; border: 1px solid #99b4d1; padding: 1px 4px; outline: none; width: 100%; box-sizing: border-box; }
 
 /* --- AUTH PAGE --- */
 .wlm-auth-container { width: 100%; height: 100vh; background: linear-gradient(to bottom, #fcfdfe, #e1eff7); display: flex; align-items: center; justify-content: center; }
@@ -1020,9 +1071,6 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 @keyframes pulse-red { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .voice-clip-play { padding: 10px; background: rgba(0, 120, 215, 0.05); border-radius: 6px; border: 1px dashed #99b4d1; margin-top: 5px; }
 
-input.user-psm-integrated, .user-psm-input { background-color: transparent !important; border: 1px solid transparent !important; box-shadow: none !important; outline: none !important; -webkit-appearance: none; font-size: 11px; color: #333; width: 100%; padding: 2px 4px; margin-top: 3px; text-shadow: 0 0 5px white; cursor: pointer; transition: all 0.2s; }
-input.user-psm-integrated:hover, .user-psm-input:hover { background-color: rgba(255, 255, 255, 0.3) !important; border: 1px solid rgba(153, 180, 209, 0.5) !important; }
-input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white !important; border: 1px solid #99b4d1 !important; text-shadow: none; }
 
 .pending-section { border-bottom: 1px solid #eee; margin-bottom: 10px; background: #fff9e6; }
 .contact-row.pending { padding-right: 15px; justify-content: space-between; }
@@ -1131,6 +1179,43 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
     min-width: 100% !important;
     border-right: none;
     height: 100vh;
+  }
+
+  /* Bloc profil en haut - netteté et contraste mobile */
+  .user-info-text {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.12) 65%, transparent 100%);
+    border-radius: 4px;
+    padding: 2px 4px;
+  }
+
+  .user-name-status {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0b1e31;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .nickname-display {
+    color: #0b1e31;
+    font-weight: 600;
+  }
+
+  .status-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #27435b;
+    text-shadow: none;
+  }
+
+  .user-psm-display {
+    font-size: 12px;
+    color: #2e4357;
+    text-shadow: none;
+  }
+
+  .wlm-e2ee-device-icon {
+    color: #385d80;
+    opacity: 0.85;
   }
 
   .wlm-desktop.chat-open .contact-list-window {

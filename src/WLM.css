@@ -530,6 +530,86 @@ body, html {
 }
 .win-btn:hover { background: #e5f1fb; border-color: #0078d7; }
 
+/* Font Modal - Desktop */
+.font-modal {
+  width: 550px;
+  max-width: 95vw;
+}
+
+.win-field-col-size .win-input-preview {
+  width: 60px;
+}
+
+.win-field-col-size .win-list-box {
+  width: 80px;
+}
+
+.win-effects-fieldset {
+  display: flex;
+  flex-direction: column;
+}
+
+.win-font-effects-section {
+  order: 1;
+}
+
+.win-font-color-section {
+  order: 2;
+  margin-top: 10px;
+}
+
+.win-color-label {
+  font-size: 11px;
+  margin-bottom: 3px;
+  display: block;
+}
+
+.wlm-color-picker-selected {
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.wlm-color-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99;
+}
+
+.wlm-color-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: white;
+  border: 1px solid #abadb3;
+  max-height: 150px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.wlm-color-option {
+  display: flex;
+  align-items: center;
+  padding: 2px 5px;
+  cursor: pointer;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.emoticon-menu-container {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+.emoticon-backdrop {
+  display: none;
+}
+
 /* --- WLM OPTIONS MODAL --- */
 .wlm-options-modal {
   padding: 0 !important;
@@ -1145,12 +1225,259 @@ input.user-psm-integrated:focus, .user-psm-input:focus { background-color: white
 
   .chat-toolbar {
     padding-top: 5px;
-    gap: 12px;
-  }
-
-  .chat-toolbar {
     gap: 10px;
     overflow-x: auto;
+  }
+
+  /* Bug 1: Emoticon Menu on Mobile */
+  .emoticon-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1190;
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  .emoticon-popup {
+    position: fixed;
+    bottom: 60px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    max-width: calc(100vw - 20px);
+    max-height: min(340px, 50vh);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    z-index: 1200;
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  .emoticon-popup-header {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .emoticon-popup-header .tout-afficher {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .emoticon-grid {
+    grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+    gap: 4px;
+  }
+
+  .emoticon-item {
+    width: 100%;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .emoticon-item img {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Bug 2: Font Selection Panel on Mobile */
+  .font-modal {
+    width: calc(100vw - 20px) !important;
+    max-width: 440px !important;
+    max-height: 90vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    margin: auto;
+    box-sizing: border-box;
+    border-radius: 6px;
+  }
+
+  .font-modal .win-modal-header {
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .font-modal .win-close-btn {
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .font-modal .win-modal-body {
+    padding: 12px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-x: hidden;
+  }
+
+  /* Vertical column layout */
+  .win-font-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .win-field-col label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #222;
+  }
+
+  .win-field-col .win-input-preview {
+    min-height: 38px;
+    font-size: 13px;
+    padding: 6px 10px;
+    box-sizing: border-box;
+    border-radius: 3px;
+  }
+
+  .win-field-col-size .win-input-preview,
+  .win-field-col-size .win-list-box {
+    width: 100% !important;
+  }
+
+  .win-list-box {
+    height: 132px;
+    border-radius: 3px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Minimum 44px touch targets */
+  .win-list-item {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+
+  .win-lower-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    margin-top: 0 !important;
+  }
+
+  .win-effects-group fieldset,
+  .win-sample-group fieldset {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px;
+    border-radius: 4px;
+  }
+
+  .win-effects-group legend,
+  .win-sample-group legend {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0 4px;
+  }
+
+  /* Ordering inside effects: Color first (order: 1), Effects second (order: 2) */
+  .win-font-color-section {
+    order: 1;
+    margin-top: 0;
+    margin-bottom: 12px;
+  }
+
+  .win-color-label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: block;
+    color: #222;
+  }
+
+  .wlm-color-picker-selected {
+    min-height: 44px !important;
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+    border-radius: 3px;
+    box-sizing: border-box;
+  }
+
+  .wlm-color-picker-selected .color-box {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .wlm-color-dropdown {
+    max-height: 180px;
+    border-radius: 3px;
+  }
+
+  .wlm-color-option {
+    min-height: 44px !important;
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+    box-sizing: border-box;
+  }
+
+  .wlm-color-option .color-box {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .win-font-effects-section {
+    order: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .win-checkbox {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    padding: 0 4px;
+    cursor: pointer;
+    box-sizing: border-box;
+  }
+
+  .win-checkbox input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+  }
+
+  .win-sample-box {
+    min-height: 64px;
+    padding: 8px;
+    box-sizing: border-box;
+  }
+
+  .win-modal-footer {
+    margin-top: 8px;
+    display: flex;
+    gap: 10px;
+  }
+
+  .win-modal-footer .win-btn {
+    min-height: 44px;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 500;
+    box-sizing: border-box;
+    border-radius: 3px;
   }
 
   /* Modals on mobile */

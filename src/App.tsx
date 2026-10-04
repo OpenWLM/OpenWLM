@@ -483,7 +483,23 @@ const App: React.FC = () => {
   const myStatusRef = useRef(myStatus);
   useEffect(() => { myStatusRef.current = myStatus; }, [myStatus]);
   
-  
+  // Fermer le menu émoticônes lors d'un clic / toucher à l'extérieur
+  const emoticonContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showEmoticonMenu) return;
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (emoticonContainerRef.current && !emoticonContainerRef.current.contains(e.target as Node)) {
+        setShowEmoticonMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showEmoticonMenu]);
+
 
   /**
    * BASCULER LE MODE PRIVÉ (AVEC NOTIFICATION)
@@ -3632,12 +3648,15 @@ const App: React.FC = () => {
                      
                      {/* Barre d'outils du chat (Émoticônes, Winks, Wizz, Voice) */}
                      <div className="chat-toolbar" style={{ position: 'relative' }}>
+                        <div ref={emoticonContainerRef} className="emoticon-menu-container">
                         <span className="tool-icon" title={t.chat.emoticonsTooltip} onClick={() => setShowEmoticonMenu(!showEmoticonMenu)}>
                           <img src="/assets/icons/emoticon_official.svg" style={{width:'32px', cursor:'pointer'}} alt={t.chat.emoticonsTooltip} />
                         </span>
                         
                         {showEmoticonMenu && (
-                          <div className="emoticon-popup">
+                          <>
+                          <div className="emoticon-backdrop" onClick={() => setShowEmoticonMenu(false)} />
+                          <div className="emoticon-popup" onClick={e => e.stopPropagation()}>
                             <div className="emoticon-popup-header">
                               <span>{t.chat.emoticonsTooltip}</span>
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -3695,7 +3714,9 @@ const App: React.FC = () => {
                               </div>
                             </div>
                           </div>
+                          </>
                         )}
+                        </div>
 
                         <span className="tool-icon" title={t.chat.winksTooltip} onClick={() => setShowWinksModal(true)}>
                           <img src="/assets/icons/wink_official.svg" style={{width:'32px', cursor:'pointer'}} alt={t.chat.winksTooltip} />
@@ -4039,7 +4060,7 @@ const App: React.FC = () => {
       {/* Modale: Paramètres de la police (Style Windows Classique) */}
       {showFontModal && (
         <div className="modal-bg" onClick={() => setShowFontModal(false)}>
-          <div className="modal-box font-modal win-style-modal" onClick={e => e.stopPropagation()} style={{ width: '550px' }}>
+          <div className="modal-box font-modal win-style-modal" onClick={e => e.stopPropagation()}>
             <div className="win-modal-header"><span>{t.modals.changeFontTitle}</span><button className="win-close-btn" onClick={() => setShowFontModal(false)}>✕</button></div>
             <div className="win-modal-body">
               <div className="win-font-grid">
@@ -4062,10 +4083,10 @@ const App: React.FC = () => {
                     <div className={`win-list-item ${fontSettings.weight === 'bold' && fontSettings.style === 'italic' ? 'selected' : ''}`} style={{ fontWeight: 'bold', fontStyle: 'italic' }} onClick={() => setFontSettings({...fontSettings, weight: 'bold', style: 'italic'})}>{t.modals.styleBoldItalic}</div>
                   </div>
                 </div>
-                <div className="win-field-col">
+                <div className="win-field-col win-field-col-size">
                   <label>{t.modals.fontSize}</label>
-                  <input type="text" readOnly value={fontSettings.size} className="win-input-preview" style={{width: '60px'}} />
-                  <div className="win-list-box" style={{width: '80px'}}>
+                  <input type="text" readOnly value={fontSettings.size} className="win-input-preview" />
+                  <div className="win-list-box">
                     {['8', '9', '10', '11', '12', '14', '16', '18', '20'].map(s => (
                       <div key={s} className={`win-list-item ${fontSettings.size === s ? 'selected' : ''}`} onClick={() => setFontSettings({...fontSettings, size: s})}>{s}</div>
                     ))}
@@ -4074,17 +4095,19 @@ const App: React.FC = () => {
               </div>
               <div className="win-lower-grid">
                 <div className="win-effects-group">
-                  <fieldset>
+                  <fieldset className="win-effects-fieldset">
                     <legend>{t.modals.fontEffects}</legend>
-                    <label className="win-checkbox"><input type="checkbox" checked={fontSettings.strikeout} onChange={e => setFontSettings({...fontSettings, strikeout: e.target.checked})} /> {t.modals.strikeout}</label>
-                    <label className="win-checkbox"><input type="checkbox" checked={fontSettings.underline} onChange={e => setFontSettings({...fontSettings, underline: e.target.checked})} /> {t.modals.underline}</label>
-                    <div style={{ marginTop: '10px' }}>
-                      <label>{t.modals.fontColor}</label>
+                    <div className="win-font-effects-section">
+                      <label className="win-checkbox"><input type="checkbox" checked={fontSettings.strikeout} onChange={e => setFontSettings({...fontSettings, strikeout: e.target.checked})} /> {t.modals.strikeout}</label>
+                      <label className="win-checkbox"><input type="checkbox" checked={fontSettings.underline} onChange={e => setFontSettings({...fontSettings, underline: e.target.checked})} /> {t.modals.underline}</label>
+                    </div>
+                    <div className="win-font-color-section">
+                      <label className="win-color-label">{t.modals.fontColor}</label>
                       <div className="wlm-color-picker-container" style={{ position: 'relative' }}>
                         <div 
                           className="wlm-color-picker-selected" 
                           onClick={() => setShowColorDropdown(!showColorDropdown)}
-                          style={{ display: 'flex', alignItems: 'center', background: 'white', border: '1px solid #abadb3', padding: '2px', cursor: 'pointer', fontSize: '11px', justifyContent: 'space-between' }}
+                          style={{ display: 'flex', alignItems: 'center', background: 'white', border: '1px solid #abadb3', cursor: 'pointer', justifyContent: 'space-between' }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                             <div className="color-box" style={{ backgroundColor: fontSettings.color, width: '12px', height: '12px', border: '1px solid #000' }}></div>
@@ -4093,22 +4116,25 @@ const App: React.FC = () => {
                           <span className="dropdown-arrow" style={{ fontSize: '8px', paddingRight: '2px' }}>▼</span>
                         </div>
                         {showColorDropdown && (
-                          <div className="wlm-color-dropdown" style={{ position: 'absolute', top: '100%', left: 0, width: '100%', background: 'white', border: '1px solid #abadb3', maxHeight: '150px', overflowY: 'auto', zIndex: 100 }}>
-                            {WLM_COLORS.map(color => (
-                              <div 
-                                key={color.hex} 
-                                className="wlm-color-option"
-                                onClick={() => {
-                                  setFontSettings({...fontSettings, color: color.hex});
-                                  setShowColorDropdown(false);
-                                }}
-                                style={{ display: 'flex', alignItems: 'center', padding: '2px 5px', cursor: 'pointer', gap: '5px', fontSize: '11px', background: fontSettings.color === color.hex ? '#0078d7' : 'transparent', color: fontSettings.color === color.hex ? 'white' : 'black' }}
-                              >
-                                <div className="color-box" style={{ backgroundColor: color.hex, width: '12px', height: '12px', border: '1px solid #000' }}></div>
-                                <span>{color.name}</span>
-                              </div>
-                            ))}
-                          </div>
+                          <>
+                            <div className="wlm-color-backdrop" onClick={() => setShowColorDropdown(false)} />
+                            <div className="wlm-color-dropdown">
+                              {WLM_COLORS.map(color => (
+                                <div 
+                                  key={color.hex} 
+                                  className="wlm-color-option"
+                                  onClick={() => {
+                                    setFontSettings({...fontSettings, color: color.hex});
+                                    setShowColorDropdown(false);
+                                  }}
+                                  style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '5px', background: fontSettings.color === color.hex ? '#0078d7' : 'transparent', color: fontSettings.color === color.hex ? 'white' : 'black' }}
+                                >
+                                  <div className="color-box" style={{ backgroundColor: color.hex, width: '12px', height: '12px', border: '1px solid #000' }}></div>
+                                  <span>{color.name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>

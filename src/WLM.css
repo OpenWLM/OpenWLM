@@ -1098,6 +1098,138 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .wlm-btn-auth { width: 100%; padding: 8px; background: linear-gradient(to bottom, #74c2e6, #0099d6); color: white; border: 1px solid #0078d7; border-radius: 4px; font-weight: bold; cursor: pointer; }
 .auth-toggle { display: block; text-align: center; margin-top: 15px; font-size: 11px; color: #0078d7; cursor: pointer; }
 
+/* --- MOT DE PASSE & ROBUSTESSE INSCRIPTION --- */
+.auth-password-guidance {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-password-help-text {
+  font-size: 10.5px;
+  color: #3b5c7e;
+  line-height: 1.35;
+  background: #f0f6fa;
+  border: 1px solid #c8d9e8;
+  border-radius: 4px;
+  padding: 5px 8px;
+}
+
+.auth-password-eval-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #fafcfe;
+  border: 1px solid #d4e2ed;
+  border-radius: 4px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.auth-compliance-status {
+  font-size: 11px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.auth-compliance-status.compliant {
+  color: #1e7e34;
+}
+
+.auth-compliance-status.non-compliant {
+  color: #c0392b;
+}
+
+.auth-strength-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auth-strength-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.auth-strength-label {
+  color: #555;
+  font-weight: 500;
+}
+
+.auth-strength-badge {
+  font-size: 10px;
+  font-weight: bold;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.auth-strength-badge.weak {
+  color: #96281b;
+  background: #fadbd8;
+  border: 1px solid #f5b7b1;
+}
+
+.auth-strength-badge.fair {
+  color: #a04000;
+  background: #fdebd0;
+  border: 1px solid #f8c471;
+}
+
+.auth-strength-badge.good {
+  color: #1e8449;
+  background: #d5f5e3;
+  border: 1px solid #abebc6;
+}
+
+.auth-strength-badge.excellent {
+  color: #0c5460;
+  background: #d1ecf1;
+  border: 1px solid #bee5eb;
+}
+
+.auth-strength-bar {
+  width: 100%;
+  height: 5px;
+  background: #e2e8ee;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.auth-strength-fill {
+  height: 100%;
+  transition: width 0.25s ease-out, background-color 0.25s ease-out;
+}
+
+.auth-strength-fill.weak {
+  background: linear-gradient(to right, #e74c3c, #c0392b);
+}
+
+.auth-strength-fill.fair {
+  background: linear-gradient(to right, #f39c12, #e67e22);
+}
+
+.auth-strength-fill.good {
+  background: linear-gradient(to right, #2ecc71, #27ae60);
+}
+
+.auth-strength-fill.excellent {
+  background: linear-gradient(to right, #3498db, #0078d7);
+}
+
+.auth-strength-desc {
+  font-size: 10px;
+  color: #555;
+  line-height: 1.3;
+}
+
 .tool-icon.recording { background: rgba(255, 0, 0, 0.2); border-radius: 50%; box-shadow: 0 0 8px red; animation: pulse-red 1s infinite; }
 @keyframes pulse-red { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .voice-clip-play { padding: 10px; background: rgba(0, 120, 215, 0.05); border-radius: 6px; border: 1px dashed #99b4d1; margin-top: 5px; }

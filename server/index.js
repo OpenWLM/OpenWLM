@@ -745,11 +745,13 @@ app.get('/api/captcha', (req, res) => {
   const num1 = Math.floor(Math.random() * 10) + 1;
   const num2 = Math.floor(Math.random() * 10) + 1;
   const id = crypto.randomUUID();
+  const lang = (req.query.lang || '').toString().toLowerCase();
   
   // Expiration après 5 minutes
   captchas.set(id, { answer: num1 + num2, expires: Date.now() + 5 * 60000 });
   
-  res.json({ id, text: `Combien font ${num1} + ${num2} ?` });
+  const text = lang === 'en' ? `How much is ${num1} + ${num2}?` : `Combien font ${num1} + ${num2} ?`;
+  res.json({ id, num1, num2, text });
 });
 
 /**

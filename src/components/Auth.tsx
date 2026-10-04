@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import { deriveZeroKnowledgeKeys } from '../utils/Security';
 import { useI18n } from '../i18n';
+import { evaluatePassword, type PasswordStrengthLevel } from '../utils/PasswordStrength';
 
 /**
  * Interface pour les propriétés du composant Auth
@@ -42,15 +43,57 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isDeriving, setIsDeriving] = useState(false);
-  const [captchaData, setCaptchaData] = useState<{ id: string, text: string } | null>(null);
+  const [captchaData, setCaptchaData] = useState<{ id: string; text: string; num1?: number; num2?: number } | null>(null);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
+
+  // Évaluation dynamique de la robustesse et de la conformité du mot de passe
+  const passwordEval = useMemo(() => evaluatePassword(password), [password]);
+
+  const getStrengthName = (level: PasswordStrengthLevel) => {
+    switch (level) {
+      case 'weak': return t.auth.passwordStrengthWeak || 'Faible';
+      case 'fair': return t.auth.passwordStrengthFair || 'Moyenne';
+      case 'good': return t.auth.passwordStrengthGood || 'Bonne';
+      case 'excellent': return t.auth.passwordStrengthExcellent || 'Excellente';
+    }
+  };
+
+  const getStrengthFeedback = (level: PasswordStrengthLevel) => {
+    switch (level) {
+      case 'weak': return t.auth.passwordFeedbackWeak;
+      case 'fair': return t.auth.passwordFeedbackFair;
+      case 'good': return t.auth.passwordFeedbackGood;
+      case 'excellent': return t.auth.passwordFeedbackExcellent;
+    }
+  };
+
+  /**
+   * Formate la question du captcha selon la langue active
+   */
+  const formatCaptchaQuestion = (data: { id: string; text: string; num1?: number; num2?: number } | null) => {
+    if (!data) return '';
+    let n1 = data.num1;
+    let n2 = data.num2;
+    if (n1 === undefined || n2 === undefined) {
+      const match = data.text.match(/(\d+)\s*\+\s*(\d+)/);
+      if (match) {
+        n1 = Number(match[1]);
+        n2 = Number(match[2]);
+      }
+    }
+    if (n1 !== undefined && n2 !== undefined) {
+      const template = t.auth.captchaQuestion || (language === 'en' ? 'How much is {num1} + {num2}?' : 'Combien font {num1} + {num2} ?');
+      return template.replace('{num1}', String(n1)).replace('{num2}', String(n2));
+    }
+    return data.text;
+  };
 
   /**
    * Récupère un nouveau défi Captcha depuis le serveur
    */
   const fetchCaptcha = async () => {
     try {
-      const res = await axios.get('/api/captcha');
+      const res = await axios.get('/api/captcha', { params: { lang: language } });
       setCaptchaData(res.data);
       setCaptchaAnswer('');
     } catch {
@@ -83,9 +126,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
       return;
     }
 
+    // Politique mot de passe OpenWLM : 12 caractères minimum requis
     if (!isLogin) {
-      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{12,}$/;
-      if (!passwordRegex.test(password)) {
+      if (password.length < 12) {
         setError(t.auth.passwordPolicy);
         return;
       }
@@ -199,19 +242,57 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
               type="text" 
               value={username} 
               onChange={e => setUsername(e.target.value)} 
-              placeholder={t.auth.emailPlaceholder}
+              placeholder={!isLogin ? (t.auth.emailPlaceholderSignup || "exemple@openwlm.dev") : t.auth.emailPlaceholder}
               required 
             />
           </div>
           
           <div className="auth-field">
-            <label>{t.auth.passwordLabel}</label>
+            <label>{isLogin ? t.auth.passwordLabel : (t.auth.passwordLabelSignup || t.auth.passwordLabel)}</label>
             <input 
               type="password" 
               value={password} 
               onChange={e => setPassword(e.target.value)} 
+              placeholder={!isLogin ? t.auth.passwordPlaceholderSignup : undefined}
               required 
             />
+            {!isLogin && (
+              <div className="auth-password-guidance">
+                <div className="auth-password-help-text">
+                  {t.auth.passwordHelp}
+                </div>
+
+                {password.length > 0 && (
+                  <div className="auth-password-eval-box">
+                    <div className={`auth-compliance-status ${passwordEval.isConformant ? 'compliant' : 'non-compliant'}`}>
+                      {passwordEval.isConformant ? (
+                        <span>✓ {t.auth.passwordLengthMet.replace('{count}', String(password.length))}</span>
+                      ) : (
+                        <span>✗ {t.auth.passwordLengthRequired} ({password.length}/12)</span>
+                      )}
+                    </div>
+
+                    <div className="auth-strength-box">
+                      <div className="auth-strength-header">
+                        <span className="auth-strength-label">{t.auth.passwordStrengthLabel}</span>
+                        <span className={`auth-strength-badge ${passwordEval.strengthLevel}`}>
+                          {getStrengthName(passwordEval.strengthLevel)}
+                        </span>
+                      </div>
+                      <div className="auth-strength-bar">
+                        <div 
+                          className={`auth-strength-fill ${passwordEval.strengthLevel}`} 
+                          style={{ width: `${(passwordEval.score / 4) * 100}%` }}
+                        />
+                      </div>
+                      <div className="auth-strength-desc">
+                        {getStrengthFeedback(passwordEval.strengthLevel)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Sélecteur de statut MSN classique (uniquement à la connexion) */}
@@ -265,7 +346,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
               {captchaData && (
                 <div className="auth-captcha-container">
                   <label className="auth-captcha-label">{t.auth.captchaLabel}</label>
-                  <div className="auth-captcha-text">{captchaData.text}</div>
+                  <div className="auth-captcha-text">{formatCaptchaQuestion(captchaData)}</div>
                   <input 
                     type="number" 
                     value={captchaAnswer} 

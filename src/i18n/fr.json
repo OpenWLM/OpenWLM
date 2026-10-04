@@ -284,7 +284,18 @@
     "autoAwayPrefix": "Afficher le statut \"Absent\" après ",
     "autoAwaySuffix": " minutes d'inactivité",
     "webcamSection": "Webcam",
-    "webcamCheckbox": "Indiquer aux autres utilisateurs que je dispose d'une webcam"
+    "webcamCheckbox": "Indiquer aux autres utilisateurs que je dispose d'une webcam",
+    "alertsTitle": "Alertes et Notifications",
+    "desktopToastEnable": "Afficher une alerte OpenWLM sur le Bureau lors de la réception d'un nouveau message",
+    "desktopToastDesc": "Affiche une notification rétro en bas à droite de l'écran lorsque l'application est active.",
+    "browserNotifSection": "Notifications du navigateur",
+    "browserNotifGranted": "Notifications système du navigateur autorisées (actives en arrière-plan)",
+    "browserNotifDenied": "Notifications système bloquées dans votre navigateur",
+    "browserNotifDefault": "Recevoir des alertes système lorsque OpenWLM est réduit ou en arrière-plan.",
+    "browserNotifPrompt": "Autoriser les notifications du navigateur",
+    "testAlertBtn": "Tester l'alerte WLM",
+    "testAlertText": "Ceci est un test d'alerte rétro OpenWLM !",
+    "toastAction": "a envoyé un message :"
   },
   "modals": {
     "addContactTitle": "Ajouter un contact",

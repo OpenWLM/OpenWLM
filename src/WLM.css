@@ -3676,3 +3676,191 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   }
 }
 
+/* ==========================================================================
+   WLM 2009 RETRO DESKTOP TOAST NOTIFICATIONS (Aero Glass Style)
+   ========================================================================== */
+
+.wlm-desktop-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+/* Désactivation stricte sur mobile/tablette étroite pour ne jamais encombrer le layout */
+@media (max-width: 768px) {
+  .wlm-desktop-toast-container {
+    display: none !important;
+  }
+}
+
+.wlm-desktop-toast {
+  pointer-events: auto;
+  width: 275px;
+  min-height: 72px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #f2f7fd 0%, #dbecfa 30%, #c1ddf7 70%, #d2e7fa 100%);
+  border: 1px solid #7ea8d6;
+  border-radius: 7px;
+  box-shadow: 
+    0 6px 20px rgba(8, 40, 85, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(160, 200, 240, 0.5);
+  padding: 8px 10px 10px 10px;
+  cursor: pointer;
+  user-select: none;
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.wlm-desktop-toast:hover {
+  filter: brightness(1.03);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 24px rgba(8, 40, 85, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    inset 0 -1px 0 rgba(160, 200, 240, 0.6);
+}
+
+.wlm-desktop-toast.wlm-desktop-toast-enter {
+  animation: wlmDesktopToastSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.wlm-desktop-toast.wlm-desktop-toast-exit {
+  animation: wlmDesktopToastSlideOut 0.24s ease-in forwards;
+}
+
+@keyframes wlmDesktopToastSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes wlmDesktopToastSlideOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.95);
+  }
+}
+
+.wlm-desktop-toast-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(126, 168, 214, 0.35);
+  padding-bottom: 3px;
+}
+
+.wlm-desktop-toast-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #29578d;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.wlm-desktop-toast-logo {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.wlm-desktop-toast-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-weight: bold;
+  color: #5578a0;
+  cursor: pointer;
+  padding: 1px 4px;
+  line-height: 1;
+  border-radius: 2px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.wlm-desktop-toast-close-btn:hover {
+  background: rgba(220, 50, 50, 0.15);
+  color: #b71c1c;
+}
+
+.wlm-desktop-toast-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.wlm-desktop-toast-avatar-box {
+  width: 42px;
+  height: 42px;
+  border-radius: 4px;
+  border: 1px solid #8ab0d6;
+  background: #ffffff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1), 0 1px 0 rgba(255, 255, 255, 0.85);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wlm-desktop-toast-avatar-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wlm-desktop-toast-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wlm-desktop-toast-sender {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0c4a8a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.wlm-desktop-toast-action {
+  font-size: 10px;
+  color: #4b7099;
+  font-style: italic;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.wlm-desktop-toast-message {
+  font-size: 11px;
+  color: #1a2a3a;
+  line-height: 1.3;
+  max-height: 2.6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+

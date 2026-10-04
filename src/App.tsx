@@ -29,6 +29,14 @@ import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticon
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
+import DesktopToastContainer, { type ToastItem } from './components/DesktopToast';
+import {
+  decideNotificationType,
+  showSystemNotification,
+  requestSystemNotificationPermission,
+  isSystemNotificationSupported,
+  getSystemNotificationPermission
+} from './utils/NotificationManager';
 
 axios.defaults.withCredentials = true;
 
@@ -421,6 +429,10 @@ const App: React.FC = () => {
       return saved ? parseInt(saved) : 0;
     } catch (e) { return 0; }
   });
+  const activeChatIdRef = useRef(activeChatId);
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   // --- SUPPORT PWA (INSTALLATION) ---
   const [canInstallPWA, setCanInstallPWA] = useState(false);
@@ -474,6 +486,51 @@ const App: React.FC = () => {
     height?: number;
   }>>({});
   const myCustomShortcutsRef = useRef<Set<string>>(new Set());
+
+  // --- ÉTAT DES NOTIFICATIONS DESKTOP & ALERTES RETRO WLM ---
+  const [optionsTab, setOptionsTab] = useState<'personal' | 'alerts'>('personal');
+  const [enableDesktopToasts, setEnableDesktopToasts] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('wlm_enable_toasts');
+      return saved === null ? true : saved === 'true';
+    } catch {
+      return true;
+    }
+  });
+  const enableDesktopToastsRef = useRef(enableDesktopToasts);
+  useEffect(() => {
+    enableDesktopToastsRef.current = enableDesktopToasts;
+    try {
+      localStorage.setItem('wlm_enable_toasts', enableDesktopToasts.toString());
+    } catch {}
+  }, [enableDesktopToasts]);
+
+  const [systemPermission, setSystemPermission] = useState<NotificationPermission | 'unsupported'>(() => {
+    return getSystemNotificationPermission();
+  });
+
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const addToast = useCallback((toast: Omit<ToastItem, 'id' | 'isExiting'>) => {
+    if (!enableDesktopToastsRef.current) return;
+    const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setToasts(prev => {
+      const updated = prev.length >= 3 ? prev.slice(prev.length - 2) : prev;
+      return [...updated, { ...toast, id, isExiting: false }];
+    });
+  }, []);
+
+  const dismissToast = useCallback((toastId: string) => {
+    setToasts(prev => prev.map(t => t.id === toastId ? { ...t, isExiting: true } : t));
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== toastId));
+    }, 240);
+  }, []);
+
+  const handleToastOpenChat = useCallback((senderId: number) => {
+    setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
+    setActiveChatId(senderId);
+  }, []);
 
   // --- ÉTAT DU COLLAGE DE CAPTURE D'ÉCRAN ---
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
@@ -1491,7 +1548,9 @@ const App: React.FC = () => {
 
         // Mise à jour de l'interface
         setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
-        setActiveChatId(prev => prev === 0 ? senderId : prev);
+        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+          setActiveChatId(prev => prev === 0 ? senderId : prev);
+        }
 
         const formattedTime = formatMessageTime(decryptedData.timestamp, decryptedData.time);
         const finalMsg: Message = { 
@@ -1532,14 +1591,106 @@ const App: React.FC = () => {
           SoundManager.play('NEW_MESSAGE');
         }
 
+        // --- GESTION DES NOTIFICATIONS (TOAST DESKTOP & SYSTÈME) ---
+        const isAppVisible = typeof document !== 'undefined' && 
+                             document.visibilityState === 'visible' && 
+                             document.hasFocus();
+        const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+        const hasSystemPermission = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+        const decision = decideNotificationType({
+          isSender,
+          senderId,
+          activeChatId: activeChatIdRef.current,
+          isAppVisible,
+          isDesktop,
+          hasSystemPermission
+        });
+
+        let previewText = decryptedData.text || '';
+        if (decryptedData.type === 'file' && fileData) {
+          previewText = `📎 [Fichier] ${fileData.fileName || 'Fichier partagé'}`;
+        } else if (decryptedData.audio || decryptedData.type === 'audio') {
+          previewText = `🎵 [Message vocal]`;
+        } else if (decryptedData.type === 'wink') {
+          previewText = `😉 [Clin d'œil]`;
+        } else if (decryptedData.type === 'nudge') {
+          previewText = `💥 [Wizz !]`;
+        }
+
+        const contactAvatar = contactFromList?.avatar || (senderId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : '/assets/usertiles/chess.png');
+
+        if (decision === 'system') {
+          showSystemNotification({
+            title: `${finalSenderName} - OpenWLM`,
+            body: previewText,
+            icon: contactAvatar,
+            tag: `openwlm-chat-${senderId}`,
+            onClick: () => {
+              setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
+              setActiveChatId(senderId);
+            }
+          });
+        } else if (decision === 'in-app') {
+          addToast({
+            senderId,
+            senderName: finalSenderName,
+            avatar: contactAvatar,
+            text: previewText,
+            actionText: t.settings.toastAction || 'a envoyé un message :'
+          });
+        }
+
       });
 
       // Réception d'un Wizz
       newSocket.on('receive_wizz', (data) => {
         const senderId = data.senderId;
         setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
-        setActiveChatId(prev => (prev === 0 ? senderId : prev));
+        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+          setActiveChatId(prev => (prev === 0 ? senderId : prev));
+        }
         handleNudge(true, senderId);
+
+        const isAppVisible = typeof document !== 'undefined' && 
+                             document.visibilityState === 'visible' && 
+                             document.hasFocus();
+        const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+        const hasSystemPermission = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+        const decision = decideNotificationType({
+          isSender: false,
+          senderId,
+          activeChatId: activeChatIdRef.current,
+          isAppVisible,
+          isDesktop,
+          hasSystemPermission
+        });
+
+        const contactFromList = contactsRef.current.find(c => c.id === senderId);
+        const senderName = contactFromList ? (contactFromList.nickname || contactFromList.username) : 'Contact';
+        const contactAvatar = contactFromList?.avatar || '/assets/usertiles/chess.png';
+
+        if (decision === 'system') {
+          showSystemNotification({
+            title: `${senderName} - OpenWLM`,
+            body: `💥 [Wizz !]`,
+            icon: contactAvatar,
+            tag: `openwlm-chat-${senderId}`,
+            onClick: () => {
+              setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
+              setActiveChatId(senderId);
+            }
+          });
+        } else if (decision === 'in-app') {
+          addToast({
+            senderId,
+            senderName,
+            avatar: contactAvatar,
+            text: `💥 [Wizz !]`,
+            actionText: t.settings.toastAction || 'a envoyé un message :'
+          });
+        }
       });
 
       // Réception d'un Clin d'œil
@@ -1805,6 +1956,42 @@ const App: React.FC = () => {
             }
           ]
         }));
+
+        const isAppVisible = typeof document !== 'undefined' && 
+                             document.visibilityState === 'visible' && 
+                             document.hasFocus();
+        const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+        const hasSystemPermission = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+        const botDecision = decideNotificationType({
+          isSender: false,
+          senderId: SYSTEM_BOT_ID,
+          activeChatId: activeChatIdRef.current,
+          isAppVisible,
+          isDesktop,
+          hasSystemPermission
+        });
+
+        if (botDecision === 'system') {
+          showSystemNotification({
+            title: `OpenWLM Bot`,
+            body: echoNotice,
+            icon: SYSTEM_BOT_CONTACT.avatar,
+            tag: `openwlm-chat-${SYSTEM_BOT_ID}`,
+            onClick: () => {
+              setOpenChatIds(prev => prev.includes(SYSTEM_BOT_ID) ? prev : [...prev, SYSTEM_BOT_ID]);
+              setActiveChatId(SYSTEM_BOT_ID);
+            }
+          });
+        } else if (botDecision === 'in-app') {
+          addToast({
+            senderId: SYSTEM_BOT_ID,
+            senderName: 'OpenWLM Bot',
+            avatar: SYSTEM_BOT_CONTACT.avatar,
+            text: echoNotice,
+            actionText: t.settings.toastAction || 'a envoyé un message :'
+          });
+        }
       }, 400);
       return;
     }
@@ -4226,91 +4413,157 @@ const App: React.FC = () => {
             
             <div className="options-body">
               <div className="options-sidebar">
-                <div className="options-nav-item active">{t.settings.tabPersonal}</div>
+                <div className={`options-nav-item ${optionsTab === 'personal' ? 'active' : ''}`} onClick={() => setOptionsTab('personal')}>{t.settings.tabPersonal}</div>
                 <div className="options-nav-item">{t.settings.tabLayout}</div>
                 <div className="options-nav-item">{t.settings.tabMessages}</div>
-                <div className="options-nav-item">{t.settings.tabAlerts}</div>
+                <div className={`options-nav-item ${optionsTab === 'alerts' ? 'active' : ''}`} onClick={() => setOptionsTab('alerts')}>{t.settings.tabAlerts}</div>
                 <div className="options-nav-item">{t.settings.tabSounds}</div>
                 <div className="options-nav-item">{t.settings.tabSecurity}</div>
                 <div className="options-nav-item">{t.settings.tabConnection}</div>
               </div>
               
               <div className="options-content">
-                <div className="options-section">
-                  <div className="options-title">{t.settings.tabPersonal}</div>
-                  
-                  <div className="options-subsection">
-                    <label className="options-label">{t.auth.nicknameLabel.replace(':', '')}</label>
-                    <div className="options-hint">{t.settings.nicknameSub}</div>
-                    <input 
-                      className="win-input" 
-                      value={myNickname} 
-                      onChange={e => setMyNickname(e.target.value)} 
-                      style={{ width: '90%' }} 
-                    />
-                  </div>
-
-                  <div className="options-subsection">
-                    <div className="options-hint">{t.settings.psmSub}</div>
-                    <input 
-                      className="win-input" 
-                      value={myPSM} 
-                      onChange={e => setMyPSM(e.target.value)} 
-                      style={{ width: '90%' }} 
-                    />
-                  </div>
-
-                  <div className="options-subsection">
-                    <label className="options-label">{t.common.language}</label>
-                    <div style={{ marginTop: '5px' }}>
-                      <select 
-                        value={language} 
-                        onChange={e => setLanguage(e.target.value as 'fr' | 'en')}
-                        className="wlm-auth-select"
-                        style={{ width: '160px', padding: '3px 6px' }}
-                      >
-                        <option value="fr">{t.common.french}</option>
-                        <option value="en">{t.common.english}</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="options-subsection">
-                    <label className="options-label">{t.settings.statusSection}</label>
-                    <div className="options-checkbox-line">
+                {optionsTab === 'personal' && (
+                  <div className="options-section">
+                    <div className="options-title">{t.settings.tabPersonal}</div>
+                    
+                    <div className="options-subsection">
+                      <label className="options-label">{t.auth.nicknameLabel.replace(':', '')}</label>
+                      <div className="options-hint">{t.settings.nicknameSub}</div>
                       <input 
-                        type="checkbox" 
-                        id="check-away" 
-                        checked={enableAutoAway} 
-                        onChange={e => {
-                          setEnableAutoAway(e.target.checked);
-                          localStorage.setItem('wlm_enable_auto_away', e.target.checked.toString());
-                        }} 
+                        className="win-input" 
+                        value={myNickname} 
+                        onChange={e => setMyNickname(e.target.value)} 
+                        style={{ width: '90%' }} 
                       />
-                      <label htmlFor="check-away">{t.settings.autoAwayPrefix}</label>
-                      <input 
-                        type="number" 
-                        className="win-input-small" 
-                        value={awayTimeout} 
-                        onChange={e => {
-                          const val = parseInt(e.target.value) || 1;
-                          setAwayTimeout(val);
-                          localStorage.setItem('wlm_away_timeout', val.toString());
-                        }} 
-                        style={{ width: '40px', textAlign: 'center', margin: '0 5px' }} 
-                      />
-                      <span>{t.settings.autoAwaySuffix}</span>
                     </div>
-                  </div>
 
-                  <div className="options-subsection">
-                    <label className="options-label">{t.settings.webcamSection}</label>
-                    <div className="options-checkbox-line">
-                      <input type="checkbox" id="check-webcam" defaultChecked />
-                      <label htmlFor="check-webcam">{t.settings.webcamCheckbox}</label>
+                    <div className="options-subsection">
+                      <div className="options-hint">{t.settings.psmSub}</div>
+                      <input 
+                        className="win-input" 
+                        value={myPSM} 
+                        onChange={e => setMyPSM(e.target.value)} 
+                        style={{ width: '90%' }} 
+                      />
+                    </div>
+
+                    <div className="options-subsection">
+                      <label className="options-label">{t.common.language}</label>
+                      <div style={{ marginTop: '5px' }}>
+                        <select 
+                          value={language} 
+                          onChange={e => setLanguage(e.target.value as 'fr' | 'en')}
+                          className="wlm-auth-select"
+                          style={{ width: '160px', padding: '3px 6px' }}
+                        >
+                          <option value="fr">{t.common.french}</option>
+                          <option value="en">{t.common.english}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="options-subsection">
+                      <label className="options-label">{t.settings.statusSection}</label>
+                      <div className="options-checkbox-line">
+                        <input 
+                          type="checkbox" 
+                          id="check-away" 
+                          checked={enableAutoAway} 
+                          onChange={e => {
+                            setEnableAutoAway(e.target.checked);
+                            localStorage.setItem('wlm_enable_auto_away', e.target.checked.toString());
+                          }} 
+                        />
+                        <label htmlFor="check-away">{t.settings.autoAwayPrefix}</label>
+                        <input 
+                          type="number" 
+                          className="win-input-small" 
+                          value={awayTimeout} 
+                          onChange={e => {
+                            const val = parseInt(e.target.value) || 1;
+                            setAwayTimeout(val);
+                            localStorage.setItem('wlm_away_timeout', val.toString());
+                          }} 
+                          style={{ width: '40px', textAlign: 'center', margin: '0 5px' }} 
+                        />
+                        <span>{t.settings.autoAwaySuffix}</span>
+                      </div>
+                    </div>
+
+                    <div className="options-subsection">
+                      <label className="options-label">{t.settings.webcamSection}</label>
+                      <div className="options-checkbox-line">
+                        <input type="checkbox" id="check-webcam" defaultChecked />
+                        <label htmlFor="check-webcam">{t.settings.webcamCheckbox}</label>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+
+                {optionsTab === 'alerts' && (
+                  <div className="options-section">
+                    <div className="options-title">{t.settings.alertsTitle}</div>
+
+                    <div className="options-subsection">
+                      <div className="options-checkbox-line">
+                        <input 
+                          type="checkbox" 
+                          id="check-desktop-toasts" 
+                          checked={enableDesktopToasts} 
+                          onChange={e => setEnableDesktopToasts(e.target.checked)} 
+                        />
+                        <label htmlFor="check-desktop-toasts" style={{ fontWeight: 600 }}>{t.settings.desktopToastEnable}</label>
+                      </div>
+                      <div className="options-hint" style={{ marginTop: '4px', marginLeft: '22px' }}>
+                        {t.settings.desktopToastDesc}
+                      </div>
+                    </div>
+
+                    <div className="options-subsection" style={{ marginTop: '16px' }}>
+                      <label className="options-label">{t.settings.browserNotifSection}</label>
+                      <div className="options-hint" style={{ marginBottom: '8px' }}>
+                        {systemPermission === 'granted'
+                          ? t.settings.browserNotifGranted
+                          : systemPermission === 'denied'
+                          ? t.settings.browserNotifDenied
+                          : t.settings.browserNotifDefault}
+                      </div>
+
+                      {systemPermission !== 'granted' && isSystemNotificationSupported() && (
+                        <button 
+                          type="button" 
+                          className="win-btn" 
+                          onClick={async () => {
+                            const p = await requestSystemNotificationPermission();
+                            setSystemPermission(p);
+                          }}
+                          style={{ marginBottom: '12px' }}
+                        >
+                          {t.settings.browserNotifPrompt}
+                        </button>
+                      )}
+
+                      <div style={{ marginTop: '10px' }}>
+                        <button 
+                          type="button" 
+                          className="win-btn" 
+                          onClick={() => {
+                            addToast({
+                              senderId: SYSTEM_BOT_ID,
+                              senderName: 'OpenWLM Assistant',
+                              avatar: SYSTEM_BOT_CONTACT.avatar,
+                              text: t.settings.testAlertText,
+                              actionText: t.settings.toastAction
+                            });
+                          }}
+                        >
+                          {t.settings.testAlertBtn}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -4355,6 +4608,13 @@ const App: React.FC = () => {
           </button>
         </div>
       )}
+
+      {/* Alertes et notifications desktop in-app rétro WLM */}
+      <DesktopToastContainer
+        toasts={toasts}
+        onOpenChat={handleToastOpenChat}
+        onDismiss={dismissToast}
+      />
     </div>
   );
 };

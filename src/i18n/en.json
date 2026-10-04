@@ -284,7 +284,18 @@
     "autoAwayPrefix": "Show status \"Away\" after ",
     "autoAwaySuffix": " minutes of inactivity",
     "webcamSection": "Webcam",
-    "webcamCheckbox": "Show other users that I have a webcam"
+    "webcamCheckbox": "Show other users that I have a webcam",
+    "alertsTitle": "Alerts and Notifications",
+    "desktopToastEnable": "Show an OpenWLM desktop alert when a new message is received",
+    "desktopToastDesc": "Displays a retro notification at the bottom right of the screen when the app is active.",
+    "browserNotifSection": "Browser Notifications",
+    "browserNotifGranted": "Browser system notifications allowed (active when in background)",
+    "browserNotifDenied": "Browser system notifications blocked in your browser",
+    "browserNotifDefault": "Receive system alerts when OpenWLM is minimized or in the background.",
+    "browserNotifPrompt": "Allow browser notifications",
+    "testAlertBtn": "Test WLM Alert",
+    "testAlertText": "This is a test of OpenWLM retro alert!",
+    "toastAction": "sent a message:"
   },
   "modals": {
     "addContactTitle": "Add a contact",

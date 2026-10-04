@@ -79,8 +79,8 @@ OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement 
 ---
 
 <p align="center">
-  <img src="Screen1.jpg" width="45%" />
-  <img src="Screen2.jpg" width="25%" />
+  <img src="Screen1.png" width="48%" />
+  <img src="Screen2.png" width="48%" />
 </p>
 
 ---

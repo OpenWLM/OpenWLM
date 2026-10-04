@@ -79,8 +79,8 @@ OpenWLM has undergone an extensive security audit and rigorous end-to-end harden
 ---
 
 <p align="center">
-  <img src="Screen1.jpg" width="45%" />
-  <img src="Screen2.jpg" width="25%" />
+  <img src="Screen1.png" width="48%" />
+  <img src="Screen2.png" width="48%" />
 </p>
 
 ---

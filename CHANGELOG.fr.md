@@ -9,6 +9,43 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [1.4.0] - 2026-10-05
+
+### 🔔 Notifications & PWA Web Push (Desktop & Mobile)
+- **Configuration VAPID de bout en bout (RFC 8291 / RFC 8292)** :
+  - Standardisation des variables d'environnement `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` et `VAPID_SUBJECT`.
+  - Intégration de la bibliothèque `web-push` avec chiffrement de charge utile RFC 8291 (`aes128gcm`) et signature JWT VAPID RFC 8292 (`ES256`).
+  - Validation stricte au démarrage du serveur : chargement prioritaire depuis l'environnement, repli automatique sur le fichier local sécurisé `.vapid_keys.json` (chmod `0600`, exclu de git), désactivation propre sans crash si les clés sont absentes.
+  - Protection absolue des secrets : la clé privée `VAPID_PRIVATE_KEY` n'est jamais exposée dans l'API, les réponses HTTP ou le frontend.
+  - Endpoint de contrôle d'état `GET /api/push/status` exposant de manière transparente `available`, `hasVapid` et `publicKey`.
+  - Endpoint de test authentifié `POST /api/push/test` permettant de tester la réception immédiate d'une notification push sur les appareils du compte connecté.
+  - Nettoyage automatique des abonnements expirés ou révoqués (`HTTP 404 / 410 Gone`) dans la base SQLite `push_subscriptions`.
+  - Utilitaire dédié `scripts/generate_vapid_keys.js` pour générer des clés VAPID sécurisées avec protection contre l'écrasement involontaire.
+- **Expérience PWA Android & Arrière-plan** :
+  - Support des notifications en arrière-plan via Service Worker (`push` et `notificationclick`).
+  - Redirection et ouverture automatique de la conversation (`OPEN_CHAT`) lors du clic sur une notification push ou système.
+  - Intégration d'icônes maskable conformes PWA (`pwa-maskable-192x192.png` et `pwa-maskable-512x512.png`) avec fond plein `#d5e9f8` et zone de sécurité centrale de 80%, éliminant les bordures blanches indésirables sur Android.
+- **Notifications Desktop & Toasts In-App Rétro WLM** :
+  - Arbitrage intelligent des notifications : toast in-app Aero rétro en avant-plan PC, notification système native en arrière-plan, aucune notification pour ses propres messages ou la conversation activement visible.
+  - Parcours d'activation assisté pour Microsoft Edge et les PWA Windows gérant les demandes de notification discrètes.
+
+### 🔄 Synchronisation temps réel multi-session
+- **Diffusion des messages vers toutes les sessions actives d'un compte** :
+  - Suivi multi-socket côté serveur (`userId → Set<socketId>`) remplaçant l'ancien mapping à socket unique, qui écrasait la session précédente à chaque nouvelle connexion.
+  - Rooms Socket.IO par utilisateur (`user:<id>`) rejointes dès l'authentification du handshake et lors de `identify`.
+  - Un nouveau message est livré à **toutes** les sessions du destinataire, ainsi qu'aux **autres** sessions de l'expéditeur (sans doublon sur la session d'origine).
+  - Wizz, clins d'œil, mode privé, appels WebRTC, jeux et changements de statut migrés vers les rooms utilisateur.
+  - Le statut hors ligne n'est diffusé qu'à la fermeture de la **dernière** session du compte.
+  - Côté client, les messages synchronisés depuis une autre de ses propres sessions sont rangés dans la bonne conversation (celle du destinataire), sans son, sans notification et sans rejouer wizz/clin d'œil. Chiffrement E2EE inchangé (`keySender` déjà présent).
+  - Test d'intégration `tests/test_multi_session_sync.js` (serveur réel sur base isolée, 2 sessions × 2 comptes).
+
+### 🗂️ Onglets de conversation
+- **Réorganisation des onglets par glisser-déposer** : déplacement horizontal avec indicateur d'insertion clair, ordre mis à jour au relâchement, sans impact sur l'ouverture, la fermeture, l'onglet actif ni les indicateurs de nouveaux messages (`src/utils/TabUtils.ts`, `tests/test_tabs_drag_and_drop.js`).
+
+### 🔐 Provisioning des secrets
+- Script de provisioning `scripts/provision_vapid.sh` et fichier `.env.example` documenté ; les vraies clés ne sont jamais écrites dans un fichier suivi par Git.
+- Détecteur de secrets `scripts/check_secrets.js` (exécuté par `npm test`) et hook Git pre-commit installable via `scripts/install_git_hooks.sh`.
+
 ## [1.3.0] - 2026-10-03
 
 ### 🔒 Sécurité & Persistance Client

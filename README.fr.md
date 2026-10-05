@@ -109,7 +109,14 @@ Ce script crée deux comptes fictifs (sans aucune donnée personnelle) :
 
 > *Note : Si vous ne lancez pas `npm run db:seed`, le serveur créera automatiquement une base vierge au premier démarrage.*
 
-### 3. Démarrer l'application
+### 3. Provisioning Web Push & Clés VAPID (Recommandé pour PWA & Android)
+Pour activer les notifications en arrière-plan sans compromettre de secrets :
+```bash
+node scripts/generate_vapid_keys.js
+```
+Consultez le guide complet : [docs/VAPID_SETUP.md](docs/VAPID_SETUP.md).
+
+### 4. Démarrer l'application
 
 #### Mode Développement (Frontend Vite + Backend avec rechargement à chaud) :
 ```bash

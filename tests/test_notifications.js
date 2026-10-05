@@ -163,12 +163,29 @@ test('i18n Verification: Both FR and EN have alert and notification strings', ()
     'desktopToastEnable',
     'desktopToastDesc',
     'browserNotifSection',
+    'browserNotifStatusLabel',
+    'browserNotifStatusGranted',
+    'browserNotifStatusDenied',
+    'browserNotifStatusDefault',
+    'browserNotifStatusUnsupported',
     'browserNotifGranted',
     'browserNotifDenied',
     'browserNotifDefault',
+    'browserNotifUnsupported',
     'browserNotifPrompt',
+    'browserNotifPreprompt',
+    'browserNotifLater',
+    'browserNotifEdgeTitle',
+    'browserNotifEdgeHelp',
+    'browserNotifEdgePath',
+    'browserNotifRetry',
     'testAlertBtn',
     'testAlertText',
+    'testAlertSuccess',
+    'testAlertEdgeQuiet',
+    'testAlertUnconfigured',
+    'testAlertDenied',
+    'testAlertUnsupported',
     'toastAction'
   ];
 
@@ -177,3 +194,55 @@ test('i18n Verification: Both FR and EN have alert and notification strings', ()
     assert.strictEqual(typeof en.settings[k], 'string', `Missing EN settings key: ${k}`);
   }
 });
+
+test('PWA / Service Worker: sw.js handles notificationclick event to focus window', () => {
+  const sw = fs.readFileSync(path.join(process.cwd(), 'public/sw.js'), 'utf8');
+  assert.strictEqual(sw.includes("addEventListener('notificationclick'"), true, 'sw.js must contain notificationclick listener');
+  assert.strictEqual(sw.includes("event.notification.close()"), true, 'sw.js must close notification on click');
+  assert.strictEqual(sw.includes("client.focus()"), true, 'sw.js must focus client window on click');
+});
+
+test('UI Logic: Permission request is strictly bound to user click without automatic popups', () => {
+  const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+
+  // Verify requestSystemNotificationPermission is only called in onClick handlers
+  const requestMatches = [...appSrc.matchAll(/requestSystemNotificationPermission\(\)/g)];
+  assert.strictEqual(requestMatches.length >= 1, true, 'Should call requestSystemNotificationPermission');
+
+  // Ensure no useEffect invokes requestSystemNotificationPermission
+  const useEffectWithRequest = /useEffect\([^)]*requestSystemNotificationPermission/;
+  assert.strictEqual(useEffectWithRequest.test(appSrc), false, 'Must not call requestSystemNotificationPermission inside useEffect');
+
+  // Verify showSystemNotification is called on test alert when granted
+  assert.strictEqual(appSrc.includes("if (systemPermission === 'granted') {\n                              showSystemNotification({"), true, 'Test alert must trigger showSystemNotification when granted');
+});
+
+test('UI Logic: Edge quiet prompt and pre-prompt states handling', () => {
+  const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+
+  // 1. Pre-prompt encart with "Activer" and "Plus tard" buttons
+  assert.strictEqual(appSrc.includes('options-preprompt-box'), true, 'Pre-prompt box must exist in App.tsx');
+  assert.strictEqual(appSrc.includes('t.settings.browserNotifPreprompt'), true, 'Pre-prompt text must be referenced');
+  assert.strictEqual(appSrc.includes('t.settings.browserNotifLater'), true, 'Plus tard button must be referenced');
+
+  // 2. Edge quiet prompt help box triggered when permissionAttempted and systemPermission === default
+  assert.strictEqual(appSrc.includes('options-edge-box'), true, 'Edge box must exist in App.tsx');
+  assert.strictEqual(appSrc.includes('t.settings.browserNotifEdgeHelp'), true, 'Edge help text must be referenced');
+  assert.strictEqual(appSrc.includes('t.settings.browserNotifEdgePath'), true, 'Edge settings path must be referenced');
+  assert.strictEqual(appSrc.includes('t.settings.browserNotifRetry'), true, 'Edge retry button must be referenced');
+
+  // 3. Dynamic sync on focus, visibility change, and permissions query
+  assert.strictEqual(appSrc.includes("window.addEventListener('focus'"), true, 'Must sync permission on focus');
+  assert.strictEqual(appSrc.includes("document.addEventListener('visibilitychange'"), true, 'Must sync permission on visibility change');
+  assert.strictEqual(appSrc.includes("navigator.permissions.query({ name: 'notifications'"), true, 'Must listen to permissions query changes');
+  assert.strictEqual(appSrc.includes("if (showOptionsModal)"), true, 'Must sync permission on showOptionsModal');
+
+  // 4. Test button feedback for all 4 states
+  assert.strictEqual(appSrc.includes('testAlertSuccess'), true, 'Must handle granted test feedback');
+  assert.strictEqual(appSrc.includes('testAlertEdgeQuiet'), true, 'Must handle Edge quiet prompt test feedback');
+  assert.strictEqual(appSrc.includes('testAlertUnconfigured'), true, 'Must handle unconfigured test feedback');
+  assert.strictEqual(appSrc.includes('testAlertDenied'), true, 'Must handle denied test feedback');
+  assert.strictEqual(appSrc.includes('testAlertUnsupported'), true, 'Must handle unsupported test feedback');
+});
+
+

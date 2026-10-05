@@ -37,6 +37,15 @@ import {
   isSystemNotificationSupported,
   getSystemNotificationPermission
 } from './utils/NotificationManager';
+import {
+  isAndroidDevice,
+  isPushSupported,
+  subscribeToWebPush,
+  sendTestWebPush,
+  fetchPushBackendStatus,
+  type PushBackendStatus
+} from './utils/PushNotificationManager';
+import { reorderChatTabs, sanitizeOpenChatIds } from './utils/TabUtils';
 
 axios.defaults.withCredentials = true;
 
@@ -434,6 +443,11 @@ const App: React.FC = () => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
 
+  // --- ÉTAT DU GLISSER-DÉPOSER DES ONGLETS DE DISCUSSION ---
+  const [draggedTabId, setDraggedTabId] = useState<number | null>(null);
+  const [dragOverTabId, setDragOverTabId] = useState<number | null>(null);
+  const [dropPosition, setDropPosition] = useState<'left' | 'right' | null>(null);
+
   // --- SUPPORT PWA (INSTALLATION) ---
   const [canInstallPWA, setCanInstallPWA] = useState(false);
   useEffect(() => {
@@ -508,6 +522,103 @@ const App: React.FC = () => {
   const [systemPermission, setSystemPermission] = useState<NotificationPermission | 'unsupported'>(() => {
     return getSystemNotificationPermission();
   });
+  const [permissionAttempted, setPermissionAttempted] = useState<boolean>(false);
+  const [prepromptDismissed, setPrepromptDismissed] = useState<boolean>(false);
+  const [testAlertFeedback, setTestAlertFeedback] = useState<string | null>(null);
+  const [pushStatus, setPushStatus] = useState<PushBackendStatus | null>(null);
+  const [pushTestFeedback, setPushTestFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    const updatePerm = () => {
+      const current = getSystemNotificationPermission();
+      setSystemPermission(current);
+      if (current === 'granted') {
+        setPrepromptDismissed(true);
+      }
+    };
+
+    window.addEventListener('focus', updatePerm);
+    document.addEventListener('visibilitychange', updatePerm);
+
+    if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'notifications' as PermissionName })
+        .then(status => {
+          status.onchange = () => {
+            updatePerm();
+          };
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener('focus', updatePerm);
+      document.removeEventListener('visibilitychange', updatePerm);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (showOptionsModal) {
+      const current = getSystemNotificationPermission();
+      setSystemPermission(current);
+      if (current === 'granted') {
+        setPrepromptDismissed(true);
+      }
+      setTestAlertFeedback(null);
+      setPushTestFeedback(null);
+      if (isPushSupported()) {
+        fetchPushBackendStatus().then(status => setPushStatus(status)).catch(() => {});
+      }
+    }
+  }, [showOptionsModal]);
+
+  // Synchronisation Push / Service Worker lorsque l'utilisateur est connecté et que les notifications sont accordées
+  useEffect(() => {
+    if (!user) return;
+    if (isPushSupported()) {
+      fetchPushBackendStatus().then(status => {
+        setPushStatus(status);
+        if (status.hasVapid && getSystemNotificationPermission() === 'granted') {
+          subscribeToWebPush().catch(err => {
+            console.warn('[App] Push auto-subscribe:', err);
+          });
+        }
+      }).catch(() => {});
+    }
+  }, [user, systemPermission]);
+
+  // Écoute des clics sur notification transmis par le Service Worker (PWA / Web Push)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OPEN_CHAT' && event.data?.senderId) {
+        const sId = Number(event.data.senderId);
+        if (sId) {
+          setOpenChatIds(prev => prev.includes(sId) ? prev : [...prev, sId]);
+          setActiveChatId(sId);
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    };
+  }, []);
+
+  // Détection du paramètre URL ?chat=ID (démarrage à froid via clic sur notification)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const chatParam = params.get('chat');
+      if (chatParam) {
+        const cId = parseInt(chatParam, 10);
+        if (cId && !isNaN(cId)) {
+          setOpenChatIds(prev => prev.includes(cId) ? prev : [...prev, cId]);
+          setActiveChatId(cId);
+        }
+      }
+    } catch {}
+  }, []);
 
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -1115,6 +1226,32 @@ const App: React.FC = () => {
   }, [activeChatId]);
 
   /**
+   * ASSAINISSEMENT DES ONGLETS OUVERTS LORS DE LA RESTAURATION
+   * Si des contacts enregistrés dans localStorage n'existent plus lors du rechargement,
+   * ils sont filtrés proprement sans altérer l'ordre des onglets valides.
+   */
+  useEffect(() => {
+    if (contacts && contacts.length > 0) {
+      setOpenChatIds(prev => {
+        const contactIds = contacts.map(c => c.id);
+        const sanitized = sanitizeOpenChatIds(prev, contactIds, SYSTEM_BOT_ID);
+        if (sanitized.length !== prev.length) {
+          return sanitized;
+        }
+        return prev;
+      });
+    }
+  }, [contacts]);
+
+  useEffect(() => {
+    if (activeChatId !== 0 && activeChatId !== SYSTEM_BOT_ID && contacts && contacts.length > 0) {
+      if (!contacts.some(c => c.id === activeChatId)) {
+        setActiveChatId(openChatIds.length > 0 ? openChatIds[0] : 0);
+      }
+    }
+  }, [contacts, activeChatId, openChatIds]);
+
+  /**
    * ENREGISTREMENT ET DÉCHIFFREMENT ASYNCHRONE DES ÉMOTICÔNES PERSONNALISÉES REÇUES
    */
   const registerReceivedCustomEmoticons = useCallback(async (
@@ -1539,17 +1676,22 @@ const App: React.FC = () => {
           }
         }
 
+        // MULTI-SESSION : si le message vient d'une autre session du compte courant (isSender),
+        // la conversation concernée est celle du destinataire, pas la nôtre.
+        const receiverId = data.receiverId ?? data.receiver_id;
+        const conversationContactId: number = isSender ? receiverId : senderId;
+
         // Résolution précise du nom réel de l'expéditeur (Carnet de contacts > Payload E2EE > Socket Server)
-        const contactFromList = contactsRef.current.find(c => c.id === senderId);
+        const contactFromList = contactsRef.current.find(c => c.id === conversationContactId);
         const contactResolvedName = contactFromList ? (contactFromList.nickname || contactFromList.username) : null;
         const finalSenderName = isSender
           ? (myNickname || user?.nickname || user?.username || 'Moi')
           : (contactResolvedName || payloadSender || decryptedData.sender || data.sender || data.sender_name || 'Contact');
 
         // Mise à jour de l'interface
-        setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
-        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-          setActiveChatId(prev => prev === 0 ? senderId : prev);
+        setOpenChatIds(prev => prev.includes(conversationContactId) ? prev : [...prev, conversationContactId]);
+        if (!isSender && typeof window !== 'undefined' && window.innerWidth <= 768) {
+          setActiveChatId(prev => prev === 0 ? conversationContactId : prev);
         }
 
         const formattedTime = formatMessageTime(decryptedData.timestamp, decryptedData.time);
@@ -1558,8 +1700,8 @@ const App: React.FC = () => {
           id: decryptedData.id,
           sender_id: senderId,
           senderId: senderId,
-          receiver_id: user?.id,
-          receiverId: user?.id,
+          receiver_id: isSender ? receiverId : user?.id,
+          receiverId: isSender ? receiverId : user?.id,
           sender: finalSenderName,
           time: formattedTime,
           timestamp: decryptedData.timestamp || new Date().toISOString(),
@@ -1567,20 +1709,24 @@ const App: React.FC = () => {
         };
 
         setMessages(prev => {
-          const currentMsgs = prev[senderId] || [];
+          const currentMsgs = prev[conversationContactId] || [];
           if (finalMsg.id && currentMsgs.some(m => m.id === finalMsg.id)) {
             return prev;
           }
           return {
             ...prev,
-            [senderId]: [...currentMsgs, finalMsg]
+            [conversationContactId]: [...currentMsgs, finalMsg]
           };
         });
 
         // Sauvegarde locale dans IndexedDB (Chiffré)
         if (myKeysRef.current) {
-          LocalDB.saveMessage(`${user?.id}_${senderId}`, finalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
+          LocalDB.saveMessage(`${user?.id}_${conversationContactId}`, finalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
         }
+
+        // Message envoyé depuis une autre de nos sessions : synchronisation silencieuse
+        // (pas de son, pas de wizz/wink rejoué, pas de notification).
+        if (isSender) return;
 
         // Déclenchement des actions spéciales si chiffré
         if (decryptedData.type === 'wink' && decryptedData.winkId) {
@@ -3041,6 +3187,70 @@ const App: React.FC = () => {
   };
 
   /**
+   * GLISSER-DÉPOSER DES ONGLETS DE DISCUSSION (DnD natif HTML5)
+   */
+  const handleTabDragStart = (e: React.DragEvent<HTMLDivElement>, id: number) => {
+    // Si l'utilisateur clique sur le bouton de fermeture ou un sous-élément d'action, ignorer le drag
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest('.chat-tab-close')) {
+      e.preventDefault();
+      return;
+    }
+    setDraggedTabId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(id));
+  };
+
+  const handleTabDragOver = (e: React.DragEvent<HTMLDivElement>, targetId: number) => {
+    e.preventDefault();
+    if (draggedTabId === null || draggedTabId === targetId) {
+      if (dragOverTabId !== null) setDragOverTabId(null);
+      if (dropPosition !== null) setDropPosition(null);
+      return;
+    }
+
+    e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX;
+    const midX = rect.left + rect.width / 2;
+    const pos: 'left' | 'right' = mouseX < midX ? 'left' : 'right';
+
+    if (dragOverTabId !== targetId || dropPosition !== pos) {
+      setDragOverTabId(targetId);
+      setDropPosition(pos);
+    }
+  };
+
+  const handleTabDragLeave = (e: React.DragEvent<HTMLDivElement>, id: number) => {
+    // Empêcher le clignotement lorsque la souris survole un élément enfant de l'onglet
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    if (relatedTarget && e.currentTarget.contains(relatedTarget)) {
+      return;
+    }
+    if (dragOverTabId === id) {
+      setDragOverTabId(null);
+      setDropPosition(null);
+    }
+  };
+
+  const handleTabDrop = (e: React.DragEvent<HTMLDivElement>, targetId: number) => {
+    e.preventDefault();
+    if (draggedTabId !== null && draggedTabId !== targetId && dropPosition !== null) {
+      const updated = reorderChatTabs(openChatIds, draggedTabId, targetId, dropPosition);
+      setOpenChatIds(updated);
+    }
+    setDraggedTabId(null);
+    setDragOverTabId(null);
+    setDropPosition(null);
+  };
+
+  const handleTabDragEnd = () => {
+    setDraggedTabId(null);
+    setDragOverTabId(null);
+    setDropPosition(null);
+  };
+
+  /**
    * GESTION DES CONTACTS (Blocage, Suppression)
    */
   const handleBlockContact = async (contactId: number, block: boolean) => {
@@ -3543,16 +3753,32 @@ const App: React.FC = () => {
               <div className="mobile-back-btn" onClick={() => setActiveChatId(0)}>◀</div>
               {openChatIds.map(id => {
                 const contact = id === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === id);
+                const isDragging = draggedTabId === id;
+                const isDragOver = dragOverTabId === id;
+                const dropClass = isDragOver && dropPosition ? (dropPosition === 'left' ? 'drop-target-left' : 'drop-target-right') : '';
                 return (
                   <div 
                     key={id} 
-                    className={`chat-tab status-${contact?.status || 'online'} ${activeChatId === id ? 'active' : ''}`} 
+                    draggable={true}
+                    onDragStart={(e) => handleTabDragStart(e, id)}
+                    onDragOver={(e) => handleTabDragOver(e, id)}
+                    onDragLeave={(e) => handleTabDragLeave(e, id)}
+                    onDrop={(e) => handleTabDrop(e, id)}
+                    onDragEnd={handleTabDragEnd}
+                    className={`chat-tab status-${contact?.status || 'online'} ${activeChatId === id ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${dropClass}`.trim()} 
                     onClick={() => setActiveChatId(id)}
                   >
                     <span className="tab-name">
                       {contact?.isBot ? '🤖 ' : ''}{formatNickname(contact?.nickname || contact?.username || 'Discussion')}{activeGame?.opponentId === id ? ' 🎮' : ''}
                     </span>
-                    <span className="chat-tab-close" onClick={(e) => closeChat(e, id)}>✕</span>
+                    <span 
+                      className="chat-tab-close" 
+                      draggable={false}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => closeChat(e, id)}
+                    >
+                      ✕
+                    </span>
                   </div>
                 );
               })}
@@ -4522,29 +4748,146 @@ const App: React.FC = () => {
 
                     <div className="options-subsection" style={{ marginTop: '16px' }}>
                       <label className="options-label">{t.settings.browserNotifSection}</label>
-                      <div className="options-hint" style={{ marginBottom: '8px' }}>
+                      <div style={{ marginTop: '4px', marginBottom: '6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 600 }}>{t.settings.browserNotifStatusLabel}</span>
+                        <span style={{
+                          fontWeight: 600,
+                          color: systemPermission === 'granted' ? '#1b7d23' : systemPermission === 'denied' ? '#c02717' : '#555'
+                        }}>
+                          {systemPermission === 'granted'
+                            ? t.settings.browserNotifStatusGranted
+                            : systemPermission === 'denied'
+                            ? t.settings.browserNotifStatusDenied
+                            : systemPermission === 'unsupported'
+                            ? t.settings.browserNotifStatusUnsupported
+                            : t.settings.browserNotifStatusDefault}
+                        </span>
+                      </div>
+
+                      <div className="options-hint" style={{ marginBottom: '10px' }}>
                         {systemPermission === 'granted'
                           ? t.settings.browserNotifGranted
                           : systemPermission === 'denied'
                           ? t.settings.browserNotifDenied
+                          : systemPermission === 'unsupported'
+                          ? t.settings.browserNotifUnsupported
                           : t.settings.browserNotifDefault}
                       </div>
 
-                      {systemPermission !== 'granted' && isSystemNotificationSupported() && (
-                        <button 
-                          type="button" 
-                          className="win-btn" 
-                          onClick={async () => {
-                            const p = await requestSystemNotificationPermission();
-                            setSystemPermission(p);
-                          }}
-                          style={{ marginBottom: '12px' }}
-                        >
-                          {t.settings.browserNotifPrompt}
-                        </button>
+                      {systemPermission === 'denied' && (
+                        <div style={{ marginTop: '-4px', marginBottom: '10px', fontSize: '10px', color: '#888', fontStyle: 'italic' }}>
+                          {t.settings.browserNotifEdgePath}
+                        </div>
                       )}
 
-                      <div style={{ marginTop: '10px' }}>
+                      {systemPermission === 'default' && isSystemNotificationSupported() && !prepromptDismissed && (
+                        <div className="options-preprompt-box" style={{
+                          marginTop: '4px',
+                          marginBottom: '12px',
+                          padding: '8px 10px',
+                          background: 'linear-gradient(to bottom, #f0f7ff 0%, #e3f0fc 100%)',
+                          border: '1px solid #b8d6f3',
+                          borderRadius: '3px'
+                        }}>
+                          <div style={{ fontSize: '11px', color: '#1a3b5c', marginBottom: '8px', lineHeight: '1.4' }}>
+                            {t.settings.browserNotifPreprompt}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button 
+                              type="button" 
+                              className="win-btn" 
+                              onClick={async () => {
+                                setPermissionAttempted(true);
+                                const p = await requestSystemNotificationPermission();
+                                setSystemPermission(p);
+                                if (p === 'granted') {
+                                  setPrepromptDismissed(true);
+                                  if (isPushSupported()) {
+                                    subscribeToWebPush().catch(() => {});
+                                  }
+                                }
+                              }}
+                              style={{ fontWeight: 600 }}
+                            >
+                              {t.settings.browserNotifPrompt}
+                            </button>
+                            <button 
+                              type="button" 
+                              className="win-btn" 
+                              onClick={() => setPrepromptDismissed(true)}
+                            >
+                              {t.settings.browserNotifLater}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {systemPermission === 'default' && isSystemNotificationSupported() && prepromptDismissed && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <button 
+                            type="button" 
+                            className="win-btn" 
+                            onClick={async () => {
+                              setPermissionAttempted(true);
+                              const p = await requestSystemNotificationPermission();
+                              setSystemPermission(p);
+                              if (p === 'granted') {
+                                setPrepromptDismissed(true);
+                                if (isPushSupported()) {
+                                  subscribeToWebPush().catch(() => {});
+                                }
+                              }
+                            }}
+                          >
+                            {t.settings.browserNotifPrompt}
+                          </button>
+                        </div>
+                      )}
+
+                      {systemPermission === 'default' && permissionAttempted && isSystemNotificationSupported() && (
+                        <div className="options-edge-box" style={{
+                          marginTop: '4px',
+                          marginBottom: '12px',
+                          padding: '8px 10px',
+                          background: '#fffde7',
+                          border: '1px solid #e0c875',
+                          borderRadius: '3px',
+                          fontSize: '11px',
+                          color: '#443c1b',
+                          lineHeight: '1.4'
+                        }}>
+                          <div style={{ fontWeight: 600, marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <span>🔔</span>
+                            <span>{t.settings.browserNotifEdgeTitle}</span>
+                          </div>
+                          <div>{t.settings.browserNotifEdgeHelp}</div>
+                          <div style={{ marginTop: '5px', fontSize: '10px', color: '#6d5a1b', fontStyle: 'italic' }}>
+                            {t.settings.browserNotifEdgePath}
+                          </div>
+                          <div style={{ marginTop: '8px' }}>
+                            <button 
+                              type="button" 
+                              className="win-btn" 
+                              onClick={async () => {
+                                setPermissionAttempted(true);
+                                const p = await requestSystemNotificationPermission();
+                                setSystemPermission(p);
+                                if (p === 'granted') {
+                                  setPrepromptDismissed(true);
+                                  if (isPushSupported()) {
+                                    subscribeToWebPush().catch(() => {});
+                                  }
+                                }
+                              }}
+                              style={{ fontSize: '11px', padding: '2px 8px' }}
+                            >
+                              {t.settings.browserNotifRetry}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ marginTop: '6px' }}>
                         <button 
                           type="button" 
                           className="win-btn" 
@@ -4556,11 +4899,110 @@ const App: React.FC = () => {
                               text: t.settings.testAlertText,
                               actionText: t.settings.toastAction
                             });
+                            if (systemPermission === 'granted') {
+                              showSystemNotification({
+                                title: 'OpenWLM',
+                                body: t.settings.testAlertText,
+                                icon: '/assets/openwlm_logo.png',
+                                tag: 'openwlm-test-alert'
+                              });
+                              setTestAlertFeedback('success');
+                            } else if (systemPermission === 'default') {
+                              setTestAlertFeedback(permissionAttempted ? 'edge_quiet' : 'unconfigured');
+                            } else if (systemPermission === 'denied') {
+                              setTestAlertFeedback('denied');
+                            } else if (systemPermission === 'unsupported') {
+                              setTestAlertFeedback('unsupported');
+                            }
                           }}
                         >
                           {t.settings.testAlertBtn}
                         </button>
+
+                        {testAlertFeedback === 'success' && (
+                          <div className="options-hint" style={{ marginTop: '6px', color: '#1b7d23', fontWeight: 600 }}>
+                            ✓ {t.settings.testAlertSuccess}
+                          </div>
+                        )}
+                        {testAlertFeedback === 'edge_quiet' && (
+                          <div className="options-hint" style={{ marginTop: '6px', color: '#8a6d10', fontWeight: 600 }}>
+                            ℹ {t.settings.testAlertEdgeQuiet}
+                          </div>
+                        )}
+                        {testAlertFeedback === 'unconfigured' && (
+                          <div className="options-hint" style={{ marginTop: '6px', color: '#8a6d10', fontWeight: 600 }}>
+                            ℹ {t.settings.testAlertUnconfigured}
+                          </div>
+                        )}
+                        {testAlertFeedback === 'denied' && (
+                          <div className="options-hint" style={{ marginTop: '6px', color: '#c02717', fontWeight: 600 }}>
+                            ⚠ {t.settings.testAlertDenied}
+                          </div>
+                        )}
+                        {testAlertFeedback === 'unsupported' && (
+                          <div className="options-hint" style={{ marginTop: '6px', color: '#666', fontWeight: 600 }}>
+                            ℹ {t.settings.testAlertUnsupported}
+                          </div>
+                        )}
                       </div>
+                    </div>
+
+                    <div className="options-subsection" style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #d0d0d0' }}>
+                      <label className="options-label">
+                        {t.settings.androidSectionTitle} {isAndroidDevice() && <span style={{ color: '#0078d7', fontWeight: 'normal', fontSize: '11px' }}>• (Cet appareil)</span>}
+                      </label>
+                      <div className="options-hint" style={{ marginTop: '4px', lineHeight: '1.4' }}>
+                        {t.settings.androidBgDesc}
+                      </div>
+
+                      <div style={{ marginTop: '8px', padding: '6px 8px', background: '#f5f5f5', borderRadius: '3px', fontSize: '11px' }}>
+                        <div style={{ color: '#2b579a', fontWeight: 600 }}>• {t.settings.androidForegroundHint}</div>
+                        <div style={{ color: '#555', marginTop: '4px' }}>• {t.settings.androidBackgroundHint}</div>
+                      </div>
+
+                      <div style={{ marginTop: '8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 600 }}>{t.settings.webPushStatusLabel}</span>
+                        <span style={{
+                          color: isPushSupported() ? (pushStatus?.hasVapid ? '#1b7d23' : '#c87800') : '#666',
+                          fontWeight: 600
+                        }}>
+                          {isPushSupported()
+                            ? (pushStatus?.hasVapid ? (t.settings.webPushConfigured || 'Actif (clés VAPID configurées)') : t.settings.webPushReady)
+                            : t.settings.browserNotifStatusUnsupported}
+                        </span>
+                      </div>
+
+                      {isPushSupported() && systemPermission === 'granted' && (
+                        <div style={{ marginTop: '10px' }}>
+                          <button 
+                            type="button" 
+                            className="win-btn" 
+                            style={{ fontSize: '11px', padding: '3px 10px' }}
+                            onClick={async () => {
+                              setPushTestFeedback(null);
+                              await subscribeToWebPush().catch(() => {});
+                              const res = await sendTestWebPush();
+                              if (res.success) {
+                                setPushTestFeedback(t.settings.pushTestSuccess || 'Notification Push de test envoyée avec succès !');
+                              } else {
+                                setPushTestFeedback((t.settings.pushTestError || 'Échec du test push') + (res.error ? ` : ${res.error}` : ''));
+                              }
+                            }}
+                          >
+                            🔔 {t.settings.pushTestButton || 'Tester la notification Push'}
+                          </button>
+                          {pushTestFeedback && (
+                            <div style={{
+                              marginTop: '6px',
+                              fontSize: '11px',
+                              fontWeight: 500,
+                              color: pushTestFeedback.includes('succès') || pushTestFeedback.includes('success') ? '#1b7d23' : '#c02717'
+                            }}>
+                              {pushTestFeedback}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

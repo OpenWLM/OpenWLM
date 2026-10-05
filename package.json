@@ -13,8 +13,11 @@
     "electron": "electron .",
     "start": "npm run build && concurrently \"node server/index.js\" \"wait-on http://localhost:3001 && npm run electron\"",
     "db:seed": "node scripts/seed-demo.js",
+    "check:secrets": "node scripts/check_secrets.js",
+    "vapid:generate": "node scripts/generate_vapid_keys.js",
     "test:security": "node tests/audit_security_enforcement.js",
-    "test": "npm run test:security"
+    "test:unit": "node --test tests/*.js",
+    "test": "npm run check:secrets && npm run test:security && npm run test:unit"
   },
   "dependencies": {
     "axios": "^1.17.0",
@@ -29,7 +32,8 @@
     "react-dom": "^19.2.6",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
-    "sqlite3": "^6.0.1"
+    "sqlite3": "^6.0.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

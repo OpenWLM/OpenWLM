@@ -334,6 +334,48 @@ body, html {
   box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
 }
 
+/* --- GLISSER-DÉPOSER DES ONGLETS DE DISCUSSION --- */
+.chat-tab[draggable="true"] {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chat-tab.dragging {
+  opacity: 0.45;
+  background: #d8eaf7 !important;
+  border: 1px dashed #0078d7 !important;
+  border-bottom: none !important;
+  cursor: grabbing !important;
+  box-shadow: 0 2px 8px rgba(0, 120, 215, 0.2);
+}
+
+.chat-tab.drop-target-left::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #0078d7;
+  border-radius: 2px;
+  z-index: 10;
+  box-shadow: 0 0 5px rgba(0, 120, 215, 0.8);
+}
+
+.chat-tab.drop-target-right::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #0078d7;
+  border-radius: 2px;
+  z-index: 10;
+  box-shadow: 0 0 5px rgba(0, 120, 215, 0.8);
+}
+
 .chat-top-actions {
   display: flex; gap: 15px; padding: 6px 20px; font-size: 11.5px; color: white;
   background: linear-gradient(to bottom, #74c2e6, #0099d6); border-bottom: 1px solid #0078d7;

@@ -109,7 +109,14 @@ This initializes two fictitious accounts with zero personal data:
 
 > *Note: If you do not run `npm run db:seed`, the server automatically creates a fresh, empty database on first launch.*
 
-### 3. Run the application
+### 3. Web Push & VAPID Provisioning (Recommended for PWA & Android)
+To enable reliable background notifications without committing secrets:
+```bash
+node scripts/generate_vapid_keys.js
+```
+See the complete documentation: [docs/VAPID_SETUP.md](docs/VAPID_SETUP.md).
+
+### 4. Run the application
 
 #### Development Mode (Vite frontend with hot-reload + Backend):
 ```bash

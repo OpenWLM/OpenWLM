@@ -71,12 +71,21 @@ export function getSystemNotificationPermission(): NotificationPermission | 'uns
 
 /**
  * Demande la permission pour les notifications système au navigateur
+ * Supporte à la fois les implémentations modernes (Promise) et héritées (callback)
  */
 export async function requestSystemNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
   if (!isSystemNotificationSupported()) return 'unsupported';
   try {
-    const res = await Notification.requestPermission();
-    return res;
+    let result: NotificationPermission;
+    const req = Notification.requestPermission();
+    if (req && typeof (req as any).then === 'function') {
+      result = await req;
+    } else {
+      result = await new Promise<NotificationPermission>((resolve) => {
+        Notification.requestPermission((p) => resolve(p));
+      });
+    }
+    return result;
   } catch (err) {
     console.warn('[NotificationManager] Erreur lors de la demande de permission:', err);
     return Notification.permission;
@@ -84,24 +93,49 @@ export async function requestSystemNotificationPermission(): Promise<Notificatio
 }
 
 /**
- * Déclenche une notification système standard (HTML5 Web Notification)
+ * Déclenche une notification système standard (HTML5 Web Notification ou ServiceWorkerRegistration)
+ * Indispensable pour la compatibilité PWA Chromium / Windows ("Illegal constructor" évité via ServiceWorkerRegistration)
  */
-export function showSystemNotification(params: {
+export async function showSystemNotification(params: {
   title: string;
   body: string;
   icon?: string;
   tag?: string;
+  data?: any;
   onClick?: () => void;
-}): Notification | null {
-  if (!isSystemNotificationSupported()) return null;
-  if (Notification.permission !== 'granted') return null;
+}): Promise<boolean> {
+  if (!isSystemNotificationSupported()) return false;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
 
+  const defaultIcon = '/assets/openwlm_logo.png';
+  const defaultTag = 'openwlm-message';
+
+  // 1. Tenter d'utiliser ServiceWorkerRegistration si disponible (mode PWA / Chromium desktop)
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && 'showNotification' in reg) {
+        await reg.showNotification(params.title, {
+          body: params.body,
+          icon: params.icon || defaultIcon,
+          badge: defaultIcon,
+          tag: params.tag || defaultTag,
+          data: { url: '/', ...(params.data || {}) }
+        });
+        return true;
+      }
+    } catch (swErr) {
+      console.warn('[NotificationManager] ServiceWorker showNotification a échoué, repli sur Notification():', swErr);
+    }
+  }
+
+  // 2. Repli standard via new Notification() (navigateurs classiques / contextes sans SW actif)
   try {
     const notif = new Notification(params.title, {
       body: params.body,
-      icon: params.icon || '/assets/openwlm_logo.png',
-      badge: '/assets/openwlm_logo.png',
-      tag: params.tag || 'openwlm-message'
+      icon: params.icon || defaultIcon,
+      badge: defaultIcon,
+      tag: params.tag || defaultTag
     });
 
     if (params.onClick) {
@@ -114,9 +148,9 @@ export function showSystemNotification(params: {
       };
     }
 
-    return notif;
+    return true;
   } catch (e) {
     console.warn('[NotificationManager] Échec affichage notification système:', e);
-    return null;
+    return false;
   }
 }

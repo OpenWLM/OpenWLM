@@ -9,6 +9,43 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.4.0] - 2026-10-05
+
+### 🔔 Notifications & PWA Web Push (Desktop & Mobile)
+- **End-to-End VAPID Web Push Configuration (RFC 8291 / RFC 8292)**:
+  - Standardized configuration parameters: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`.
+  - Integrated `web-push` library with RFC 8291 payload encryption (`aes128gcm`) and RFC 8292 VAPID JWT signatures (`ES256`).
+  - Strict startup validation: environment priority with automatic fallback to secure local file `.vapid_keys.json` (chmod `0600`, excluded from git); cleanly disables push without crashing if keys are missing.
+  - Zero private key exposure: `VAPID_PRIVATE_KEY` is never exposed in API payloads, responses, or client bundles.
+  - Health check endpoint `GET /api/push/status` clearly reports `available`, `hasVapid`, and `publicKey`.
+  - Authenticated test route `POST /api/push/test` allows immediate test push dispatch to registered devices.
+  - Automatic pruning of expired or unregistered subscriptions (`HTTP 404 / 410 Gone`) in SQLite `push_subscriptions`.
+  - Added key generation utility `scripts/generate_vapid_keys.js` with safeguards against unintended key overwrites.
+- **Android PWA & Background Support**:
+  - Full background notification delivery via Service Worker (`push` and `notificationclick`).
+  - Automatic chat window navigation and focus (`OPEN_CHAT`) on notification click.
+  - Added compliant PWA maskable icons (`pwa-maskable-192x192.png` and `pwa-maskable-512x512.png`) with `#d5e9f8` solid background and 80% safe zone to eliminate white borders on Android.
+- **Desktop Notifications & Retro WLM In-App Toasts**:
+  - Smart arbitration: retro Aero in-app toast when active in foreground on PC, native OS notification when in background, zero notifications for own messages or actively focused conversations.
+  - Guided permission activation workflow for Microsoft Edge and Windows PWAs handling quiet notification requests.
+
+### 🔄 Real-Time Multi-Session Sync
+- **Messages delivered to every active session of an account**:
+  - Server-side multi-socket tracking (`userId → Set<socketId>`) replacing the former single-socket mapping, which overwrote the previous session on each new connection.
+  - Per-user Socket.IO rooms (`user:<id>`) joined on handshake authentication and on `identify`.
+  - New messages are delivered to **all** recipient sessions and to the sender's **other** sessions (no duplicate on the originating session).
+  - Nudges, winks, private mode, WebRTC calls, games and status updates migrated to user rooms.
+  - Offline status is only broadcast when the account's **last** session closes.
+  - Client-side, messages synced from one of your own other sessions are filed under the correct conversation (the recipient's), with no sound, no notification and no replayed nudge/wink. E2EE unchanged (`keySender` already present).
+  - Integration test `tests/test_multi_session_sync.js` (real server on an isolated database, 2 sessions × 2 accounts).
+
+### 🗂️ Conversation Tabs
+- **Drag-and-drop tab reordering**: horizontal dragging with a clear insertion indicator, order committed on drop, without affecting opening, closing, the active tab or new-message indicators (`src/utils/TabUtils.ts`, `tests/test_tabs_drag_and_drop.js`).
+
+### 🔐 Secrets Provisioning
+- Provisioning script `scripts/provision_vapid.sh` and documented `.env.example`; real keys are never written to a Git-tracked file.
+- Secret scanner `scripts/check_secrets.js` (run by `npm test`) and an installable Git pre-commit hook via `scripts/install_git_hooks.sh`.
+
 ## [1.3.0] - 2026-10-03
 
 ### 🔒 Security & Client Persistence

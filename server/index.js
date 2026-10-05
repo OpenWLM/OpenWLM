@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import multer from 'multer';
+import webpush from 'web-push';
 
 /**
  * CONFIGURATION ET INITIALISATION
@@ -129,6 +130,87 @@ const getJwtSecret = () => {
 };
 
 const SECRET = getJwtSecret();
+
+/**
+ * ARCHITECTURE WEB PUSH (RFC 8291 / RFC 8292) :
+ * 1. Priorité aux variables d'environnement :
+ *    - VAPID_PUBLIC_KEY
+ *    - VAPID_PRIVATE_KEY
+ *    - VAPID_SUBJECT (défaut : 'mailto:admin@openwlm.dev')
+ * 2. Repli sur le fichier local sécurisé .vapid_keys.json (chmod 0600, exclu de git)
+ * 3. Validation stricte :
+ *    - Si les clés sont absentes ou invalides : Web Push est désactivé proprement sans bloquer le serveur.
+ *    - Si les clés sont valides : initialisation de webpush.setVapidDetails(...)
+ */
+const initVapid = () => {
+  let publicKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim() : null;
+  let privateKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim() : null;
+  let subject = process.env.VAPID_SUBJECT ? process.env.VAPID_SUBJECT.trim() : null;
+
+  // Repli sur .vapid_keys.json si non fourni dans l'environnement
+  if (!publicKey || !privateKey) {
+    const keysPath = path.join(__dirname, '../.vapid_keys.json');
+    if (fs.existsSync(keysPath)) {
+      try {
+        const fileContent = fs.readFileSync(keysPath, 'utf8');
+        const parsed = JSON.parse(fileContent);
+        if (parsed.publicKey && parsed.privateKey) {
+          publicKey = String(parsed.publicKey).trim();
+          privateKey = String(parsed.privateKey).trim();
+          if (parsed.subject && !subject) {
+            subject = String(parsed.subject).trim();
+          }
+        }
+      } catch (err) {
+        console.warn('[WebPush] Impossible de lire .vapid_keys.json:', err.message);
+      }
+    }
+  }
+
+  // Repli sur .env si présent
+  if (!publicKey || !privateKey) {
+    const envPath = path.join(__dirname, '../.env');
+    if (fs.existsSync(envPath)) {
+      try {
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        const pubMatch = envContent.match(/^VAPID_PUBLIC_KEY=["']?([^"'\r\n]+)["']?/m);
+        const privMatch = envContent.match(/^VAPID_PRIVATE_KEY=["']?([^"'\r\n]+)["']?/m);
+        const subMatch = envContent.match(/^VAPID_SUBJECT=["']?([^"'\r\n]+)["']?/m);
+        if (pubMatch && !publicKey) publicKey = pubMatch[1].trim();
+        if (privMatch && !privateKey) privateKey = privMatch[1].trim();
+        if (subMatch && !subject) subject = subMatch[1].trim();
+      } catch (e) {}
+    }
+  }
+
+  if (!publicKey || !privateKey) {
+    console.log('[WebPush] Clés VAPID non configurées (ou incomplètes). Web Push désactivé.');
+    return null;
+  }
+
+  if (!subject) {
+    subject = 'mailto:admin@openwlm.dev';
+  }
+
+  if (!subject.startsWith('mailto:') && !subject.startsWith('https://')) {
+    subject = `mailto:${subject}`;
+  }
+
+  try {
+    webpush.setVapidDetails(subject, publicKey, privateKey);
+    console.log(`[WebPush] VAPID configuré avec succès (Subject: ${subject}, Public: ${publicKey.slice(0, 10)}...). Web Push actif.`);
+    return {
+      publicKey,
+      privateKey,
+      subject
+    };
+  } catch (err) {
+    console.warn(`[WebPush] Échec initialisation VAPID (${err.message}). Web Push désactivé.`);
+    return null;
+  }
+};
+
+const vapidConfig = initVapid();
 
 // SÉCURITÉ : Indispensable derrière Cloudflare Tunnel pour lire correctement l'en-tête X-Forwarded-Proto
 app.set('trust proxy', 1);
@@ -330,6 +412,19 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_custom_emoticons_owner ON custom_emoticons(owner_id);
+
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT,
+    auth TEXT,
+    user_agent TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
 `);
 
 /**
@@ -419,25 +514,64 @@ const toPrivateUserDTO = (user) => {
 };
 
 /**
+ * GESTION MULTI-SESSIONS ET ROOMS SOCKET.IO
+ */
+const getUserRoom = (userId) => `user:${userId}`;
+
+const userSockets = new Map();     // userId (number) -> Set<socketId>
+const socketToUser = new Map();    // socketId -> userId (number)
+const onlineUsers = new Map();     // Rétrocompatibilité : userId -> socketId (dernier connu)
+
+const isUserOnline = (userId) => {
+  const sockets = userSockets.get(Number(userId));
+  return Boolean(sockets && sockets.size > 0);
+};
+
+const addUserSocket = (userId, socketId) => {
+  const uId = Number(userId);
+  if (!userSockets.has(uId)) {
+    userSockets.set(uId, new Set());
+  }
+  userSockets.get(uId).add(socketId);
+  socketToUser.set(socketId, uId);
+  onlineUsers.set(uId, socketId);
+};
+
+const removeUserSocket = (socketId) => {
+  const uId = socketToUser.get(socketId);
+  if (uId === undefined) return null;
+  socketToUser.delete(socketId);
+
+  const sockets = userSockets.get(uId);
+  if (sockets) {
+    sockets.delete(socketId);
+    if (sockets.size === 0) {
+      userSockets.delete(uId);
+      onlineUsers.delete(uId);
+      return { userId: uId, wasLastSocket: true };
+    } else {
+      const remainingSocket = sockets.values().next().value;
+      onlineUsers.set(uId, remainingSocket);
+    }
+  }
+  return { userId: uId, wasLastSocket: false };
+};
+
+/**
  * Diffuse un événement de changement de statut uniquement aux contacts de l'utilisateur
+ * (et à toutes les sessions actives de l'utilisateur pour synchronisation)
  */
 const broadcastStatusToContacts = (userId, payload) => {
   // 1. Trouver tous les utilisateurs qui ont "userId" dans leur liste de contacts
   const contacts = db.prepare('SELECT user_id FROM contacts WHERE contact_id = ?').all(userId);
   
-  // 2. Pour chaque contact, vérifier s'il est en ligne et lui envoyer l'événement
+  // 2. Diffuser aux contacts via leurs rooms multi-sessions
   contacts.forEach(contact => {
-    const socketId = onlineUsers.get(contact.user_id);
-    if (socketId) {
-      io.to(socketId).emit('user_status_changed', payload);
-    }
+    io.to(getUserRoom(contact.user_id)).emit('user_status_changed', payload);
   });
 
-  // 3. Envoyer aussi à l'utilisateur lui-même (pour synchroniser plusieurs onglets/appareils)
-  const mySocketId = onlineUsers.get(userId);
-  if (mySocketId) {
-     io.to(mySocketId).emit('user_status_changed', payload);
-  }
+  // 3. Envoyer aussi à toutes les sessions de l'utilisateur lui-même (fanout multi-session)
+  io.to(getUserRoom(userId)).emit('user_status_changed', payload);
 };
 
 /**
@@ -901,11 +1035,9 @@ app.post('/api/accept-invite', authenticateToken, (req, res) => {
         db.prepare('UPDATE invitations SET status = ? WHERE id = ?').run('accepted', invitationId);
       })();
 
-      // Notifier via sockets si connectés
-      const senderSocketId = onlineUsers.get(invite.sender_id);
-      const receiverSocketId = onlineUsers.get(invite.receiver_id);
-      if (senderSocketId) io.to(senderSocketId).emit('contact_accepted');
-      if (receiverSocketId) io.to(receiverSocketId).emit('contact_accepted');
+      // Notifier via les rooms multi-sessions
+      io.to(getUserRoom(invite.sender_id)).emit('contact_accepted');
+      io.to(getUserRoom(invite.receiver_id)).emit('contact_accepted');
 
       res.json({ success: true });
     } catch (err) {
@@ -975,15 +1107,12 @@ app.post('/api/contacts/block', authenticateToken, (req, res) => {
   try {
     db.prepare('UPDATE contacts SET blocked = ? WHERE user_id = ? AND contact_id = ?').run(block ? 1 : 0, userId, contactId);
 
-    // Notification de changement de statut
+    // Notification de changement de statut via room multi-sessions
     const blocker = db.prepare('SELECT status FROM users WHERE id = ?').get(userId);
-    const receiverSocketId = onlineUsers.get(contactId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit('user_status_changed', { 
-        userId: userId, 
-        status: block ? 'offline' : blocker.status 
-      });
-    }
+    io.to(getUserRoom(contactId)).emit('user_status_changed', { 
+      userId: userId, 
+      status: block ? 'offline' : (blocker ? blocker.status : 'online') 
+    });
 
     res.json({ success: true });
   } catch (err) {
@@ -1505,11 +1634,157 @@ app.delete('/api/emoticons/custom/:id', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
+/**
+ * --- ARCHITECTURE WEB PUSH (Android / PWA Arrière-plan) ---
+ */
+
+// Statut de l'infrastructure Web Push
+app.get('/api/push/status', (req, res) => {
+  res.json({
+    available: true,
+    hasVapid: Boolean(vapidConfig),
+    publicKey: vapidConfig ? vapidConfig.publicKey : null,
+    subject: vapidConfig ? vapidConfig.subject : null
+  });
+});
+
+// Enregistrement d'un abonnement Push (Client Web / Android PWA)
+app.post('/api/push/subscribe', authenticateToken, (req, res) => {
+  const { subscription } = req.body || {};
+  if (!subscription || !subscription.endpoint) {
+    return res.status(400).json({ error: "Abonnement Push invalide." });
+  }
+
+  const endpoint = String(subscription.endpoint).slice(0, 1000);
+  const p256dh = subscription.keys && subscription.keys.p256dh ? String(subscription.keys.p256dh).slice(0, 255) : null;
+  const auth = subscription.keys && subscription.keys.auth ? String(subscription.keys.auth).slice(0, 255) : null;
+  const userAgent = req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 500) : null;
+  const now = Date.now();
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(endpoint) DO UPDATE SET
+        user_id = excluded.user_id,
+        p256dh = excluded.p256dh,
+        auth = excluded.auth,
+        user_agent = excluded.user_agent,
+        created_at = excluded.created_at
+    `);
+    stmt.run(req.user.id, endpoint, p256dh, auth, userAgent, now);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[WebPush] Erreur enregistrement subscription:', err);
+    res.status(500).json({ error: "Erreur serveur lors de l'enregistrement de l'abonnement." });
+  }
+});
+
+// Désabonnement Push
+app.post('/api/push/unsubscribe', authenticateToken, (req, res) => {
+  const { endpoint } = req.body || {};
+  if (!endpoint) {
+    return res.status(400).json({ error: "Endpoint manquant." });
+  }
+
+  try {
+    db.prepare('DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?').run(req.user.id, String(endpoint));
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[WebPush] Erreur suppression subscription:', err);
+    res.status(500).json({ error: "Erreur serveur lors de la suppression de l'abonnement." });
+  }
+});
+
+// Test d'envoi Web Push pour le compte connecté
+app.post('/api/push/test', authenticateToken, async (req, res) => {
+  if (!vapidConfig) {
+    return res.status(400).json({ success: false, error: "Web Push non configuré sur le serveur (clés VAPID manquantes)." });
+  }
+
+  try {
+    const subs = db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?').all(req.user.id);
+    if (!subs || subs.length === 0) {
+      return res.status(404).json({ success: false, error: "Aucun appareil enregistré en Web Push pour cet utilisateur." });
+    }
+
+    const result = await dispatchPushNotification(req.user.id, {
+      title: 'OpenWLM — Test Push',
+      body: 'La notification Web Push fonctionne correctement sur cet appareil !',
+      icon: '/pwa-maskable-192x192.png',
+      badge: '/assets/openwlm_logo.png',
+      tag: 'openwlm-test',
+      data: { url: '/', test: true }
+    });
+
+    res.json({ success: true, count: subs.length, sent: result.sent, failed: result.failed });
+  } catch (err) {
+    console.error('[WebPush] Erreur endpoint test push:', err);
+    res.status(500).json({ success: false, error: "Erreur serveur lors de l'envoi du push de test." });
+  }
+});
+
+/**
+ * Dispatch Web Push vers le destinataire en arrière-plan (Android / PWA inactive)
+ */
+const dispatchPushNotification = async (receiverId, payload) => {
+  if (!vapidConfig) {
+    return { sent: 0, failed: 0, reason: 'vapid_disabled' };
+  }
+
+  try {
+    const subs = db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?').all(receiverId);
+    if (!subs || subs.length === 0) return { sent: 0, failed: 0 };
+
+    const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    let sent = 0;
+    let failed = 0;
+
+    await Promise.all(subs.map(async (sub) => {
+      try {
+        const pushSubscription = {
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: sub.p256dh,
+            auth: sub.auth
+          }
+        };
+
+        await webpush.sendNotification(pushSubscription, payloadString, {
+          TTL: 86400
+        });
+        sent++;
+      } catch (err) {
+        failed++;
+        // Endpoint désinscrit ou expiré par FCM/Mozilla Autopush/Apple Push Service (404/410)
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          try {
+            db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(sub.endpoint);
+            console.log(`[WebPush] Abonnement expiré supprimé (${err.statusCode}): ${sub.endpoint.slice(0, 45)}...`);
+          } catch (dbErr) {
+            console.warn('[WebPush] Erreur nettoyage abonnement expiré:', dbErr);
+          }
+        } else {
+          console.warn(`[WebPush] Échec envoi push (${err.statusCode || err.message}) vers ${sub.endpoint.slice(0, 45)}...`);
+        }
+      }
+    }));
+
+    if (sent > 0) {
+      console.log(`[WebPush] Notification envoyée avec succès à ${sent}/${subs.length} appareil(s) pour user ${receiverId}`);
+    }
+
+    return { sent, failed };
+  } catch (err) {
+    console.warn('[WebPush] Erreur dispatch notification:', err);
+    return { sent: 0, failed: 0, error: err.message };
+  }
+};
+
   /**
   * --- LOGIQUE SOCKET.IO ---
   */
 
-const onlineUsers = new Map();     // userId -> socketId
 const disconnectTimers = new Map(); // userId -> Timeout (pour gérer les rafraîchissements)
 const wizzLimits = new Map();      // userId -> timestamps[]
 const messageLimits = new Map();   // userId -> timestamps[]
@@ -1635,11 +1910,39 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   console.log('Utilisateur connecté au socket:', socket.id);
 
+  // Authentification automatique dans la room utilisateur dès la connexion réussie
+  const authUserId = socket.user?.id;
+  if (authUserId) {
+    socket.join(getUserRoom(authUserId));
+    const wasAlreadyOnline = isUserOnline(authUserId);
+    addUserSocket(authUserId, socket.id);
+
+    if (disconnectTimers.has(authUserId)) {
+      clearTimeout(disconnectTimers.get(authUserId));
+      disconnectTimers.delete(authUserId);
+    }
+
+    if (!wasAlreadyOnline) {
+      try {
+        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(authUserId);
+        if (user) {
+          if (user.status === 'offline') {
+            db.prepare('UPDATE users SET status = ? WHERE id = ?').run('online', authUserId);
+            user.status = 'online';
+          }
+          broadcastStatusToContacts(authUserId, toPublicUserDTO(user));
+        }
+      } catch (err) { console.error(err); }
+    }
+  }
+
   /**
    * Identification du socket par l'ID utilisateur
    */
   socket.on('identify', (userId) => {
     if (socket.user.id !== userId) return; // Sécurité : évite l'usurpation d'identité
+
+    socket.join(getUserRoom(userId));
 
     // Annuler le minuteur de déconnexion si existant (cas d'un rafraîchissement rapide)
     if (disconnectTimers.has(userId)) {
@@ -1647,13 +1950,13 @@ io.on('connection', (socket) => {
       disconnectTimers.delete(userId);
     }
     
-    const isAlreadyIdentified = onlineUsers.has(userId);
-    onlineUsers.set(userId, socket.id);
+    const wasAlreadyOnline = isUserOnline(userId);
+    addUserSocket(userId, socket.id);
 
     try {
       const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
       // Diffuser si c'est une nouvelle session (premier socket pour cet utilisateur)
-      if (user && !isAlreadyIdentified) {
+      if (user && !wasAlreadyOnline) {
         // Si l'utilisateur était considéré comme hors ligne, on le repasse en ligne
         let finalStatus = user.status;
         if (user.status === 'offline') {
@@ -1742,11 +2045,19 @@ io.on('connection', (socket) => {
       callback({ success: true, id: messageToDeliver.id, timestamp: messageToDeliver.timestamp });
     }
 
-    // Livraison si le destinataire est en ligne
-    const receiverSocketId = onlineUsers.get(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit('receive_message', messageToDeliver);
-    }
+    // 1. Diffusion vers TOUTES les sessions actives du destinataire (fanout multi-session via room)
+    io.to(getUserRoom(receiverId)).emit('receive_message', messageToDeliver);
+
+    // 2. Synchronisation vers les AUTRES sessions actives de l'expéditeur (exclut le socket d'origine)
+    socket.to(getUserRoom(senderId)).emit('receive_message', messageToDeliver);
+
+    // Dispatch Web Push vers les appareils en arrière-plan (Android / PWA inactive)
+    dispatchPushNotification(receiverId, {
+      title: `${senderDisplayName || 'OpenWLM'} - OpenWLM`,
+      body: 'Nouveau message reçu',
+      senderId: senderId,
+      url: `/?chat=${senderId}`
+    });
   });
 
   /**
@@ -1772,11 +2083,18 @@ io.on('connection', (socket) => {
     recentWizz.push(now);
     wizzLimits.set(senderId, recentWizz);
 
-    const receiverSocketId = onlineUsers.get(receiverId);
-    if (receiverSocketId) {
-      // SÉCURITÉ : Payload sain contrôlé
-      io.to(receiverSocketId).emit('receive_wizz', { senderId, receiverId });
-    }
+    // SÉCURITÉ : Payload sain contrôlé vers la room du destinataire
+    io.to(getUserRoom(receiverId)).emit('receive_wizz', { senderId, receiverId });
+
+    const sender = db.prepare('SELECT username, nickname FROM users WHERE id = ?').get(senderId);
+    const senderDisplayName = sender ? (sender.nickname || sender.username) : 'Contact';
+
+    dispatchPushNotification(receiverId, {
+      title: `${senderDisplayName} - OpenWLM`,
+      body: '💥 [Wizz !]',
+      senderId: senderId,
+      url: `/?chat=${senderId}`
+    });
   });
 
   /**
@@ -1804,15 +2122,12 @@ io.on('connection', (socket) => {
     recentWinks.push(now);
     wizzLimits.set(senderId, recentWinks);
 
-    const receiverSocketId = onlineUsers.get(receiverId);
-    if (receiverSocketId) {
-      // SÉCURITÉ : Payload sain contrôlé
-      io.to(receiverSocketId).emit('receive_wink', { senderId, receiverId, winkId });
-    }
+    // SÉCURITÉ : Payload sain contrôlé vers la room du destinataire
+    io.to(getUserRoom(receiverId)).emit('receive_wink', { senderId, receiverId, winkId });
   });
 
   /**
-   * Synchronisation du Mode Privé (Bidirectionnel)
+   * Synchronisation du Mode Privé (Bidirectionnel et Multi-Sessions)
    */
   socket.on('toggle_private_mode', (data) => {
     const { senderId, receiverId, isPrivate } = data || {};
@@ -1829,14 +2144,21 @@ io.on('connection', (socket) => {
     const senderUser = db.prepare('SELECT nickname, username FROM users WHERE id = ?').get(senderId);
     const safeNickname = senderUser ? (senderUser.nickname || senderUser.username) : 'Un contact';
 
-    const receiverSocketId = onlineUsers.get(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit('private_mode_changed', { 
-        senderId, 
-        isPrivate: !!isPrivate,
-        senderNickname: safeNickname 
-      });
-    }
+    // Diffusion vers toutes les sessions du destinataire
+    io.to(getUserRoom(receiverId)).emit('private_mode_changed', { 
+      senderId, 
+      receiverId,
+      isPrivate: !!isPrivate,
+      senderNickname: safeNickname 
+    });
+
+    // Synchronisation vers les autres sessions de l'expéditeur
+    socket.to(getUserRoom(senderId)).emit('private_mode_changed', { 
+      senderId, 
+      receiverId,
+      isPrivate: !!isPrivate,
+      senderNickname: safeNickname 
+    });
   });
 
   /**
@@ -1848,13 +2170,12 @@ io.on('connection', (socket) => {
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) return;
 
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
+    if (isUserOnline(target)) {
       // Récupérer l'identité réelle de l'appelant depuis la session authentifiée
       const callerUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
       if (!callerUser) return;
 
-      io.to(targetSocketId).emit('incoming_call', { 
+      io.to(getUserRoom(target)).emit('incoming_call', { 
         caller: socket.user.id, 
         callerName: callerUser.nickname || callerUser.username, 
         signal, 
@@ -1868,10 +2189,9 @@ io.on('connection', (socket) => {
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) return;
 
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
+    if (isUserOnline(target)) {
       // On transmet le signal en précisant qui l'envoie (l'utilisateur du socket actuel)
-      io.to(targetSocketId).emit('webrtc_signal', { 
+      io.to(getUserRoom(target)).emit('webrtc_signal', { 
         signal, 
         caller: socket.user.id 
       });
@@ -1883,9 +2203,8 @@ io.on('connection', (socket) => {
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) return;
 
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('call_ended', { 
+    if (isUserOnline(target)) {
+      io.to(getUserRoom(target)).emit('call_ended', { 
         caller: socket.user.id 
       });
     }
@@ -1905,8 +2224,7 @@ io.on('connection', (socket) => {
       return socket.emit('game_error', { message: check.reason });
     }
 
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
+    if (isUserOnline(target)) {
       const senderUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
       if (!senderUser) return;
 
@@ -1919,7 +2237,7 @@ io.on('connection', (socket) => {
         expiresAt: Date.now() + GAME_INVITE_TTL_MS
       });
 
-      io.to(targetSocketId).emit('game_invite_received', {
+      io.to(getUserRoom(target)).emit('game_invite_received', {
         from: socket.user.id,
         fromName: senderUser.nickname || senderUser.username,
         gameType: safeGameType
@@ -1949,11 +2267,10 @@ io.on('connection', (socket) => {
     // Consommation unique de l'invitation
     pendingGameInvites.delete(inviteKey);
 
-    const targetSocketId = onlineUsers.get(target);
     const acceptorUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
     const targetUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(target);
 
-    if (targetSocketId && acceptorUser && targetUser) {
+    if (isUserOnline(target) && acceptorUser && targetUser) {
       const gameKey = getGameKey(target, socket.user.id);
       const chosenGameType = invite.gameType || (gameType === 'checkers' ? 'checkers' : gameType === 'puissance4' ? 'puissance4' : 'morpion');
 
@@ -1970,7 +2287,7 @@ io.on('connection', (socket) => {
         });
 
         // L'initiateur a les Blancs et a le premier tour
-        io.to(targetSocketId).emit('game_started', {
+        io.to(getUserRoom(target)).emit('game_started', {
           opponentId: socket.user.id,
           opponentName: acceptorUser.nickname || acceptorUser.username,
           myColor: 'white',
@@ -2001,7 +2318,7 @@ io.on('connection', (socket) => {
         });
 
         // L'initiateur a les Rouges et a le premier tour
-        io.to(targetSocketId).emit('game_started', {
+        io.to(getUserRoom(target)).emit('game_started', {
           opponentId: socket.user.id,
           opponentName: acceptorUser.nickname || acceptorUser.username,
           myColor: 'red',
@@ -2032,7 +2349,7 @@ io.on('connection', (socket) => {
         });
 
         // L'initiateur joue 'X' et a le premier tour
-        io.to(targetSocketId).emit('game_started', {
+        io.to(getUserRoom(target)).emit('game_started', {
           opponentId: socket.user.id,
           opponentName: acceptorUser.nickname || acceptorUser.username,
           mySymbol: 'X',
@@ -2063,10 +2380,9 @@ io.on('connection', (socket) => {
     const inviteKey = `${target}_${socket.user.id}`;
     pendingGameInvites.delete(inviteKey);
 
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
+    if (isUserOnline(target)) {
       const user = db.prepare('SELECT nickname, username FROM users WHERE id = ?').get(socket.user.id);
-      io.to(targetSocketId).emit('game_declined', {
+      io.to(getUserRoom(target)).emit('game_declined', {
         from: socket.user.id,
         fromName: user?.nickname || user?.username || 'Le contact'
       });
@@ -2140,16 +2456,13 @@ io.on('connection', (socket) => {
     }
 
     // Transmission du coup validé à l'adversaire
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('game_move', {
-        from: userId,
-        index: cellIndex,
-        symbol: legitSymbol,
-        winner,
-        winningCombo
-      });
-    }
+    io.to(getUserRoom(target)).emit('game_move', {
+      from: userId,
+      index: cellIndex,
+      symbol: legitSymbol,
+      winner,
+      winningCombo
+    });
 
     // Confirmation au joueur qui a joué
     socket.emit('game_move_confirmed', {
@@ -2221,16 +2534,13 @@ io.on('connection', (socket) => {
     game.turn = nextTurn;
 
     // Transmettre à l'adversaire
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('checkers_move', {
-        from,
-        to,
-        isJump,
-        captured,
-        isPromotion: finalPiece === 'W' || finalPiece === 'B'
-      });
-    }
+    io.to(getUserRoom(target)).emit('checkers_move', {
+      from,
+      to,
+      isJump,
+      captured,
+      isPromotion: finalPiece === 'W' || finalPiece === 'B'
+    });
 
     socket.emit('checkers_move_confirmed', {
       from,
@@ -2304,17 +2614,14 @@ io.on('connection', (socket) => {
     }
 
     // Transmission du coup validé à l'adversaire
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('puissance4_move', {
-        from: userId,
-        row: targetRow,
-        col: colIndex,
-        symbol: legitSymbol,
-        winner,
-        winningCells
-      });
-    }
+    io.to(getUserRoom(target)).emit('puissance4_move', {
+      from: userId,
+      row: targetRow,
+      col: colIndex,
+      symbol: legitSymbol,
+      winner,
+      winningCells
+    });
 
     // Confirmation au joueur
     socket.emit('puissance4_move_confirmed', {
@@ -2350,13 +2657,10 @@ io.on('connection', (socket) => {
       }
     }
 
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('game_restart', {
-        from: userId,
-        gameType: game ? game.gameType : gameType
-      });
-    }
+    io.to(getUserRoom(target)).emit('game_restart', {
+      from: userId,
+      gameType: game ? game.gameType : gameType
+    });
   });
 
   // 6. Quitter / Abandonner la partie
@@ -2368,68 +2672,65 @@ io.on('connection', (socket) => {
     const gameKey = getGameKey(userId, target);
     activeGames.delete(gameKey);
 
-    const targetSocketId = onlineUsers.get(target);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('game_quit', {
-        from: userId
-      });
-    }
+    io.to(getUserRoom(target)).emit('game_quit', {
+      from: userId
+    });
   });
 
   /**
    * Gestion de la déconnexion
    */
   socket.on('disconnect', () => {
-    let disconnectedUserId = null;
-    for (let [userId, socketId] of onlineUsers.entries()) {
-      if (socketId === socket.id) {
-        disconnectedUserId = userId;
-        onlineUsers.delete(userId);
-        break;
+    const removeResult = removeUserSocket(socket.id);
+    if (!removeResult) return;
+
+    const { userId: disconnectedUserId, wasLastSocket } = removeResult;
+
+    // Si l'utilisateur possède encore d'autres sessions actives, il reste en ligne
+    if (!wasLastSocket) {
+      return;
+    }
+
+    // Nettoyer les sessions de jeu actives de cet utilisateur (Morpion, Dames ou Puissance 4)
+    for (const [key, game] of activeGames.entries()) {
+      const isPlayer = game.gameType === 'checkers'
+        ? (game.playerWhite === disconnectedUserId || game.playerBlack === disconnectedUserId)
+        : game.gameType === 'puissance4'
+        ? (game.playerRed === disconnectedUserId || game.playerYellow === disconnectedUserId)
+        : (game.playerX === disconnectedUserId || game.playerO === disconnectedUserId);
+
+      if (isPlayer) {
+        const opponentUserId = game.gameType === 'checkers'
+          ? (game.playerWhite === disconnectedUserId ? game.playerBlack : game.playerWhite)
+          : game.gameType === 'puissance4'
+          ? (game.playerRed === disconnectedUserId ? game.playerYellow : game.playerRed)
+          : (game.playerX === disconnectedUserId ? game.playerO : game.playerX);
+        if (isUserOnline(opponentUserId)) {
+          io.to(getUserRoom(opponentUserId)).emit('game_quit', { from: disconnectedUserId });
+        }
+        activeGames.delete(key);
       }
     }
 
-    if (disconnectedUserId) {
-      // Nettoyer les sessions de jeu actives de cet utilisateur (Morpion, Dames ou Puissance 4)
-      for (const [key, game] of activeGames.entries()) {
-        const isPlayer = game.gameType === 'checkers'
-          ? (game.playerWhite === disconnectedUserId || game.playerBlack === disconnectedUserId)
-          : game.gameType === 'puissance4'
-          ? (game.playerRed === disconnectedUserId || game.playerYellow === disconnectedUserId)
-          : (game.playerX === disconnectedUserId || game.playerO === disconnectedUserId);
-
-        if (isPlayer) {
-          const opponentUserId = game.gameType === 'checkers'
-            ? (game.playerWhite === disconnectedUserId ? game.playerBlack : game.playerWhite)
-            : game.gameType === 'puissance4'
-            ? (game.playerRed === disconnectedUserId ? game.playerYellow : game.playerRed)
-            : (game.playerX === disconnectedUserId ? game.playerO : game.playerX);
-          const opponentSocketId = onlineUsers.get(opponentUserId);
-          if (opponentSocketId) {
-            io.to(opponentSocketId).emit('game_quit', { from: disconnectedUserId });
-          }
-          activeGames.delete(key);
-        }
+    // Nettoyer les invitations de jeux en attente liées à cet utilisateur
+    for (const [key] of pendingGameInvites.entries()) {
+      if (key.startsWith(`${disconnectedUserId}_`) || key.endsWith(`_${disconnectedUserId}`)) {
+        pendingGameInvites.delete(key);
       }
+    }
 
-      // Nettoyer les invitations de jeux en attente liées à cet utilisateur
-      for (const [key] of pendingGameInvites.entries()) {
-        if (key.startsWith(`${disconnectedUserId}_`) || key.endsWith(`_${disconnectedUserId}`)) {
-          pendingGameInvites.delete(key);
-        }
-      }
-
-      // Période de grâce de 60 secondes avant de passer en 'offline' 
-      // (Plus adapté au mobile où le navigateur suspend l'onglet en arrière-plan)
-      const timer = setTimeout(() => {
-        try {
+    // Période de grâce de 60 secondes avant de passer en 'offline' 
+    // (Plus adapté au mobile où le navigateur suspend l'onglet en arrière-plan)
+    const timer = setTimeout(() => {
+      try {
+        if (!isUserOnline(disconnectedUserId)) {
           db.prepare('UPDATE users SET status = ? WHERE id = ?').run('offline', disconnectedUserId);
           broadcastStatusToContacts(disconnectedUserId, { id: disconnectedUserId, userId: disconnectedUserId, status: 'offline' });
-        } catch (err) { console.error(err); }
-        disconnectTimers.delete(disconnectedUserId);
-      }, 60000);
-      disconnectTimers.set(disconnectedUserId, timer);
-    }
+        }
+      } catch (err) { console.error(err); }
+      disconnectTimers.delete(disconnectedUserId);
+    }, 60000);
+    disconnectTimers.set(disconnectedUserId, timer);
   });
 
   /**
@@ -2438,11 +2739,13 @@ io.on('connection', (socket) => {
   socket.on('manual_disconnect', () => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
+    socket.leave(getUserRoom(userId));
+
     if (disconnectTimers.has(userId)) {
       clearTimeout(disconnectTimers.get(userId));
       disconnectTimers.delete(userId);
     }
-    onlineUsers.delete(userId);
+    const removeResult = removeUserSocket(socket.id);
 
     // Nettoyer les invitations de jeux en attente liées à cet utilisateur
     for (const [key] of pendingGameInvites.entries()) {
@@ -2451,10 +2754,12 @@ io.on('connection', (socket) => {
       }
     }
 
-    try {
-      db.prepare('UPDATE users SET status = ?, token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run('offline', userId);
-      broadcastStatusToContacts(userId, { id: userId, userId, status: 'offline' });
-    } catch (err) { console.error(err); }
+    if (!removeResult || removeResult.wasLastSocket) {
+      try {
+        db.prepare('UPDATE users SET status = ?, token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run('offline', userId);
+        broadcastStatusToContacts(userId, { id: userId, userId, status: 'offline' });
+      } catch (err) { console.error(err); }
+    }
   });
 });
 

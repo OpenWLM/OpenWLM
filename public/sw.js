@@ -13,6 +13,7 @@ const PRECACHE_ASSETS = [
   '/manifest.json',
   '/favicon.png',
   '/pwa-192x192.png',
+  '/pwa-maskable-192x192.png',
   '/pwa-512x512.png',
   '/pwa-maskable-512x512.png',
   '/apple-touch-icon.png',
@@ -128,3 +129,68 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 });
+
+// Réception d'une notification Web Push en arrière-plan (PWA fermée ou suspendue sur Android/Desktop)
+self.addEventListener('push', (event) => {
+  let payload = {
+    title: 'OpenWLM',
+    body: 'Nouveau message reçu',
+    icon: '/pwa-maskable-192x192.png',
+    badge: '/assets/openwlm_logo.png',
+    tag: 'openwlm-message',
+    data: { url: '/', senderId: 0 }
+  };
+
+  if (event.data) {
+    try {
+      const json = event.data.json();
+      payload = { ...payload, ...json };
+    } catch {
+      payload.body = event.data.text() || payload.body;
+    }
+  }
+
+  const options = {
+    body: payload.body,
+    icon: payload.icon || '/pwa-maskable-192x192.png',
+    badge: payload.badge || '/assets/openwlm_logo.png',
+    tag: payload.tag || 'openwlm-message',
+    data: payload.data || { url: '/', senderId: payload.senderId || 0 },
+    vibrate: [200, 100, 200],
+    renotify: true
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, options)
+  );
+});
+
+// Clic sur une notification système déclenchée via ServiceWorkerRegistration ou Web Push
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const notifData = event.notification.data || {};
+  const targetUrl = notifData.url || '/';
+  const targetSenderId = notifData.senderId;
+
+  // Focus sur la fenêtre OpenWLM existante ou ouverture de l'application
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          if (targetSenderId) {
+            client.postMessage({
+              type: 'OPEN_CHAT',
+              senderId: targetSenderId
+            });
+          }
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+

@@ -68,6 +68,11 @@ web_modules/
 
 # dotenv environment variable files
 .env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
 .env.*
 !.env.example
 
@@ -150,9 +155,12 @@ messenger.db*
 *.sqlite
 *.sqlite3
 
-# Local secrets and env files
+# Local secrets and keys
 .jwt_secret
-.env*
+.vapid_keys.json
+*.pem
+*.key
+*.secret
 
 # Backups and scratch
 *.tar.gz

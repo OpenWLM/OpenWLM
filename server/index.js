@@ -477,6 +477,29 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0;");
 } catch(e) {}
 
+// STATUTS DE MESSAGES (envoyé / remis / lu)
+// 1. Colonne de statut de livraison sur les messages persistés ('sent' | 'delivered' | 'read')
+try {
+  db.exec("ALTER TABLE messages ADD COLUMN delivery_status TEXT DEFAULT 'sent';");
+} catch(e) {}
+
+// 2. Curseur minimal de lecture par conversation (zéro persistance en mode privé)
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_read_cursors (
+      user_id INTEGER NOT NULL,
+      contact_id INTEGER NOT NULL,
+      last_read_message_id INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, contact_id),
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY(contact_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+} catch(e) {
+  console.warn("Table conversation_read_cursors déjà présente ou erreur:", e.message);
+}
+
 /**
  * HELPERS ET MIDDLEWARES
  */
@@ -1274,7 +1297,26 @@ app.post('/api/user/change-password', authenticateToken, (req, res) => {
  */
 app.get('/api/messages/:userId/:contactId', authenticateToken, (req, res) => {
   const { userId, contactId } = req.params;
-  if (req.user.id !== parseInt(userId)) return res.status(403).json({ error: "Accès refusé." });
+  const uId = parseInt(userId, 10);
+  const cId = parseInt(contactId, 10);
+  if (req.user.id !== uId) return res.status(403).json({ error: "Accès refusé." });
+
+  // 1. Marquer les messages envoyés par le contact vers moi comme 'delivered'
+  // (car ma session est en train de les récupérer via l'historique officiel)
+  try {
+    db.prepare(`
+      UPDATE messages 
+      SET delivery_status = 'delivered' 
+      WHERE sender_id = ? AND receiver_id = ? AND delivery_status = 'sent'
+    `).run(cId, uId);
+  } catch(e) {}
+
+  // 2. Curseur de lecture du contact (jusqu'à quel message le contact a lu mes messages)
+  let contactLastReadId = 0;
+  try {
+    const cursor = db.prepare('SELECT last_read_message_id FROM conversation_read_cursors WHERE user_id = ? AND contact_id = ?').get(cId, uId);
+    if (cursor) contactLastReadId = Number(cursor.last_read_message_id) || 0;
+  } catch(e) {}
 
   const history = db.prepare(`
     SELECT messages.*, COALESCE(NULLIF(users.nickname, ''), users.username) as sender_name 
@@ -1283,8 +1325,21 @@ app.get('/api/messages/:userId/:contactId', authenticateToken, (req, res) => {
     WHERE (sender_id = ? AND receiver_id = ?) 
        OR (sender_id = ? AND receiver_id = ?)
     ORDER BY timestamp ASC
-  `).all(userId, contactId, contactId, userId);
-  res.json(history);
+  `).all(uId, cId, cId, uId);
+
+  // Harmoniser le delivery_status des messages émis par l'utilisateur connecté
+  const mapped = history.map(msg => {
+    let status = msg.delivery_status || 'sent';
+    if (msg.sender_id === uId && contactLastReadId && msg.id <= contactLastReadId) {
+      status = 'read';
+    }
+    return {
+      ...msg,
+      delivery_status: status
+    };
+  });
+
+  res.json(mapped);
 });
 
 /**
@@ -1293,13 +1348,19 @@ app.get('/api/messages/:userId/:contactId', authenticateToken, (req, res) => {
 app.post('/api/messages/clear', authenticateToken, (req, res) => {
   const { contactId } = req.body;
   const userId = req.user.id; // On utilise obligatoirement l'ID du token
+  const cId = parseInt(contactId, 10);
 
   try {
     db.prepare(`
       DELETE FROM messages 
       WHERE (sender_id = ? AND receiver_id = ?) 
          OR (sender_id = ? AND receiver_id = ?)
-    `).run(userId, contactId, contactId, userId);
+    `).run(userId, cId, cId, userId);
+
+    try {
+      db.prepare('DELETE FROM conversation_read_cursors WHERE (user_id = ? AND contact_id = ?) OR (user_id = ? AND contact_id = ?)').run(userId, cId, cId, userId);
+    } catch(e) {}
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Erreur lors de la suppression de l'historique." });
@@ -2057,6 +2118,121 @@ io.on('connection', (socket) => {
       body: 'Nouveau message reçu',
       senderId: senderId,
       url: `/?chat=${senderId}`
+    });
+  });
+
+  /**
+   * ACCUSÉ DE RÉCEPTION : Message effectivement reçu par une session du destinataire
+   * ("remis" / delivered).
+   */
+  socket.on('message_delivered', (data) => {
+    const { messageId, senderId, isPrivate } = data || {};
+    const recipientId = socket.user.id; // Sécurité : identité certifiée du socket connecté (destinataire)
+    const sId = parseInt(senderId, 10);
+    const mId = parseInt(messageId, 10);
+    if (!sId || isNaN(sId) || !mId || isNaN(mId)) return;
+
+    // Contrôle d'autorisation strict
+    const check = canInteract(sId, recipientId);
+    if (!check.allowed) return;
+
+    // En mode normal (non privé) : persistance de l'état 'delivered'
+    if (!isPrivate) {
+      try {
+        db.prepare("UPDATE messages SET delivery_status = 'delivered' WHERE id = ? AND sender_id = ? AND receiver_id = ? AND delivery_status = 'sent'")
+          .run(mId, sId, recipientId);
+      } catch (e) {}
+    }
+
+    // Propagation temps réel vers toutes les sessions de l'expéditeur
+    io.to(getUserRoom(sId)).emit('message_status_updated', {
+      contactId: recipientId,
+      messageId: mId,
+      status: 'delivered',
+      isPrivate: !!isPrivate
+    });
+
+    // Synchronisation multi-session du destinataire (autres sessions)
+    socket.to(getUserRoom(recipientId)).emit('message_status_updated', {
+      contactId: sId,
+      messageId: mId,
+      status: 'delivered',
+      isPrivate: !!isPrivate
+    });
+  });
+
+  /**
+   * ACCUSÉ DE LECTURE : La conversation est activement ouverte et les messages ont été vus
+   * ("lu" / read). Batched via lastReadMessageId (curseur de lecture minimal).
+   */
+  socket.on('message_read', (data) => {
+    const { contactId, lastReadMessageId, isPrivate } = data || {};
+    const readerId = socket.user.id; // Sécurité : lecteur certifié
+    const cId = parseInt(contactId, 10);
+    const lastId = parseInt(lastReadMessageId, 10);
+    if (!cId || isNaN(cId) || !lastId || isNaN(lastId)) return;
+
+    // Contrôle d'autorisation strict
+    const check = canInteract(cId, readerId);
+    if (!check.allowed) return;
+
+    // En mode normal (non privé) : persistance du curseur minimal et mise à jour de la colonne
+    let clampedLastId = lastId;
+    if (!isPrivate) {
+      try {
+        // SÉCURITÉ : Ne jamais faire confiance à la valeur envoyée par le client.
+        // Calculer côté serveur l'ID maximal réel des messages envoyés par contactId vers readerId.
+        const maxRow = db.prepare('SELECT MAX(id) as maxId FROM messages WHERE sender_id = ? AND receiver_id = ?').get(cId, readerId);
+        const maxExistingId = maxRow && maxRow.maxId !== null ? Number(maxRow.maxId) : 0;
+        if (!maxExistingId || maxExistingId <= 0) {
+          // Aucun message valide existant dans cette conversation : ne rien mettre à jour ni diffuser
+          return;
+        }
+
+        // Récupérer le curseur actuel du lecteur pour garantir une progression strictement monotone
+        const currentCursorRow = db.prepare('SELECT last_read_message_id FROM conversation_read_cursors WHERE user_id = ? AND contact_id = ?').get(readerId, cId);
+        const currentReadId = currentCursorRow ? Number(currentCursorRow.last_read_message_id) || 0 : 0;
+
+        // Clamping : min(lastReadMessageId client, maxExistingId serveur)
+        clampedLastId = Math.min(lastId, maxExistingId);
+
+        // Progression monotone : ne jamais régresser en arrière
+        if (clampedLastId <= currentReadId) {
+          return;
+        }
+
+        const now = Date.now();
+        db.prepare(`
+          INSERT INTO conversation_read_cursors (user_id, contact_id, last_read_message_id, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(user_id, contact_id) DO UPDATE SET
+            last_read_message_id = MAX(conversation_read_cursors.last_read_message_id, excluded.last_read_message_id),
+            updated_at = excluded.updated_at
+        `).run(readerId, cId, clampedLastId, now);
+
+        db.prepare(`
+          UPDATE messages 
+          SET delivery_status = 'read' 
+          WHERE sender_id = ? AND receiver_id = ? AND id <= ? AND delivery_status != 'read'
+        `).run(cId, readerId, clampedLastId);
+      } catch (e) {
+        console.warn("[Read Receipts] Erreur mise à jour curseur:", e.message);
+        return;
+      }
+    }
+
+    // Diffusion temps réel vers toutes les sessions de l'expéditeur du message
+    io.to(getUserRoom(cId)).emit('conversation_read', {
+      contactId: readerId,
+      lastReadMessageId: clampedLastId,
+      isPrivate: !!isPrivate
+    });
+
+    // Synchronisation multi-session du lecteur (autres sessions du même compte)
+    socket.to(getUserRoom(readerId)).emit('conversation_read', {
+      contactId: cId,
+      lastReadMessageId: clampedLastId,
+      isPrivate: !!isPrivate
     });
   });
 

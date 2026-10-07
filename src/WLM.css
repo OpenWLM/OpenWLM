@@ -1102,8 +1102,34 @@ body, html {
 
 /* Chat Messages */
 .msg-line { display: flex; flex-direction: column; margin-bottom: 12px; padding: 0 5px; }
-.msg-name { font-size: 11px; font-weight: bold; color: #4b80b2; margin-bottom: 2px; }
+.msg-name { 
+  display: inline-flex; 
+  align-items: center; 
+  gap: 6px; 
+  font-size: 11px; 
+  font-weight: bold; 
+  color: #4b80b2; 
+  margin-bottom: 2px; 
+}
 .msg-name.me { color: #555; }
+.msg-time { 
+  font-size: 9.5px; 
+  font-weight: normal; 
+  color: #8fa3b7; 
+  user-select: none; 
+}
+.msg-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: -1.5px;
+  user-select: none;
+  cursor: default;
+  transition: color 0.15s ease;
+}
+.msg-status-badge.status-pending { color: #b8c4d1; }
+.msg-status-badge.status-sent { color: #8fa3b7; }
+.msg-status-badge.status-delivered { color: #6187ab; }
+.msg-status-badge.status-read { color: #0288d1; }
 .msg-content { 
   font-size: 13px; 
   color: #0000FF; /* Blue color as requested */

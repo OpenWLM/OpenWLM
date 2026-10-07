@@ -148,6 +148,8 @@ interface Message {
   clientMsgId?: string;
   fileData?: FileDataPayload;
   customEmoticons?: Record<string, CustomEmoticonPayload>;
+  delivery_status?: 'sent' | 'delivered' | 'read';
+  isPrivate?: boolean;
 }
 
 
@@ -1515,7 +1517,8 @@ const App: React.FC = () => {
         sender: finalSender,
         time: formattedTime,
         timestamp: m.timestamp,
-        fileData: fileData
+        fileData: fileData,
+        delivery_status: m.delivery_status || 'sent'
       });
     }
     return results;
@@ -1722,6 +1725,25 @@ const App: React.FC = () => {
         // Sauvegarde locale dans IndexedDB (Chiffré)
         if (myKeysRef.current) {
           LocalDB.saveMessage(`${user?.id}_${conversationContactId}`, finalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
+        }
+
+        // Accusé de réception ("remis") émis par la session destinataire vers le serveur
+        if (!isSender && finalMsg.id) {
+          newSocket.emit('message_delivered', {
+            messageId: finalMsg.id,
+            senderId: senderId,
+            isPrivate: !!decryptedData.isPrivate
+          });
+
+          // Si la conversation est activement ouverte, visible et focalisée : accusé de lecture immédiat
+          const isAppFocused = typeof document !== 'undefined' && document.visibilityState === 'visible' && document.hasFocus();
+          if (activeChatIdRef.current === senderId && isAppFocused) {
+            newSocket.emit('message_read', {
+              contactId: senderId,
+              lastReadMessageId: finalMsg.id,
+              isPrivate: !!decryptedData.isPrivate
+            });
+          }
         }
 
         // Message envoyé depuis une autre de nos sessions : synchronisation silencieuse
@@ -1942,19 +1964,93 @@ const App: React.FC = () => {
         alert("Ce contact n'est pas en ligne pour jouer actuellement.");
       });
 
+      // Réception d'une mise à jour de statut de message (remis)
+      newSocket.on('message_status_updated', (data: { contactId: number; messageId: number; status: 'delivered' | 'read' }) => {
+        const { contactId, messageId, status } = data || {};
+        if (!contactId || !messageId) return;
+
+        setMessages(prev => {
+          const list = prev[contactId];
+          if (!list) return prev;
+          let changed = false;
+          const updated = list.map(m => {
+            if (m.id === messageId) {
+              // Ne pas rétrograder si déjà marqué 'read'
+              if (m.delivery_status === 'read' && status === 'delivered') return m;
+              if (m.delivery_status !== status) {
+                changed = true;
+                return { ...m, delivery_status: status };
+              }
+            }
+            return m;
+          });
+          return changed ? { ...prev, [contactId]: updated } : prev;
+        });
+      });
+
+      // Réception d'un accusé de lecture groupé (curseur de lecture)
+      newSocket.on('conversation_read', (data: { contactId: number; lastReadMessageId: number }) => {
+        const { contactId, lastReadMessageId } = data || {};
+        if (!contactId || !lastReadMessageId) return;
+
+        setMessages(prev => {
+          const list = prev[contactId];
+          if (!list) return prev;
+          let changed = false;
+          const updated = list.map(m => {
+            const mId = typeof m.id === 'number' ? m.id : 0;
+            // On marque 'read' les messages envoyés par moi vers ce contact avec id <= lastReadMessageId
+            if (mId && mId <= lastReadMessageId && m.delivery_status !== 'read') {
+              changed = true;
+              return { ...m, delivery_status: 'read' as const };
+            }
+            return m;
+          });
+          return changed ? { ...prev, [contactId]: updated } : prev;
+        });
+      });
+
       setSocket(newSocket);
       return () => { newSocket.disconnect(); };
     }
   }, [user?.id]);
 
   /**
-   * CHARGEMENT DE L'HISTORIQUE DU CHAT ACTIF SI NON CHARGÉ
+   * CHARGEMENT DE L'HISTORIQUE DU CHAT ACTIF SI NON CHARGÉ + ACCUSÉ DE LECTURE AUTOMATIQUE
    */
   useEffect(() => {
     if (user && myKeys && activeChatId !== 0 && (!messages[activeChatId] || messages[activeChatId].length === 0)) {
       loadChatHistory(activeChatId);
     }
   }, [activeChatId, user, !!myKeys, loadChatHistory]);
+
+  // Émission de l'accusé de lecture lorsque la conversation est active et des messages sont présents
+  useEffect(() => {
+    if (!socket || !user || activeChatId === 0 || activeChatId === SYSTEM_BOT_ID) return;
+    const currentMsgs = messages[activeChatId] || [];
+    if (currentMsgs.length === 0) return;
+
+    // Trouver le dernier message reçu depuis ce contact
+    let maxContactMsgId = 0;
+    let isMsgPrivate = false;
+    for (let i = currentMsgs.length - 1; i >= 0; i--) {
+      const m = currentMsgs[i];
+      const sId = m.sender_id || m.senderId;
+      if (sId === activeChatId && typeof m.id === 'number') {
+        maxContactMsgId = Math.max(maxContactMsgId, m.id);
+        if (m.isPrivate) isMsgPrivate = true;
+      }
+    }
+
+    if (maxContactMsgId > 0) {
+      const isPriv = globalPrivateMode || !!isPrivateMode[activeChatId] || isMsgPrivate;
+      socket.emit('message_read', {
+        contactId: activeChatId,
+        lastReadMessageId: maxContactMsgId,
+        isPrivate: isPriv
+      });
+    }
+  }, [activeChatId, messages[activeChatId]?.length, socket, user, globalPrivateMode, isPrivateMode]);
 
   /**
    * RÉCUPÉRATION DE LA CLÉ PUBLIQUE D'UN CONTACT (Cache-first)
@@ -3997,7 +4093,20 @@ const App: React.FC = () => {
                        ) : (
                          <>
                            <div className={`msg-name ${isSender ? 'me' : ''}`}>
-                             {m.fileData ? formatNickname(fileHeaderLabel) : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}
+                             <span>{m.fileData ? formatNickname(fileHeaderLabel) : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}</span>
+                             {m.time && <span className="msg-time">{m.time}</span>}
+                             {isSender && activeChatId !== SYSTEM_BOT_ID && (
+                               <span 
+                                 className={`msg-status-badge status-${m.delivery_status || (m._isPending ? 'pending' : 'sent')}`}
+                                 title={
+                                   m.delivery_status === 'read' ? t.chat.statusRead :
+                                   m.delivery_status === 'delivered' ? t.chat.statusDelivered :
+                                   t.chat.statusSent
+                                 }
+                               >
+                                 {m.delivery_status === 'read' ? '✓✓' : (m.delivery_status === 'delivered' ? '✓✓' : '✓')}
+                               </span>
+                             )}
                            </div>
                            {m.fileData ? (
                              <FileTransferCard 

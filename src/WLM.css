@@ -377,7 +377,7 @@ body, html {
 }
 
 .chat-top-actions {
-  display: flex; gap: 15px; padding: 6px 20px; font-size: 11.5px; color: white;
+  display: flex; align-items: center; gap: 15px; padding: 6px 20px; font-size: 11.5px; line-height: 1.2; color: white;
   background: linear-gradient(to bottom, #74c2e6, #0099d6); border-bottom: 1px solid #0078d7;
   flex-shrink: 0;
   position: relative;
@@ -1455,6 +1455,7 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   .chat-top-actions {
     overflow: visible;
     flex-wrap: wrap;
+    align-items: center;
     white-space: normal;
     padding: 6px 10px;
     gap: 6px 12px;
@@ -1464,6 +1465,8 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 
   .wlm-games-menu-wrapper {
     position: relative;
+    display: inline-flex;
+    align-items: center;
   }
 
   .wlm-games-dropdown {

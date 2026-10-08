@@ -9,6 +9,20 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [Non publié] - 2026-10-08
+
+### 🛡️ Sécurité & Vérification locale de contacts (Safety Number / IndexedDB)
+- **Vérification d'empreinte de clé publique (Safety Number)** :
+  - Calcul déterministe d'empreinte SHA-256 canonique à partir des composants RSA (`e`, `kty`, `n`) de la clé publique de contact.
+  - Formatage en 8 blocs de 4 caractères pour une comparaison ergonomique hors-bande (ex. `A1B2 C3D4 ...`).
+  - Détection automatique et instantanée de tout changement de clé publique avec révocation automatique du statut vérifié et bandeau d'alerte.
+  - Badge discret en SVG translucide Aero dans le header de conversation (vert avec coche `✓` si vérifié, rouge avec `?` si non vérifié).
+  - Modale dédiée Windows Aero pour inspecter l'empreinte et basculer l'état de confiance local.
+- **Stockage localisé dans le coffre-fort IndexedDB (`WLM_DeviceVault_v1`)** :
+  - Migration intégrale du stockage local depuis `localStorage['wlm_verified_contacts_v1']` vers l'object store `verified_contacts` d'IndexedDB.
+  - Migration automatique, idempotente et sans résidu : suppression propre de l'ancienne clé legacy et de tout drapeau dans `localStorage`.
+  - Résilience garantie : préservation des données legacy en cas d'erreur IndexedDB, fallback transparent si IndexedDB est désactivé.
+
 ## [1.4.0] - 2026-10-05
 
 ### 🔔 Notifications & PWA Web Push (Desktop & Mobile)

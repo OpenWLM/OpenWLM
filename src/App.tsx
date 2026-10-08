@@ -15,9 +15,12 @@ import {
   deriveZeroKnowledgeKeys,
   encryptFileBinary,
   decryptCustomEmoticon,
-  importPrivateCryptoKey
+  importPrivateCryptoKey,
+  calculatePublicKeyFingerprint,
+  formatSafetyNumber
 } from './utils/Security';
 import E2EEKeyStorage from './utils/E2EEKeyStorage';
+import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
 import FileTransferCard, { type FileDataPayload, isImageFile } from './components/FileTransferCard';
@@ -444,6 +447,33 @@ const App: React.FC = () => {
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
+
+  // --- ÉTAT DE VÉRIFICATION LOCALE DE SÉCURITÉ (PAR APPAREIL / NAVIGATEUR) ---
+  // Stocké dans le coffre-fort d'appareil local IndexedDB ('WLM_DeviceVault_v1')
+  const [verifiedContacts, setVerifiedContacts] = useState<Record<number, VerifiedContactRecord>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    const initVerifiedContacts = async () => {
+      try {
+        await VerifiedContactsStorage.migrateFromLocalStorage();
+        const records = await VerifiedContactsStorage.getAll();
+        if (isMounted) {
+          setVerifiedContacts(records);
+        }
+      } catch (err) {
+        console.warn('[VerifiedContacts] Échec initialisation:', err);
+      }
+    };
+    initVerifiedContacts();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Alerte si la clé d'un contact a changé par rapport à l'empreinte connue
+  const [keyAlertContactId, setKeyAlertContactId] = useState<number | null>(null);
+  const [showSafetyModal, setShowSafetyModal] = useState<boolean>(false);
+  const [safetyModalContactId, setSafetyModalContactId] = useState<number | null>(null);
+  const [activeFingerprint, setActiveFingerprint] = useState<string>('');
 
   // --- ÉTAT DU GLISSER-DÉPOSER DES ONGLETS DE DISCUSSION ---
   const [draggedTabId, setDraggedTabId] = useState<number | null>(null);
@@ -2054,20 +2084,110 @@ const App: React.FC = () => {
 
   /**
    * RÉCUPÉRATION DE LA CLÉ PUBLIQUE D'UN CONTACT (Cache-first)
+   * Intègre la vérification d'empreinte locale et la détection automatique de changement de clé.
    */
-  const getPublicKey = async (contactId: number) => {
-    if (publicKeysCache[contactId]) return publicKeysCache[contactId];
+  const getPublicKey = async (contactId: number, forceRefresh = false) => {
+    if (!forceRefresh && publicKeysCache[contactId]) return publicKeysCache[contactId];
     try {
       const res = await axios.get(`/api/user/${contactId}/public-key`);
       if (res.data && res.data.publicKey) {
-        setPublicKeysCache(prev => ({ ...prev, [contactId]: res.data.publicKey }));
-        return res.data.publicKey;
+        const pubKey = res.data.publicKey;
+        setPublicKeysCache(prev => ({ ...prev, [contactId]: pubKey }));
+
+        // Calcul de l'empreinte cryptographique locale
+        calculatePublicKeyFingerprint(pubKey).then(fp => {
+          if (!fp) return;
+          setVerifiedContacts(prev => {
+            const existing = prev[contactId];
+            if (!existing) {
+              // Premier contact : on enregistre l'empreinte connue, statut non vérifié par défaut
+              const nextRecord: VerifiedContactRecord = {
+                contactId,
+                fingerprint: fp,
+                verified: false,
+                seenAt: Date.now()
+              };
+              VerifiedContactsStorage.save(nextRecord);
+              return { ...prev, [contactId]: nextRecord };
+            }
+
+            // Détection automatique de changement de clé publique
+            if (existing.fingerprint && existing.fingerprint !== fp) {
+              console.warn(`[Security Alert] Clé publique modifiée pour le contact ${contactId}! Empreinte précédente: ${existing.fingerprint}, Nouvelle: ${fp}`);
+              // Règle stricte : retrait automatique du statut vérifié + déclenchement d'alerte visible
+              setKeyAlertContactId(contactId);
+              const nextRecord: VerifiedContactRecord = {
+                contactId,
+                fingerprint: fp,
+                verified: false,
+                seenAt: Date.now()
+              };
+              VerifiedContactsStorage.save(nextRecord);
+              return {
+                ...prev,
+                [contactId]: nextRecord
+              };
+            }
+
+            return prev;
+          });
+        }).catch(console.error);
+
+        return pubKey;
       }
     } catch (e) { 
       console.warn("Impossible de récupérer la clé publique pour l'ID:", contactId); 
     }
     return null;
   };
+
+  /**
+   * Action utilisateur : basculer le statut vérifié localement
+   */
+  const handleToggleContactVerification = (contactId: number, currentFp: string) => {
+    setVerifiedContacts(prev => {
+      const existing = prev[contactId];
+      const willBeVerified = !existing?.verified;
+      const updatedRecord: VerifiedContactRecord = {
+        contactId,
+        fingerprint: currentFp || existing?.fingerprint || '',
+        verified: willBeVerified,
+        verifiedAt: willBeVerified ? Date.now() : undefined,
+        seenAt: Date.now()
+      };
+      VerifiedContactsStorage.save(updatedRecord);
+      return {
+        ...prev,
+        [contactId]: updatedRecord
+      };
+    });
+    // Fermer l'alerte si l'utilisateur a réexaminé et validé la clé
+    if (keyAlertContactId === contactId) {
+      setKeyAlertContactId(null);
+    }
+  };
+
+  /**
+   * Ouvre la modale de safety number pour un contact
+   */
+  const handleOpenSafetyModal = async (contactId: number) => {
+    setSafetyModalContactId(contactId);
+    setShowSafetyModal(true);
+    const pubKey = await getPublicKey(contactId, true);
+    if (pubKey) {
+      const fp = await calculatePublicKeyFingerprint(pubKey);
+      setActiveFingerprint(fp);
+    } else {
+      setActiveFingerprint('');
+    }
+  };
+
+  // Récupérer et vérifier la clé publique du contact actif à l'ouverture de la conversation
+  useEffect(() => {
+    if (activeChatId && activeChatId !== SYSTEM_BOT_ID) {
+      getPublicKey(activeChatId);
+    }
+  }, [activeChatId]);
 
   /**
    * RÉCUPÉRATION DES CONTACTS & INVITATIONS
@@ -3977,6 +4097,28 @@ const App: React.FC = () => {
                         <div className="conv-name">
                           {formatNickname(activeContact.nickname || activeContact.username)}
                           {activeContact.id === SYSTEM_BOT_ID && <span className="wlm-bot-badge">{t.bot.badge}</span>}
+                          {activeContact.id && activeContact.id !== SYSTEM_BOT_ID && (
+                            <button
+                              type="button"
+                              className={`wlm-safety-badge ${verifiedContacts[activeContact.id]?.verified ? 'verified' : 'unverified'}`}
+                              title={verifiedContacts[activeContact.id]?.verified ? t.chat.safetyNumberVerifiedBadge : t.chat.safetyNumberUnverifiedBadge}
+                              aria-label={verifiedContacts[activeContact.id]?.verified ? t.chat.safetyNumberVerifiedBadge : t.chat.safetyNumberUnverifiedBadge}
+                              onClick={() => handleOpenSafetyModal(activeContact.id)}
+                            >
+                              {verifiedContacts[activeContact.id]?.verified ? (
+                                <svg className="wlm-safety-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                                  <path className="shield-base" d="M8 1.5 C10.8 1.5 13.5 2.4 13.5 2.4 C13.5 7.8 11.2 12.1 8 14.5 C4.8 12.1 2.5 7.8 2.5 2.4 C2.5 2.4 5.2 1.5 8 1.5 Z" />
+                                  <path className="shield-glyph" d="M5.3 7.9 L7.1 9.8 L10.8 5.7" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              ) : (
+                                <svg className="wlm-safety-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                                  <path className="shield-base" d="M8 1.5 C10.8 1.5 13.5 2.4 13.5 2.4 C13.5 7.8 11.2 12.1 8 14.5 C4.8 12.1 2.5 7.8 2.5 2.4 C2.5 2.4 5.2 1.5 8 1.5 Z" />
+                                  <path className="shield-glyph-mark" d="M6.3 5.3 C6.3 4.3 7.1 3.7 8 3.7 C8.9 3.7 9.7 4.3 9.7 5.2 C9.7 6.4 8.2 6.7 8.2 7.8" fill="none" strokeWidth="1.6" strokeLinecap="round" />
+                                  <circle className="shield-glyph-dot" cx="8" cy="9.9" r="0.85" />
+                                </svg>
+                              )}
+                            </button>
+                          )}
                           <span style={{fontSize:'12px', fontWeight:'normal', marginLeft: '10px'}}>
                             ({(activeContact.status === 'offline' || !activeContact.id) ? t.status.offline : t.status.online})
                           </span>
@@ -3985,6 +4127,33 @@ const App: React.FC = () => {
                      </div>
                   </div>
                </div>
+
+                {/* Alerte de changement d'empreinte / clé publique de sécurité */}
+                {keyAlertContactId === activeChatId && (
+                  <div className="wlm-key-alert-banner">
+                    <div className="wlm-key-alert-icon">⚠️</div>
+                    <div className="wlm-key-alert-content">
+                      <div className="wlm-key-alert-title">{t.chat.safetyNumberChangedAlertTitle}</div>
+                      <div className="wlm-key-alert-desc">{t.chat.safetyNumberChangedAlertText}</div>
+                    </div>
+                    <div className="wlm-key-alert-actions">
+                      <button
+                        type="button"
+                        className="btn-dialog wlm-btn-verify"
+                        onClick={() => handleOpenSafetyModal(activeChatId)}
+                      >
+                        {t.chat.safetyNumberAction}
+                      </button>
+                      <button
+                        type="button"
+                        className="wlm-btn-alert-close"
+                        onClick={() => setKeyAlertContactId(null)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Bannière d'invitation à un jeu reçu */}
                 {incomingGameInvite && incomingGameInvite.from === activeChatId && (
@@ -4352,6 +4521,61 @@ const App: React.FC = () => {
       </div>
 
       {/* --- MODALES --- */}
+
+      {/* Modale: Vérification de l'empreinte de sécurité (Safety Number) */}
+      {showSafetyModal && safetyModalContactId && (() => {
+        const modalContact = contacts.find(c => c.id === safetyModalContactId) || (activeContact.id === safetyModalContactId ? activeContact : null);
+        const contactName = modalContact ? (modalContact.nickname || modalContact.username) : `#${safetyModalContactId}`;
+        const isVerified = !!verifiedContacts[safetyModalContactId]?.verified;
+        return (
+          <div className="modal-bg" onClick={() => setShowSafetyModal(false)}>
+            <div className="modal-box wlm-safety-modal" onClick={e => e.stopPropagation()} style={{ width: '480px' }}>
+              <div className="win-modal-header">
+                <span>🛡️ {t.chat.safetyNumberTitle} - {formatNickname(contactName)}</span>
+                <button type="button" className="win-close-btn" onClick={() => setShowSafetyModal(false)}>✕</button>
+              </div>
+              <div className="modal-content" style={{ padding: '16px' }}>
+                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: 'var(--text-color, #444)', lineHeight: '1.4' }}>
+                  {t.chat.safetyNumberDescription}
+                </p>
+
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted, #555)', marginBottom: '6px' }}>
+                    {t.chat.safetyNumberFingerprintLabel}
+                  </div>
+                  <div className="wlm-safety-number-box">
+                    {activeFingerprint ? formatSafetyNumber(activeFingerprint) : '...'}
+                  </div>
+                </div>
+
+                <div className="wlm-safety-status-row">
+                  <div className="wlm-safety-status-badge">
+                    {isVerified ? (
+                      <span className="wlm-badge-verified">✓ {t.chat.safetyNumberVerifiedBadge}</span>
+                    ) : (
+                      <span className="wlm-badge-unverified">⚪ {t.chat.safetyNumberUnverifiedBadge}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn-dialog ${isVerified ? 'btn-unverify' : 'btn-verify'}`}
+                    disabled={!activeFingerprint}
+                    onClick={() => handleToggleContactVerification(safetyModalContactId, activeFingerprint)}
+                  >
+                    {isVerified ? t.chat.safetyNumberMarkUnverified : t.chat.safetyNumberMarkVerified}
+                  </button>
+                </div>
+
+                <div className="modal-buttons" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn-dialog" onClick={() => setShowSafetyModal(false)}>
+                    {t.chat.safetyNumberClose}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modale: Confirmation d'envoi d'une capture d'écran collée */}
       {pastedImage && (

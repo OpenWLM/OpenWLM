@@ -525,4 +525,46 @@ export const decryptCustomEmoticon = async (
   }
 };
 
+/**
+ * EMPREINTE DE CLÉ PUBLIQUE & SAFETY NUMBER (Vérification locale 1v1)
+ * Calcule l'empreinte cryptographique SHA-256 canonique d'une clé publique JWK.
+ */
+export const calculatePublicKeyFingerprint = async (publicKeyJwk: JsonWebKey | null | undefined): Promise<string> => {
+  if (!publicKeyJwk || !publicKeyJwk.n || !publicKeyJwk.e) {
+    return '';
+  }
+  // Représentation canonique triée des paramètres publics RSA
+  const canonical = JSON.stringify({
+    e: publicKeyJwk.e,
+    kty: publicKeyJwk.kty || 'RSA',
+    n: publicKeyJwk.n
+  });
+
+  const encoder = new TextEncoder();
+  const data = encoder.encode(canonical);
+
+  const subtle = (typeof window !== 'undefined' && window.crypto?.subtle) 
+    ? window.crypto.subtle 
+    : (globalThis as any).crypto?.subtle;
+
+  if (!subtle) {
+    throw new Error("Web Crypto Subtle non disponible");
+  }
+
+  const hashBuffer = await subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+/**
+ * Formate l'empreinte hexadécimale en blocs lisibles de 4 caractères (Safety Number de 32 caractères)
+ * Ex: "40DE 52E7 BB35 9E64 A587 A0D4 1ED7 09E7"
+ */
+export const formatSafetyNumber = (hexFingerprint: string): string => {
+  if (!hexFingerprint) return '---- ---- ---- ---- ---- ---- ---- ----';
+  const prefix = hexFingerprint.slice(0, 32).toUpperCase();
+  const chunks = prefix.match(/.{1,4}/g);
+  return chunks ? chunks.join(' ') : prefix;
+};
+
 

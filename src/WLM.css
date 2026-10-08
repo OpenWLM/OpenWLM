@@ -3950,4 +3950,186 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   word-break: break-word;
 }
 
+/* --- VÉRIFICATION LOCALE DE CONTACT (SAFETY NUMBER) --- */
+
+.wlm-safety-badge {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0 0 0 7px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 1;
+  border-radius: 4px;
+  transition: transform 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.85));
+}
+
+.wlm-safety-badge:hover {
+  opacity: 1;
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.wlm-safety-badge:active {
+  transform: scale(0.95);
+}
+
+.wlm-safety-badge .wlm-safety-icon {
+  display: block;
+  overflow: visible;
+}
+
+/* Statut VÉRIFIÉ : Bouclier vert translucide rétro Aero */
+.wlm-safety-badge.verified .shield-base {
+  fill: rgba(46, 125, 50, 0.22);
+  stroke: rgba(46, 125, 50, 0.85);
+  stroke-width: 1.1;
+}
+
+.wlm-safety-badge.verified .shield-glyph {
+  stroke: #1b5e20;
+}
+
+.wlm-safety-badge.verified:hover .shield-base {
+  fill: rgba(46, 125, 50, 0.38);
+  stroke: #2e7d32;
+}
+
+/* Statut NON VÉRIFIÉ : Bouclier rouge translucide rétro Aero */
+.wlm-safety-badge.unverified .shield-base {
+  fill: rgba(211, 47, 47, 0.2);
+  stroke: rgba(211, 47, 47, 0.82);
+  stroke-width: 1.1;
+}
+
+.wlm-safety-badge.unverified .shield-glyph-mark {
+  stroke: #b71c1c;
+}
+
+.wlm-safety-badge.unverified .shield-glyph-dot {
+  fill: #b71c1c;
+}
+
+.wlm-safety-badge.unverified:hover .shield-base {
+  fill: rgba(211, 47, 47, 0.35);
+  stroke: #c62828;
+}
+
+/* Bannière d'alerte si changement d'empreinte / clé */
+.wlm-key-alert-banner {
+  background: #fff8e1;
+  border-bottom: 1px solid #ffd54f;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: #5d4037;
+  animation: fadeIn 0.2s ease-in;
+}
+
+.wlm-key-alert-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.wlm-key-alert-content {
+  flex: 1;
+}
+
+.wlm-key-alert-title {
+  font-weight: bold;
+  color: #c62828;
+  margin-bottom: 2px;
+}
+
+.wlm-key-alert-desc {
+  color: #4e342e;
+}
+
+.wlm-key-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.wlm-btn-alert-close {
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  color: #8d6e63;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.wlm-btn-alert-close:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #3e2723;
+}
+
+/* Boîte de l'empreinte / Safety number dans la modale */
+.wlm-safety-number-box {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #1e293b;
+  text-align: center;
+  user-select: all;
+  word-break: break-all;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.wlm-safety-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.wlm-safety-status-badge {
+  font-size: 12px;
+}
+
+.wlm-badge-verified {
+  color: #2e7d32;
+  font-weight: bold;
+}
+
+.wlm-badge-unverified {
+  color: #757575;
+}
+
+.btn-dialog.btn-verify {
+  background: linear-gradient(to bottom, #f0f7e6 0%, #d5eec0 100%);
+  border: 1px solid #82b956;
+  color: #2d5516;
+}
+
+.btn-dialog.btn-verify:hover {
+  background: linear-gradient(to bottom, #f8fced 0%, #e1f5cf 100%);
+}
+
+.btn-dialog.btn-unverify {
+  background: linear-gradient(to bottom, #fff5f5 0%, #fed7d7 100%);
+  border: 1px solid #feb2b2;
+  color: #9b2c2c;
+}
+
+.btn-dialog.btn-unverify:hover {
+  background: linear-gradient(to bottom, #fffafa 0%, #fee2e2 100%);
+}
+
 

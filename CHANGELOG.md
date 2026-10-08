@@ -9,6 +9,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] - 2026-10-08
+
+### 🛡️ Security & Local Contact Verification (Safety Number / IndexedDB)
+- **Public Key Fingerprint Verification (Safety Number)**:
+  - Deterministic canonical SHA-256 fingerprint computation from contact public key RSA components (`e`, `kty`, `n`).
+  - Formatted into 8 blocks of 4 characters for easy out-of-band verification (e.g. `A1B2 C3D4 ...`).
+  - Automatic and immediate key change detection with verified status revocation and alert banner.
+  - Discreet translucent Aero SVG shield badge in conversation header (green with `✓` if verified, red with `?` if unverified).
+  - Dedicated Windows Aero dialog to inspect safety numbers and toggle verification state.
+- **Device Vault Storage in IndexedDB (`WLM_DeviceVault_v1`)**:
+  - Full local storage migration from `localStorage['wlm_verified_contacts_v1']` to IndexedDB's `verified_contacts` object store.
+  - Automatic, idempotent, residue-free migration: clean removal of legacy key and flags from `localStorage`.
+  - Resilience guarantees: preserves legacy data on store write errors, seamless transparent fallback if IndexedDB is disabled.
+
 ## [1.4.0] - 2026-10-05
 
 ### 🔔 Notifications & PWA Web Push (Desktop & Mobile)

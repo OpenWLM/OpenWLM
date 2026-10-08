@@ -49,6 +49,11 @@ import {
   type PushBackendStatus
 } from './utils/PushNotificationManager';
 import { reorderChatTabs, sanitizeOpenChatIds } from './utils/TabUtils';
+import {
+  loadConversationBackgrounds,
+  setConversationBackground,
+  removeConversationBackground
+} from './utils/ConversationBackgrounds';
 
 axios.defaults.withCredentials = true;
 
@@ -870,7 +875,7 @@ const App: React.FC = () => {
   const [isGroupOpen, setIsGroupOpen] = useState(true);
   const [isOfflineGroupOpen, setIsOfflineGroupOpen] = useState(true);
   const [isServicesGroupOpen, setIsServicesGroupOpen] = useState(true);
-  const [convBg, setConvBg] = useState<string>('');
+  const [conversationBackgrounds, setConversationBackgrounds] = useState<Record<number, string>>(loadConversationBackgrounds);
   const [isPrivateMode, setIsPrivateMode] = useState<Record<number, boolean>>(() => {
     try {
       const saved = localStorage.getItem('wlm_private_modes');
@@ -3509,6 +3514,7 @@ const App: React.FC = () => {
       setContextMenu(null);
       if (activeChatId === contactId) setActiveChatId(0);
       setOpenChatIds(prev => prev.filter(id => id !== contactId));
+      setConversationBackgrounds(prev => removeConversationBackground(prev, contactId));
     } catch (err) {
       console.error("Erreur lors de la suppression du contact:", err);
     }
@@ -3714,6 +3720,9 @@ const App: React.FC = () => {
     scene: '/assets/scenes/0006.png', 
     blocked: 0 
   };
+
+  // Détermination de l'arrière-plan de la discussion courante
+  const convBg = activeChatId ? (conversationBackgrounds[activeChatId] || '') : '';
 
   // Filtrage des contacts pour la liste (En ligne / Hors ligne / Recherche)
   const onlineContacts = Array.isArray(contacts) ? contacts.filter(c => 
@@ -4099,9 +4108,9 @@ const App: React.FC = () => {
                 <span
                   onClick={() => handleOpenSafetyModal(activeChatId)}
                   style={{ cursor: 'pointer' }}
-                  title={t.chat.safetyNumberAction}
+                  title={t.chat.verifyIdentity}
                 >
-                  🛡️ {t.chat.safetyNumberAction}
+                  {t.chat.verifyIdentity}
                 </span>
               )}
               </div>
@@ -4828,7 +4837,16 @@ const App: React.FC = () => {
             <div className="win-modal-header"><span>{t.modals.changeBgTitle}</span><button className="win-close-btn" onClick={() => setShowBgModal(false)}>✕</button></div>
             <div className="scene-grid">
               {CONV_BACKGROUNDS.map(bg => (
-                <div key={bg.id} className="scene-thumb" onClick={() => { setConvBg(bg.file); setShowBgModal(false); }}>
+                <div 
+                  key={bg.id} 
+                  className="scene-thumb" 
+                  onClick={() => { 
+                    if (activeChatId) {
+                      setConversationBackgrounds(prev => setConversationBackground(prev, activeChatId, bg.file));
+                    }
+                    setShowBgModal(false); 
+                  }}
+                >
                   {bg.file ? <img src={`/assets/backgrounds/${bg.file}`} alt={bg.name} /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f0f0' }}>{t.modals.bgNone}</div>}
                   <div className="scene-name">{bg.name}</div>
                 </div>

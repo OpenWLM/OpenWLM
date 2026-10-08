@@ -129,6 +129,7 @@
     "privateModeActive": "Private mode enabled (messages not recorded)",
     "privateModeTooltip": "Messages sent in this mode are not saved on the server.",
     "privateModeGlobalAlert": "Global private mode is active. Disable it in the main menu to control individually.",
+    "verifyIdentity": "Verify Identity",
     "safetyNumberTitle": "Contact Verification (Safety Number)",
     "safetyNumberAction": "Verify contact...",
     "safetyNumberVerifiedBadge": "Contact verified on this device",

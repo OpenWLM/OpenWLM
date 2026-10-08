@@ -129,6 +129,7 @@
     "privateModeActive": "Mode privé activé (messages non enregistrés)",
     "privateModeTooltip": "Les messages envoyés dans ce mode ne sont pas enregistrés sur le serveur.",
     "privateModeGlobalAlert": "Le mode privé global est activé. Désactivez-le dans le menu principal pour gérer individuellement.",
+    "verifyIdentity": "Vérifier l'identité",
     "safetyNumberTitle": "Vérification du contact (Safety Number)",
     "safetyNumberAction": "Vérifier le contact...",
     "safetyNumberVerifiedBadge": "Contact vérifié sur cet appareil",

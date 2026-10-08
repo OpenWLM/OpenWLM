@@ -474,6 +474,7 @@ const App: React.FC = () => {
   const [showSafetyModal, setShowSafetyModal] = useState<boolean>(false);
   const [safetyModalContactId, setSafetyModalContactId] = useState<number | null>(null);
   const [activeFingerprint, setActiveFingerprint] = useState<string>('');
+  const [myFingerprint, setMyFingerprint] = useState<string>('');
 
   // --- ÉTAT DU GLISSER-DÉPOSER DES ONGLETS DE DISCUSSION ---
   const [draggedTabId, setDraggedTabId] = useState<number | null>(null);
@@ -907,6 +908,15 @@ const App: React.FC = () => {
   const [myKeys, setMyKeys] = useState<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey } | null>(null);
   const myKeysRef = useRef<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey } | null>(null);
   useEffect(() => { myKeysRef.current = myKeys; }, [myKeys]);
+
+  // Calcul automatique de ma propre empreinte locale de sécurité dès chargement des clés
+  useEffect(() => {
+    if (myKeys?.publicKeyJwk) {
+      calculatePublicKeyFingerprint(myKeys.publicKeyJwk)
+        .then(fp => setMyFingerprint(fp))
+        .catch(console.error);
+    }
+  }, [myKeys]);
 
   // --- CONFIGURATION DE LA POLICE ---
   const [fontSettings, setFontSettings] = useState<FontSettings>({
@@ -2173,6 +2183,16 @@ const App: React.FC = () => {
   const handleOpenSafetyModal = async (contactId: number) => {
     setSafetyModalContactId(contactId);
     setShowSafetyModal(true);
+
+    // Calculer mon empreinte locale
+    if (myKeys?.publicKeyJwk) {
+      calculatePublicKeyFingerprint(myKeys.publicKeyJwk)
+        .then(fp => setMyFingerprint(fp))
+        .catch(console.error);
+    } else {
+      setMyFingerprint('');
+    }
+
     const pubKey = await getPublicKey(contactId, true);
     if (pubKey) {
       const fp = await calculatePublicKeyFingerprint(pubKey);
@@ -4075,6 +4095,15 @@ const App: React.FC = () => {
               >
                 {t.chat.privateMode}
               </span>
+              {activeChatId !== SYSTEM_BOT_ID && (
+                <span
+                  onClick={() => handleOpenSafetyModal(activeChatId)}
+                  style={{ cursor: 'pointer' }}
+                  title={t.chat.safetyNumberAction}
+                >
+                  🛡️ {t.chat.safetyNumberAction}
+                </span>
+              )}
               </div>
 
             {/* Vue scindée : Chat à gauche, Jeu à droite */}
@@ -4526,28 +4555,47 @@ const App: React.FC = () => {
       {showSafetyModal && safetyModalContactId && (() => {
         const modalContact = contacts.find(c => c.id === safetyModalContactId) || (activeContact.id === safetyModalContactId ? activeContact : null);
         const contactName = modalContact ? (modalContact.nickname || modalContact.username) : `#${safetyModalContactId}`;
+        const myDisplayName = myNickname || user?.nickname || user?.username || 'Moi';
         const isVerified = !!verifiedContacts[safetyModalContactId]?.verified;
         return (
           <div className="modal-bg" onClick={() => setShowSafetyModal(false)}>
-            <div className="modal-box wlm-safety-modal" onClick={e => e.stopPropagation()} style={{ width: '480px' }}>
+            <div className="modal-box wlm-safety-modal" onClick={e => e.stopPropagation()} style={{ width: '510px' }}>
               <div className="win-modal-header">
-                <span>🛡️ {t.chat.safetyNumberTitle} - {formatNickname(contactName)}</span>
+                <span>🛡️ {t.chat.safetyNumberTitle} — {formatNickname(contactName)}</span>
                 <button type="button" className="win-close-btn" onClick={() => setShowSafetyModal(false)}>✕</button>
               </div>
               <div className="modal-content" style={{ padding: '16px' }}>
-                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: 'var(--text-color, #444)', lineHeight: '1.4' }}>
+                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: 'var(--text-color, #444)', lineHeight: '1.4' }}>
                   {t.chat.safetyNumberDescription}
                 </p>
 
-                <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted, #555)', marginBottom: '6px' }}>
-                    {t.chat.safetyNumberFingerprintLabel}
+                <div className="wlm-safety-tip-banner">
+                  {t.chat.safetyNumberComparisonTip}
+                </div>
+
+                {/* Bloc 1 : Mon Safety Number */}
+                <div className="wlm-safety-compare-block">
+                  <div className="wlm-safety-compare-header">
+                    <span className="wlm-safety-compare-title">👤 {t.chat.safetyNumberMyFingerprintLabel} ({formatNickname(myDisplayName)})</span>
                   </div>
-                  <div className="wlm-safety-number-box">
+                  <div className="wlm-safety-compare-sub">{t.chat.safetyNumberMyFingerprintSub}</div>
+                  <div className="wlm-safety-compare-box">
+                    {myFingerprint ? formatSafetyNumber(myFingerprint) : '...'}
+                  </div>
+                </div>
+
+                {/* Bloc 2 : Safety Number du contact */}
+                <div className="wlm-safety-compare-block">
+                  <div className="wlm-safety-compare-header">
+                    <span className="wlm-safety-compare-title">👤 {formatNickname(t.chat.safetyNumberContactFingerprintLabel.replace('{name}', contactName))}</span>
+                  </div>
+                  <div className="wlm-safety-compare-sub">{t.chat.safetyNumberContactFingerprintSub}</div>
+                  <div className="wlm-safety-compare-box">
                     {activeFingerprint ? formatSafetyNumber(activeFingerprint) : '...'}
                   </div>
                 </div>
 
+                {/* Ligne d'état & Confirmation de la vérification humaine */}
                 <div className="wlm-safety-status-row">
                   <div className="wlm-safety-status-badge">
                     {isVerified ? (
@@ -4566,7 +4614,7 @@ const App: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="modal-buttons" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                <div className="modal-buttons" style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end' }}>
                   <button type="button" className="btn-dialog" onClick={() => setShowSafetyModal(false)}>
                     {t.chat.safetyNumberClose}
                   </button>
@@ -5355,6 +5403,11 @@ const App: React.FC = () => {
       {contextMenu && (
         <div className="wlm-status-dropdown" style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 10000 }}>
           <div className="dropdown-item" onClick={() => openChat(contextMenu.contactId)}>{t.roster.contextSendIM}</div>
+          {contextMenu.contactId !== SYSTEM_BOT_ID && (
+            <div className="dropdown-item" onClick={() => { handleOpenSafetyModal(contextMenu.contactId); setContextMenu(null); }}>
+              🛡️ {t.chat.safetyNumberAction}
+            </div>
+          )}
           <div className="dropdown-item" onClick={() => handleClearHistory(contextMenu.contactId)}>{t.roster.contextClearHistory}</div>
           <div className="dropdown-item separator"></div>
           <div className="dropdown-item" onClick={() => handleDeleteContact(contextMenu.contactId)}>{t.roster.contextDelete}</div>

@@ -99,8 +99,17 @@ class LocalDB {
 
   public async clearAll(): Promise<void> {
     if (!this.db) await this.init();
-    const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
-    transaction.objectStore(STORE_NAME).clear();
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        store.clear();
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error("Échec vidage LocalDB"));
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
   public async clearHistory(chatId: string | number): Promise<void> {

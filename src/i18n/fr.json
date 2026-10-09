@@ -378,7 +378,19 @@
     "e2eeExpiryHint": "🔒 Chiffrement de bout en bout (E2EE) • Expire après 4h",
     "allEmoticonsTitle": "Toutes les émoticônes",
     "addManageBtn": "+ Ajouter / Gérer...",
-    "customEmoticonsTitle": "Gestionnaire d'émoticônes personnalisées"
+    "customEmoticonsTitle": "Gestionnaire d'émoticônes personnalisées",
+    "resetE2ETitle": "Réinitialiser les clés E2E",
+    "resetE2EWarningIntro": "Attention : cette action est irréversible et doit être réservée aux cas de suspicion de compromission de votre clé privée.",
+    "resetE2EPoint1": "Génération d'une nouvelle identité cryptographique (nouvelle paire de clés RSA 2048 bits).",
+    "resetE2EPoint2": "Remplacement et invalidation immédiate de votre ancienne clé publique et privée sur le serveur.",
+    "resetE2EPoint3": "Suppression définitive de vos anciens messages chiffrés sur le serveur (devenus indéchiffrables).",
+    "resetE2EPoint4": "Purge complète de l'historique local et des clés stockées sur cet appareil (IndexedDB).",
+    "resetE2EPoint5": "Révocation du statut de vérification auprès de vos contacts (nécessité de re-vérifier votre Safety Number).",
+    "resetE2EPoint6": "Révocation de toutes vos sessions actives et déconnexion immédiate.",
+    "resetE2EPasswordPrompt": "Saisissez votre mot de passe pour confirmer la réinitialisation :",
+    "resetE2EPasswordPlaceholder": "Mot de passe actuel",
+    "resetE2EConfirmBtn": "Réinitialiser définitivement mes clés",
+    "resetE2EInProgress": "Réinitialisation en cours..."
   },
   "customEmoticons": {
     "title": "Gestionnaire des émoticônes personnalisées (E2EE)",

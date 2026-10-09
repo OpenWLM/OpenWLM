@@ -31,7 +31,6 @@ import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
-import { resolveMessageSide } from './utils/MessageIdentity';
 import { formatNickname } from './utils/NicknameFormatter';
 import DesktopToastContainer, { type ToastItem } from './components/DesktopToast';
 import {
@@ -50,6 +49,7 @@ import {
   type PushBackendStatus
 } from './utils/PushNotificationManager';
 import { reorderChatTabs, sanitizeOpenChatIds } from './utils/TabUtils';
+import { resolveMessageSide } from './utils/MessageIdentity';
 import {
   loadConversationBackgrounds,
   setConversationBackground,
@@ -520,6 +520,10 @@ const App: React.FC = () => {
   const [showSceneModal, setShowSceneModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showResetE2EModal, setShowResetE2EModal] = useState(false);
+  const [resetE2EPassword, setResetE2EPassword] = useState('');
+  const [resetE2EError, setResetE2EError] = useState<string | null>(null);
+  const [isResettingE2E, setIsResettingE2E] = useState(false);
   const [showBgModal, setShowBgModal] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showWinksModal, setShowWinksModal] = useState(false);
@@ -1959,6 +1963,45 @@ const App: React.FC = () => {
           return;
         }
 
+        // Si la clé publique du contact est transmise (ex: après réinitialisation E2E)
+        if (data.public_key) {
+          try {
+            const pubKey = typeof data.public_key === 'string' ? JSON.parse(data.public_key) : data.public_key;
+            setPublicKeysCache(prev => ({ ...prev, [contactId]: pubKey }));
+            calculatePublicKeyFingerprint(pubKey).then(fp => {
+              if (!fp) return;
+              setVerifiedContacts(prev => {
+                const existing = prev[contactId];
+                if (!existing) {
+                  const nextRecord: VerifiedContactRecord = {
+                    contactId,
+                    fingerprint: fp,
+                    verified: false,
+                    seenAt: Date.now()
+                  };
+                  VerifiedContactsStorage.save(nextRecord);
+                  return { ...prev, [contactId]: nextRecord };
+                }
+                if (existing.fingerprint && existing.fingerprint !== fp) {
+                  console.warn(`[Security] La clé publique du contact ${contactId} a changé ! Réinitialisation du statut de vérification.`);
+                  setKeyAlertContactId(contactId);
+                  const nextRecord: VerifiedContactRecord = {
+                    contactId,
+                    fingerprint: fp,
+                    verified: false,
+                    seenAt: Date.now()
+                  };
+                  VerifiedContactsStorage.save(nextRecord);
+                  return { ...prev, [contactId]: nextRecord };
+                }
+                return prev;
+              });
+            });
+          } catch (e) {
+            console.warn('[Security] Impossible de parser la clé publique reçue:', e);
+          }
+        }
+
         setContacts(prev => {
           const prevContact = prev.find(c => c.id === contactId);
           if (prevContact) {
@@ -2734,6 +2777,7 @@ const App: React.FC = () => {
       showSceneModal ||
       showAvatarModal ||
       showPasswordModal ||
+      showResetE2EModal ||
       showBgModal ||
       showWinksModal ||
       showAllEmoticonsModal ||
@@ -2799,6 +2843,7 @@ const App: React.FC = () => {
     showSceneModal,
     showAvatarModal,
     showPasswordModal,
+    showResetE2EModal,
     showBgModal,
     showWinksModal,
     showAllEmoticonsModal,
@@ -3138,11 +3183,101 @@ const App: React.FC = () => {
   };
 
   /**
-   * RÉINITIALISATION DE LA SESSION
+   * RÉINITIALISATION DES CLÉS E2E (OUVERTURE DE LA MODALE DE CONFIRMATION)
    */
-  const handleResetE2EKeys = async () => {
-    if (window.confirm("Attention : cela va fermer votre session. Vos anciens messages nécessiteront votre mot de passe pour être déchiffrés. Continuer ?")) {
-      handleLogout('Réinitialisation manuelle de la session');
+  const handleResetE2EKeys = () => {
+    setShowStatusMenu(false);
+    setResetE2EPassword('');
+    setResetE2EError(null);
+    setShowResetE2EModal(true);
+  };
+
+  /**
+   * CONFIRMATION ET EXÉCUTION DU RESET E2E (ZERO-KNOWLEDGE DE BOUT EN BOUT)
+   */
+  const handleConfirmResetE2EKeys = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!user || !resetE2EPassword) return;
+
+    setIsResettingE2E(true);
+    setResetE2EError(null);
+
+    try {
+      // 1. Dérivation Zero-Knowledge locale depuis le mot de passe utilisateur
+      const { authKeyHex, vaultKey } = await deriveZeroKnowledgeKeys(user.username, resetE2EPassword);
+
+      // 2. Génération d'une nouvelle paire de clés cryptographiques RSA 2048 bits
+      const newKeyPair = await generateKeyPair();
+      const pubJwk = newKeyPair.publicKeyJwk;
+      const privJwk = newKeyPair.privateKeyJwk;
+
+      // 3. Chiffrement de la nouvelle clé privée avec la vaultKey dérivée
+      const newVault = await encryptPrivateKeyVault(privJwk, vaultKey);
+
+      // 4. Appel sécurisé de l'API avec JWT
+      const res = await axios.post('/api/user/reset-e2e-keys', {
+        authKeyHex,
+        publicKey: pubJwk,
+        encryptedPrivateKey: newVault
+      });
+
+      if (res.data && res.data.success) {
+        // 5. Purge complète des données locales chiffrées (messages, clés privées, contacts vérifiés)
+        const purgeErrors: string[] = [];
+        try {
+          await LocalDB.clearAll();
+        } catch (err: any) {
+          console.error('[Reset] Échec purge LocalDB:', err);
+          purgeErrors.push("messages locaux");
+        }
+        try {
+          const resKeys = await E2EEKeyStorage.clearAll();
+          if (!resKeys) {
+            console.error('[Reset] Échec purge E2EEKeyStorage');
+            purgeErrors.push("clés privées locales");
+          }
+        } catch (err: any) {
+          console.error('[Reset] Exception purge E2EEKeyStorage:', err);
+          purgeErrors.push("clés privées locales");
+        }
+        try {
+          const resVC = await VerifiedContactsStorage.clearAll();
+          if (!resVC || !resVC.success) {
+            console.error('[Reset] Échec purge VerifiedContactsStorage:', resVC?.error);
+            purgeErrors.push("contacts vérifiés");
+          }
+        } catch (err: any) {
+          console.error('[Reset] Exception purge VerifiedContactsStorage:', err);
+          purgeErrors.push("contacts vérifiés");
+        }
+        try {
+          await CustomEmoticonsDB.clearAll();
+        } catch (err: any) {
+          console.warn('[Reset] Échec purge CustomEmoticonsDB:', err);
+        }
+
+        if (purgeErrors.length > 0) {
+          console.error('[Reset] Échec partiel de purge locale:', purgeErrors);
+          alert(`Attention : Les données locales suivantes n'ont pas pu être entièrement purgées sur cet appareil : ${purgeErrors.join(', ')}.`);
+        }
+
+        // 6. Nettoyage de l'état en mémoire
+        setMessages({});
+        setMyKeys(null);
+        setVerifiedContacts({});
+        setShowResetE2EModal(false);
+
+        // 7. Déconnexion propre et redirection vers l'écran d'accueil/authentification
+        handleLogout('Réinitialisation E2E effectuée avec succès');
+      } else {
+        setResetE2EError(res.data?.error || "Échec de la réinitialisation.");
+      }
+    } catch (err: any) {
+      console.error("[Reset E2E] Erreur:", err);
+      const errorMsg = err.response?.data?.error || err.message || "Erreur lors de la réinitialisation des clés E2E.";
+      setResetE2EError(errorMsg);
+    } finally {
+      setIsResettingE2E(false);
     }
   };
 
@@ -4286,7 +4421,7 @@ const App: React.FC = () => {
                     const messageSide = resolveMessageSide(m, user?.id);
                     const isSender = messageSide === 'self';
                     const activeContact = activeChatId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === activeChatId);
-                    const senderDisplayName = isSender 
+                    const senderDisplayName = isSender
                       ? (myNickname || user?.nickname || user?.username || 'Moi')
                       : (messageSide === 'unknown'
                           ? t.chat.unknownSender
@@ -5011,6 +5146,82 @@ const App: React.FC = () => {
               <input id="new-password" type="password" placeholder={t.modals.newPasswordPlaceholder} required className="user-name-input" style={{ width: '100%', padding: '5px' }} />
               <button type="submit" className="win-btn" style={{ marginTop: '10px' }}>{t.modals.validateBtn}</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modale: Réinitialisation des clés de chiffrement E2E */}
+      {showResetE2EModal && (
+        <div className="modal-bg" onClick={() => !isResettingE2E && setShowResetE2EModal(false)}>
+          <div className="modal-box wlm-reset-modal" onClick={e => e.stopPropagation()}>
+            <div className="win-modal-header">
+              <span>🛡️ {t.modals.resetE2ETitle}</span>
+              <button 
+                type="button" 
+                className="win-close-btn" 
+                disabled={isResettingE2E}
+                onClick={() => setShowResetE2EModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-content" style={{ padding: '16px' }}>
+              <div className="wlm-reset-warning-banner">
+                ⚠️ {t.modals.resetE2EWarningIntro}
+              </div>
+
+              <ul className="wlm-reset-points-list">
+                <li>• {t.modals.resetE2EPoint1}</li>
+                <li>• {t.modals.resetE2EPoint2}</li>
+                <li>• {t.modals.resetE2EPoint3}</li>
+                <li>• {t.modals.resetE2EPoint4}</li>
+                <li>• {t.modals.resetE2EPoint5}</li>
+                <li>• {t.modals.resetE2EPoint6}</li>
+              </ul>
+
+              <form onSubmit={handleConfirmResetE2EKeys}>
+                <div className="wlm-reset-password-section">
+                  <label htmlFor="reset-e2e-password-input" style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#333', marginBottom: '6px' }}>
+                    {t.modals.resetE2EPasswordPrompt}
+                  </label>
+                  <input
+                    id="reset-e2e-password-input"
+                    type="password"
+                    value={resetE2EPassword}
+                    onChange={(e) => { setResetE2EPassword(e.target.value); setResetE2EError(null); }}
+                    placeholder={t.modals.resetE2EPasswordPlaceholder}
+                    disabled={isResettingE2E}
+                    required
+                    className="user-name-input"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px' }}
+                    autoFocus
+                  />
+                  {resetE2EError && (
+                    <div className="wlm-reset-error">
+                      ⚠ {resetE2EError}
+                    </div>
+                  )}
+                </div>
+
+                <div className="win-modal-footer" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="win-btn"
+                    disabled={isResettingE2E}
+                    onClick={() => setShowResetE2EModal(false)}
+                  >
+                    {t.common.cancel || "Annuler"}
+                  </button>
+                  <button
+                    type="submit"
+                    className="win-btn danger"
+                    disabled={isResettingE2E || !resetE2EPassword}
+                  >
+                    {isResettingE2E ? t.modals.resetE2EInProgress : t.modals.resetE2EConfirmBtn}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

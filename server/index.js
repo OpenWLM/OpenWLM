@@ -590,8 +590,8 @@ const removeUserSocket = (socketId) => {
  * (et à toutes les sessions actives de l'utilisateur pour synchronisation)
  */
 const broadcastStatusToContacts = (userId, payload) => {
-  // 1. Trouver tous les utilisateurs qui ont "userId" dans leur liste de contacts
-  const contacts = db.prepare('SELECT user_id FROM contacts WHERE contact_id = ?').all(userId);
+  // 1. Trouver tous les utilisateurs autorisés qui ont "userId" dans leur liste de contacts (non bloqués)
+  const contacts = db.prepare('SELECT user_id FROM contacts WHERE contact_id = ? AND (blocked IS NULL OR blocked = 0)').all(userId);
   
   // 2. Diffuser aux contacts via leurs rooms multi-sessions
   contacts.forEach(contact => {
@@ -729,6 +729,22 @@ const uploadRateLimiter = (req, res, next) => {
   next();
 };
 
+/**
+ * SÉCURITÉ (E2) : Rate limiting par compte (en complément du rate limiting par IP fiable).
+ * Fenêtre 15 minutes. Réinitialisé sur succès légitime.
+ */
+const loginAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+const signupAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 5 });
+const changePasswordAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+const resetE2eAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+
+const accountLimiters = [
+  loginAccountLimiter,
+  signupAccountLimiter,
+  changePasswordAccountLimiter,
+  resetE2eAccountLimiter
+];
+
 const parseCookies = (cookieHeader) => {
   const list = {};
   if (!cookieHeader || typeof cookieHeader !== 'string') return list;
@@ -745,22 +761,6 @@ const parseCookies = (cookieHeader) => {
   });
   return list;
 };
-
-/**
- * SÉCURITÉ (E2) : Rate limiting par compte (en complément du rate limiting par IP fiable).
- * Fenêtre 15 minutes. Réinitialisé sur succès légitime.
- */
-const loginAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
-const signupAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 5 });
-const changePasswordAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
-const resetE2eAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
-
-const accountLimiters = [
-  loginAccountLimiter,
-  signupAccountLimiter,
-  changePasswordAccountLimiter,
-  resetE2eAccountLimiter
-];
 
 /**
  * Middleware d'authentification par JWT
@@ -1220,6 +1220,94 @@ app.post('/api/user/keys', authenticateToken, (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Erreur lors de la sauvegarde des clés." });
+  }
+});
+
+/**
+ * Réinitialisation d'urgence des clés E2E de l'utilisateur (Anti-Compromission).
+ * 
+ * Sécurité et atomicité :
+ * 1. Authentification stricte par JWT (req.user.id dérivé du token vérifié).
+ * 2. Contrôle d'accès : Rejet immédiat (HTTP 403) si un userId discordé est fourni dans le corps de requête.
+ * 3. Vérification Zero-Knowledge : Requiert authKeyHex et valide le mot de passe en temps constant.
+ * 4. Transaction atomique :
+ *    - Remplacement des clés publique et privée chiffrée.
+ *    - Suppression définitive de tous les messages chiffrés sur le serveur (expéditeur ou destinataire).
+ *    - Suppression des curseurs de lecture associés.
+ *    - Incrémentation de token_version pour révoquer toutes les sessions JWT actives.
+ * 5. Notification temps réel :
+ *    - Diffusion immédiate de la nouvelle clé publique aux contacts (déclenche la réinitialisation du Safety Number).
+ */
+app.post('/api/user/reset-e2e-keys', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  const { authKeyHex, publicKey, encryptedPrivateKey } = req.body;
+
+  // SÉCURITÉ (E2) : rate limiting par compte
+  const resetLimit = resetE2eAccountLimiter.attempt(userId);
+  if (!resetLimit.allowed) {
+    return res.status(429).json({ error: "Trop de tentatives de réinitialisation E2E. Veuillez réessayer plus tard." });
+  }
+
+  // SÉCURITÉ : Contrôle d'accès strict (l'utilisateur ne peut réinitialiser QUE sa propre identité)
+  if (req.body.userId !== undefined && Number(req.body.userId) !== userId) {
+    return res.status(403).json({ error: "Action non autorisée : vous ne pouvez réinitialiser que votre propre identité." });
+  }
+
+  // Validation du format des paramètres
+  if (!authKeyHex || typeof authKeyHex !== 'string' || !/^[a-fA-F0-9]{64}$/.test(authKeyHex)) {
+    return res.status(400).json({ error: "Format de la clé d'authentification invalide (hex 256 bits requis)." });
+  }
+
+  if (!publicKey || typeof publicKey !== 'object' || !encryptedPrivateKey || typeof encryptedPrivateKey !== 'object') {
+    return res.status(400).json({ error: "Clés cryptographiques invalides ou manquantes." });
+  }
+
+  const user = db.prepare('SELECT id, username, salt, password_hash, token_version FROM users WHERE id = ?').get(userId);
+  if (!user) {
+    return res.status(404).json({ error: "Utilisateur introuvable." });
+  }
+
+  // Vérification Zero-Knowledge du mot de passe
+  if (!verifyPasswordHash(authKeyHex, user.salt, user.password_hash)) {
+    return res.status(401).json({ error: "Mot de passe incorrect." });
+  }
+
+  try {
+    db.transaction(() => {
+      // 1. Mise à jour de la nouvelle paire de clés cryptographiques
+      db.prepare('UPDATE users SET public_key = ?, encrypted_private_key = ? WHERE id = ?')
+        .run(JSON.stringify(publicKey), JSON.stringify(encryptedPrivateKey), userId);
+
+      // 2. Suppression de tous les anciens messages chiffrés sur le serveur (devenus indéchiffrables)
+      db.prepare('DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?')
+        .run(userId, userId);
+
+      // 3. Suppression des curseurs de lecture associés
+      db.prepare('DELETE FROM conversation_read_cursors WHERE user_id = ? OR contact_id = ?')
+        .run(userId, userId);
+
+      // 4. Révocation de toutes les sessions actives (incrémentation de token_version)
+      db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?')
+        .run(userId);
+    })();
+
+    // 5. Diffusion en temps réel de la nouvelle clé publique aux contacts connectés
+    const updatedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    broadcastStatusToContacts(userId, toPublicUserDTO(updatedUser));
+
+    // 6. Révocation immédiate et forcée de toutes les connexions WebSocket existantes pour cet utilisateur
+    try {
+      io.in(getUserRoom(userId)).disconnectSockets(true);
+    } catch (e) {
+      console.warn("[E2EE Reset] Erreur déconnexion sockets:", e);
+    }
+
+    // SÉCURITÉ (E2) : réinitialisation réussie -> quota du compte remis à zéro
+    resetE2eAccountLimiter.reset(userId);
+    res.json({ success: true, message: "Clés E2E réinitialisées avec succès." });
+  } catch (err) {
+    console.error("[E2EE Reset] Erreur lors de la réinitialisation:", err);
+    res.status(500).json({ error: "Erreur lors de la réinitialisation des clés E2E." });
   }
 });
 

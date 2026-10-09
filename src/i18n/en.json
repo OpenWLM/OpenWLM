@@ -378,7 +378,19 @@
     "e2eeExpiryHint": "🔒 End-to-end encrypted (E2EE) • Expires after 4h",
     "allEmoticonsTitle": "All emoticons",
     "addManageBtn": "+ Add / Manage...",
-    "customEmoticonsTitle": "Custom emoticons manager"
+    "customEmoticonsTitle": "Custom emoticons manager",
+    "resetE2ETitle": "Reset E2E Keys",
+    "resetE2EWarningIntro": "Warning: this action is irreversible and should only be performed if you suspect private key compromise or encryption corruption.",
+    "resetE2EPoint1": "Generation of a new cryptographic identity (new 2048-bit RSA key pair).",
+    "resetE2EPoint2": "Immediate replacement and invalidation of your previous public and private keys on the server.",
+    "resetE2EPoint3": "Permanent deletion of your previously encrypted messages on the server (they become undecryptable).",
+    "resetE2EPoint4": "Full purge of local history and cryptographic keys stored on this device (IndexedDB).",
+    "resetE2EPoint5": "Revocation of verification status with your contacts (they will need to re-verify your Safety Number).",
+    "resetE2EPoint6": "Revocation of all active sessions across devices and immediate logout.",
+    "resetE2EPasswordPrompt": "Enter your password to confirm reset:",
+    "resetE2EPasswordPlaceholder": "Current password",
+    "resetE2EConfirmBtn": "Permanently reset my keys",
+    "resetE2EInProgress": "Resetting keys..."
   },
   "customEmoticons": {
     "title": "Custom Emoticons Manager (E2EE)",

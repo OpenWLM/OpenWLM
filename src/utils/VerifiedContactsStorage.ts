@@ -298,6 +298,49 @@ class VerifiedContactsStorage {
   }
 
   /**
+   * Purge toutes les données de contacts vérifiés stockées localement (réinitialisation globale E2EE)
+   */
+  public async clearAll(): Promise<StorageResult> {
+    try {
+      await this.init();
+
+      if (this.useFallback || !this.db) {
+        this.fallbackMemory = {};
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+            localStorage.removeItem(LEGACY_FLAG_KEY);
+          }
+        } catch {}
+        return { success: true };
+      }
+
+      return await new Promise<StorageResult>((resolve) => {
+        try {
+          const tx = this.db!.transaction([STORE_NAME], 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          store.clear();
+
+          tx.oncomplete = () => {
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem(LEGACY_STORAGE_KEY);
+                localStorage.removeItem(LEGACY_FLAG_KEY);
+              }
+            } catch {}
+            resolve({ success: true });
+          };
+          tx.onerror = () => resolve({ success: false, error: tx.error?.message });
+        } catch (e: unknown) {
+          resolve({ success: false, error: e instanceof Error ? e.message : "Exception clearAll" });
+        }
+      });
+    } catch (err: unknown) {
+      return { success: false, error: err instanceof Error ? err.message : "Erreur clearAll" };
+    }
+  }
+
+  /**
    * Effectue la migration automatique et idempotente depuis localStorage
    */
   public async migrateFromLocalStorage(): Promise<MigrationResult> {

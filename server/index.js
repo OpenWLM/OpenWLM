@@ -464,6 +464,33 @@ const cleanupExpiredFiles = () => {
 cleanupExpiredFiles();
 setInterval(cleanupExpiredFiles, 10 * 60 * 1000); // Exécution toutes les 10 minutes
 
+/**
+ * SÉCURITÉ (hygiène) : purge des fichiers orphelins dans uploads/ (upload interrompu
+ * avant insertion en base). Ne touche jamais aux fichiers référencés ni aux uploads < 1 h.
+ */
+const cleanupOrphanUploads = () => {
+  try {
+    const referenced = new Set(db.prepare('SELECT filename FROM shared_files').all().map(r => r.filename));
+    const now = Date.now();
+    for (const entry of fs.readdirSync(UPLOADS_DIR, { withFileTypes: true })) {
+      if (!entry.isFile()) continue; // ignore le sous-dossier emoticons/
+      if (referenced.has(entry.name)) continue;
+      const full = path.join(UPLOADS_DIR, entry.name);
+      try {
+        const st = fs.statSync(full);
+        if (now - st.mtimeMs > 60 * 60 * 1000) {
+          fs.unlinkSync(full);
+          console.log(`[Fichiers E2EE] Orphelin purgé : ${entry.name}`);
+        }
+      } catch (e) { /* ignore */ }
+    }
+  } catch (err) {
+    console.error("Erreur nettoyage fichiers orphelins:", err);
+  }
+};
+cleanupOrphanUploads();
+setInterval(cleanupOrphanUploads, 30 * 60 * 1000); // Toutes les 30 minutes
+
 // Reset all users to offline on server start to fix DB/RAM mismatch
 try {
   db.exec("UPDATE users SET status = 'offline'");
@@ -965,6 +992,8 @@ app.post('/api/logout', authenticateToken, (req, res) => {
       if (payload && payload.id) {
         db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', payload.id);
         broadcastStatusToContacts(payload.id, { id: payload.id, userId: payload.id, status: 'offline' });
+        // SÉCURITÉ : une révocation DB ne ferme pas le TCP — on coupe réellement toutes les sockets de l'utilisateur
+        io.in(getUserRoom(payload.id)).disconnectSockets(true);
       }
     } catch (e) {
       // Ignorer si token invalide/expiré au moment de la déconnexion
@@ -1333,7 +1362,7 @@ app.post('/api/user/keys', authenticateToken, sensitiveRateLimiter, (req, res) =
  * 5. Notification temps réel :
  *    - Diffusion immédiate de la nouvelle clé publique aux contacts (déclenche la réinitialisation du Safety Number).
  */
-app.post('/api/user/reset-e2e-keys', authenticateToken, (req, res) => {
+app.post('/api/user/reset-e2e-keys', authenticateToken, sensitiveRateLimiter, (req, res) => {
   const userId = req.user.id;
   const { authKeyHex, publicKey, encryptedPrivateKey } = req.body;
 
@@ -1471,7 +1500,7 @@ app.post('/api/user/update', authenticateToken, (req, res) => {
  * Ne reçoit jamais de mot de passe brut : valide oldAuthKeyHex et met à jour
  * le hash et encryptedPrivateKey de manière atomique.
  */
-app.post('/api/user/change-password', authenticateToken, (req, res) => {
+app.post('/api/user/change-password', authenticateToken, sensitiveRateLimiter, (req, res) => {
   const { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey } = req.body;
   const oldKey = oldAuthKeyHex || req.body.oldPassword;
   const newKey = newAuthKeyHex || req.body.newPassword;
@@ -1510,6 +1539,22 @@ app.post('/api/user/change-password', authenticateToken, (req, res) => {
       // SÉCURITÉ : Incrémenter token_version pour révoquer toutes les sessions JWT existantes
       db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(userId);
     })();
+
+    // SÉCURITÉ : renouvelle la session COURANTE (nouveau token_version) pour ne pas la casser,
+    // puis coupe toutes les sockets de l'utilisateur (les autres appareils retombent sur un token révoqué).
+    const newTv = (db.prepare('SELECT token_version FROM users WHERE id = ?').get(userId) || {}).token_version || 0;
+    const newToken = jwt.sign({ id: userId, username: req.user.username, tv: newTv }, SECRET, { expiresIn: '24h' });
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const isSecure = (isProd || Boolean(req.headers['cf-ray'] || isHttps)) && isHttps;
+    res.cookie('token', newToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000,
+      path: '/'
+    });
+    io.in(getUserRoom(userId)).disconnectSockets(true);
+
     // SÉCURITÉ (E2) : changement réussi -> quota du compte remis à zéro
     changePasswordAccountLimiter.reset(userId);
     res.json({ success: true });

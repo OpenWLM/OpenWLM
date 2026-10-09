@@ -1527,7 +1527,6 @@ const App: React.FC = () => {
       let decryptedAudio = m.audio;
       let decryptedStyle = m.style;
       let fileData: FileDataPayload | undefined = m.fileData;
-      let payloadSender: string | undefined = undefined;
 
       try {
         const potentialJson = JSON.parse(m.text);
@@ -1541,8 +1540,7 @@ const App: React.FC = () => {
              } else {
                decryptedText = payload.text;
              }
-             if (payload.sender) payloadSender = payload.sender;
-             if (payload.audio) decryptedAudio = payload.audio;
+              if (payload.audio) decryptedAudio = payload.audio;
              if (payload.style) decryptedStyle = payload.style;
              if (payload.customEmoticons) {
                registerReceivedCustomEmoticons(payload.customEmoticons);
@@ -1560,7 +1558,7 @@ const App: React.FC = () => {
 
       const finalSender = isSender
         ? (myNickname || user?.nickname || user?.username || 'Moi')
-        : (contactResolvedName || payloadSender || m.sender_name || (m.sender && m.sender !== 'Contact' ? m.sender : null) || 'Contact');
+        : (contactResolvedName || m.sender_name || (m.sender && m.sender !== 'Contact' ? m.sender : null) || 'Contact');
 
       results.push({ 
         ...m, 
@@ -1724,7 +1722,6 @@ const App: React.FC = () => {
         const isSender = resolveMessageSide({ senderId, sender_id: senderId }, user.id) === 'self';
         let decryptedData = { ...data };
         let fileData = data.fileData;
-        let payloadSender: string | undefined = undefined;
 
         // Tentative de détection si le message est chiffré de bout en bout
         let isEncrypted = false;
@@ -1748,7 +1745,6 @@ const App: React.FC = () => {
                    fileData = payload;
                    decryptedData.text = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
                  }
-                 if (payload.sender) payloadSender = payload.sender;
                  if (payload.customEmoticons) {
                    registerReceivedCustomEmoticons(payload.customEmoticons);
                  }
@@ -1774,7 +1770,7 @@ const App: React.FC = () => {
         const contactResolvedName = contactFromList ? (contactFromList.nickname || contactFromList.username) : null;
         const finalSenderName = isSender
           ? (myNickname || user?.nickname || user?.username || 'Moi')
-          : (contactResolvedName || payloadSender || decryptedData.sender || data.sender || data.sender_name || 'Contact');
+          : (contactResolvedName || data.sender || data.sender_name || 'Contact');
 
         // Mise à jour de l'interface
         setOpenChatIds(prev => prev.includes(conversationContactId) ? prev : [...prev, conversationContactId]);

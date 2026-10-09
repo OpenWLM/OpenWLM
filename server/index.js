@@ -1919,6 +1919,37 @@ app.delete('/api/emoticons/custom/:id', authenticateToken, (req, res) => {
  */
 
 // Statut de l'infrastructure Web Push
+/**
+ * Liste des parties actives de l'utilisateur (reprise après fermeture complète de l'app)
+ */
+app.get('/api/games/active', authenticateToken, sensitiveRateLimiter, (req, res) => {
+  const userId = req.user.id;
+  const games = [];
+  for (const game of activeGames.values()) {
+    if (game.status !== 'playing') continue;
+    const players = getGamePlayers(game);
+    if (!players.includes(userId)) continue;
+    const opponentId = players.find(p => p !== userId);
+    const opp = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(opponentId);
+    const entry = {
+      opponentId,
+      opponentName: opp ? (opp.nickname || opp.username) : 'Contact',
+      gameType: game.gameType,
+      isMyTurn: game.turn === userId,
+      status: game.status
+    };
+    if (game.gameType === 'checkers') {
+      entry.myColor = (game.playerWhite === userId) ? 'white' : 'black';
+    } else if (game.gameType === 'puissance4') {
+      entry.myColor = (game.playerRed === userId) ? 'red' : 'yellow';
+    } else {
+      entry.mySymbol = (game.playerX === userId) ? 'X' : 'O';
+    }
+    games.push(entry);
+  }
+  res.json({ games });
+});
+
 app.get('/api/push/status', (req, res) => {
   res.json({
     available: true,

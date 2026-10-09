@@ -48,6 +48,15 @@ const onceOrNull = (socket, event, ms) => new Promise((resolve) => {
   socket.on(event, handler);
   setTimeout(() => { socket.off(event, handler); resolve(null); }, ms);
 });
+const httpGet = (apiPath, token) => new Promise((resolve) => {
+  const req = http.request({ hostname: 'localhost', port: 3001, path: apiPath, method: 'GET', headers: token ? { Authorization: `Bearer ${token}` } : {} }, (res) => {
+    let raw = '';
+    res.on('data', (c) => { raw += c; });
+    res.on('end', () => { let d; try { d = JSON.parse(raw); } catch { d = raw; } resolve({ status: res.statusCode, data: d }); });
+  });
+  req.on('error', () => resolve({ status: 0 }));
+  req.end();
+});
 
 function cleanup() {
   try { db.prepare('DELETE FROM contacts WHERE user_id IN (9601,9602) OR contact_id IN (9601,9602)').run(); } catch {}
@@ -75,6 +84,11 @@ test('jeux : veille ≠ abandon (reprise possible), quit explicite = synchro', {
     await wait(250);
     s2.emit('game_accept', { target: IDS.a, gameType: 'checkers' });
     await wait(450);
+
+    // 0) La partie en cours est listée pour reprise (cas fermeture complète de la PWA)
+    const activeRes = await httpGet('/api/games/active', tok(IDS.a, 'gd_a'));
+    assert.ok(activeRes.status === 200 && Array.isArray(activeRes.data.games), 'GET /api/games/active répond');
+    assert.ok(activeRes.data.games.some(g => g.opponentId === IDS.b && g.gameType === 'checkers'), 'la partie active est listée pour reprise');
 
     // 1) Veille simulée : B se déconnecte. A ne doit PAS recevoir de game_quit.
     let quitSeen = onceOrNull(s1, 'game_quit', 700);

@@ -853,6 +853,14 @@ const App: React.FC = () => {
     targetName: string;
     gameType?: string;
   } | null>(null);
+  const [resumableGames, setResumableGames] = useState<Array<{
+    opponentId: number;
+    opponentName: string;
+    gameType: string;
+    mySymbol?: string;
+    myColor?: 'white' | 'black' | 'red' | 'yellow';
+    isMyTurn: boolean;
+  }>>([]);
   const [showGamesMenu, setShowGamesMenu] = useState(false);
   const [isGameMinimized, setIsGameMinimized] = useState<boolean>(false);
   const [gameSummary, setGameSummary] = useState<{
@@ -1673,6 +1681,32 @@ const App: React.FC = () => {
   }, [messages, activeChatId]);
 
   /**
+   * Reprise de partie : rafraîchit la liste des parties actives de l'utilisateur
+   */
+  const refreshResumableGames = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/games/active');
+      setResumableGames(Array.isArray(res.data?.games) ? res.data.games : []);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Reprise automatique d'une partie en cours à l'ouverture de la conversation
+  useEffect(() => {
+    if (!activeChatId || activeGame) return;
+    const g = resumableGames.find(x => x.opponentId === activeChatId);
+    if (g) {
+      setActiveGame({
+        opponentId: g.opponentId,
+        opponentName: g.opponentName,
+        mySymbol: g.mySymbol,
+        myColor: g.myColor,
+        isMyTurn: g.isMyTurn,
+        gameType: g.gameType
+      });
+    }
+  }, [activeChatId, resumableGames, activeGame]);
+
+  /**
    * GESTION DES SOCKETS (CONNEXION & ÉVÉNEMENTS)
    */
   useEffect(() => {
@@ -1681,6 +1715,7 @@ const App: React.FC = () => {
 
       newSocket.on('connect', () => {
         newSocket.emit('identify', user.id);
+        refreshResumableGames();
       });
 
       // Réception d'un message (texte ou audio, éventuellement chiffré)
@@ -4152,7 +4187,7 @@ const App: React.FC = () => {
                     onClick={() => setActiveChatId(id)}
                   >
                     <span className="tab-name">
-                      {contact?.isBot ? '🤖 ' : ''}{formatNickname(contact?.nickname || contact?.username || 'Discussion')}{activeGame?.opponentId === id ? ' 🎮' : ''}
+                      {contact?.isBot ? '🤖 ' : ''}{formatNickname(contact?.nickname || contact?.username || 'Discussion')}{(activeGame?.opponentId === id || resumableGames.some(g => g.opponentId === id)) ? ' 🎮' : ''}
                     </span>
                     <span 
                       className="chat-tab-close" 
@@ -4649,6 +4684,7 @@ const App: React.FC = () => {
                   onClose={() => {
                     setActiveGame(null);
                     setIsGameMinimized(false);
+                    refreshResumableGames();
                   }}
                   onMinimize={() => setIsGameMinimized(true)}
                   onGameStateChange={(summary) => setGameSummary(summary)}
@@ -4668,6 +4704,7 @@ const App: React.FC = () => {
                   onClose={() => {
                     setActiveGame(null);
                     setIsGameMinimized(false);
+                    refreshResumableGames();
                   }}
                   onMinimize={() => setIsGameMinimized(true)}
                   onGameStateChange={(summary) => setGameSummary(summary)}
@@ -4687,6 +4724,7 @@ const App: React.FC = () => {
                   onClose={() => {
                     setActiveGame(null);
                     setIsGameMinimized(false);
+                    refreshResumableGames();
                   }}
                   onMinimize={() => setIsGameMinimized(true)}
                   onGameStateChange={(summary) => setGameSummary(summary)}

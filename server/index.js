@@ -909,6 +909,14 @@ const cleanupMemoryMaps = () => {
       else map.set(uid, active);
     }
   }
+
+  // 7. Nettoyage des parties abandonnées (plus aucun joueur en ligne)
+  for (const [key, game] of activeGames.entries()) {
+    const players = getGamePlayers(game);
+    if (players.length > 0 && !players.some(p => isUserOnline(p))) {
+      activeGames.delete(key);
+    }
+  }
 };
 
 // Exécution périodique toutes les 5 minutes (ne bloque pas la sortie de node si standalone)
@@ -2074,6 +2082,14 @@ const getGameKey = (id1, id2) => {
   return `${min}_${max}`;
 };
 
+// SÉCURITÉ/JEUX : renvoie les deux joueurs d'une session de jeu selon son type.
+const getGamePlayers = (game) => {
+  if (!game) return [];
+  if (game.gameType === 'checkers') return [game.playerWhite, game.playerBlack];
+  if (game.gameType === 'puissance4') return [game.playerRed, game.playerYellow];
+  return [game.playerX, game.playerO];
+};
+
 const createInitialCheckersBoard = () => {
   const b = Array(8).fill(null).map(() => Array(8).fill(null));
   // Noirs (b) en haut : rangées 0, 1, 2 sur cases sombres
@@ -3135,26 +3151,10 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Nettoyer les sessions de jeu actives de cet utilisateur (Morpion, Dames ou Puissance 4)
-    for (const [key, game] of activeGames.entries()) {
-      const isPlayer = game.gameType === 'checkers'
-        ? (game.playerWhite === disconnectedUserId || game.playerBlack === disconnectedUserId)
-        : game.gameType === 'puissance4'
-        ? (game.playerRed === disconnectedUserId || game.playerYellow === disconnectedUserId)
-        : (game.playerX === disconnectedUserId || game.playerO === disconnectedUserId);
-
-      if (isPlayer) {
-        const opponentUserId = game.gameType === 'checkers'
-          ? (game.playerWhite === disconnectedUserId ? game.playerBlack : game.playerWhite)
-          : game.gameType === 'puissance4'
-          ? (game.playerRed === disconnectedUserId ? game.playerYellow : game.playerRed)
-          : (game.playerX === disconnectedUserId ? game.playerO : game.playerX);
-        if (isUserOnline(opponentUserId)) {
-          io.to(getUserRoom(opponentUserId)).emit('game_quit', { from: disconnectedUserId });
-        }
-        activeGames.delete(key);
-      }
-    }
+    // SÉCURITÉ/JEUX : une déconnexion (veille mobile, coupure réseau) NE vaut PAS abandon.
+    // La partie reste active : si le joueur se reconnecte (socket ré-identifié → room rejoint),
+    // elle reprend telle quelle. Les parties réellement abandonnées sont purgées périodiquement
+    // (cleanupMemoryMaps : plus aucun joueur en ligne) ou sur déconnexion explicite (manual_disconnect).
 
     // Nettoyer les invitations de jeux en attente liées à cet utilisateur
     for (const [key] of pendingGameInvites.entries()) {
@@ -3189,6 +3189,20 @@ io.on('connection', (socket) => {
       clearTimeout(disconnectTimers.get(userId));
       disconnectTimers.delete(userId);
     }
+
+    // SÉCURITÉ/JEUX : une déconnexion explicite (logout) abandonne les parties en cours
+    // et prévient l'adversaire (contrairement à une simple veille/coupure réseau).
+    for (const [key, game] of activeGames.entries()) {
+      const players = getGamePlayers(game);
+      if (players.includes(userId)) {
+        const opponentId = players.find(p => p !== userId);
+        if (opponentId && isUserOnline(opponentId)) {
+          io.to(getUserRoom(opponentId)).emit('game_quit', { from: userId });
+        }
+        activeGames.delete(key);
+      }
+    }
+
     const removeResult = removeUserSocket(socket.id);
 
     // Nettoyer les invitations de jeux en attente liées à cet utilisateur

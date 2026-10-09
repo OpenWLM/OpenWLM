@@ -782,6 +782,15 @@ const sensitiveRateLimiter = createIpRateLimiter({ windowMs: 60 * 1000, limit: 6
 
 const ipRateLimiters = [inviteRateLimiter, captchaRateLimiter, sensitiveRateLimiter];
 
+// SÉCURITÉ (F1) : comparaison de tokens en temps constant (anti timing-attack)
+const safeTokenEqual = (a, b) => {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  try { return crypto.timingSafeEqual(bufA, bufB); } catch { return false; }
+};
+
 const parseCookies = (cookieHeader) => {
   const list = {};
   if (!cookieHeader || typeof cookieHeader !== 'string') return list;
@@ -814,7 +823,7 @@ const authenticateToken = (req, res, next) => {
   
   if (!token) return res.status(401).json({ error: "Non autorisé. Token manquant." });
 
-  jwt.verify(token, SECRET, (err, payload) => {
+  jwt.verify(token, SECRET, { algorithms: ['HS256'] }, (err, payload) => {
     if (err || !payload || !payload.id) return res.status(403).json({ error: "Token invalide ou expiré." });
     
     // Vérifier que l'utilisateur existe toujours en base de données
@@ -891,6 +900,15 @@ const cleanupMemoryMaps = () => {
   for (const limiter of ipRateLimiters) {
     limiter.cleanup();
   }
+
+  // 6. Purge des limiteurs de messages / wizz / wink inactifs (fenêtre 10s)
+  for (const map of [messageLimits, wizzLimits]) {
+    for (const [uid, timestamps] of map.entries()) {
+      const active = timestamps.filter(ts => now - ts < 10000);
+      if (active.length === 0) map.delete(uid);
+      else map.set(uid, active);
+    }
+  }
 };
 
 // Exécution périodique toutes les 5 minutes (ne bloque pas la sortie de node si standalone)
@@ -922,7 +940,7 @@ app.get('/api/user/me', authenticateToken, (req, res) => {
  * pour cet utilisateur est immédiatement invalidé (HTTP 401 sur l'API, rejet sur WebSocket).
  * Efface également le cookie de session HttpOnly; SameSite=Strict.
  */
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', authenticateToken, (req, res) => {
   let token = req.headers['authorization']?.split(' ')[1];
   if (!token && req.headers.cookie) {
     const cookies = parseCookies(req.headers.cookie);
@@ -931,7 +949,7 @@ app.post('/api/logout', (req, res) => {
 
   if (token) {
     try {
-      const payload = jwt.verify(token, SECRET);
+      const payload = jwt.verify(token, SECRET, { algorithms: ['HS256'] });
       if (payload && payload.id) {
         db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', payload.id);
         broadcastStatusToContacts(payload.id, { id: payload.id, userId: payload.id, status: 'offline' });
@@ -1667,7 +1685,7 @@ app.get('/api/files/download/:fileId', (req, res) => {
     return res.status(404).json({ error: "Fichier introuvable ou supprimé." });
   }
 
-  if (fileRecord.token !== token) {
+  if (!safeTokenEqual(fileRecord.token, token)) {
     return res.status(403).json({ error: "Token d'accès non valide." });
   }
 
@@ -1709,7 +1727,7 @@ app.get('/api/files/info/:fileId', (req, res) => {
   const { token } = req.query;
 
   const fileRecord = db.prepare('SELECT * FROM shared_files WHERE id = ?').get(fileId);
-  if (!fileRecord || fileRecord.token !== token) {
+  if (!fileRecord || !safeTokenEqual(fileRecord.token, token)) {
     return res.status(404).json({ error: "Fichier introuvable." });
   }
 
@@ -2142,7 +2160,7 @@ io.use((socket, next) => {
   }
   if (!token) return next(new Error("Erreur d'authentification : Token manquant"));
 
-  jwt.verify(token, SECRET, (err, payload) => {
+  jwt.verify(token, SECRET, { algorithms: ['HS256'] }, (err, payload) => {
     if (err || !payload || !payload.id) return next(new Error("Erreur d'authentification : Token invalide ou expiré"));
 
     // Vérifier que l'utilisateur existe toujours en base de données
@@ -2266,8 +2284,14 @@ io.on('connection', (socket) => {
     console.log(`[Message Security] From:${senderId} To:${receiverId} ClientPrivate:${isPrivate} ForcedPrivate:${isForcedPrivate} Final:${finalIsPrivate}`);
 
     // Limites de taille des données (le texte peut contenir l'audio chiffré E2EE, on augmente la limite)
-    if (text && text.length > 5000000) return; 
-    if (audio && audio.length > 5000000) return; 
+    if (text && text.length > 5000000) {
+      if (typeof callback === 'function') callback({ success: false, error: "Message trop volumineux." });
+      return;
+    }
+    if (audio && audio.length > 5000000) {
+      if (typeof callback === 'function') callback({ success: false, error: "Audio trop volumineux." });
+      return;
+    }
     
     const nowIso = new Date().toISOString();
     let messageToDeliver = {

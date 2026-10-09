@@ -103,6 +103,7 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
     credentials: true
   },
+  maxHttpBufferSize: 1e6, // SÉCURITÉ : borne explicite des trames socket (1 Mo)
   pingTimeout: 60000, // Attendre 60s avant de considérer le client déconnecté
   pingInterval: 25000 // Envoyer un ping toutes les 25s
 });
@@ -283,6 +284,9 @@ app.use((req, res, next) => {
   // Protection contre le reniflage de type MIME
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
+  // SÉCURITÉ : empêche le chargement de nos ressources depuis un autre site
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+
   // Limitation stricte des fuites de Referrer vers l'extérieur
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
@@ -311,7 +315,7 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 
 // PWA : Servir le Service Worker avec les en-têtes obligatoires
 app.get('/sw.js', (req, res) => {
@@ -1295,6 +1299,15 @@ app.get('/api/user/:userId/public-key', authenticateToken, sensitiveRateLimiter,
 app.post('/api/user/keys', authenticateToken, sensitiveRateLimiter, (req, res) => {
   const { publicKey, encryptedPrivateKey } = req.body;
   const userId = req.user.id;
+
+  // SÉCURITÉ : validation de la forme de la clé publique (JWK RSA) et du coffre chiffré
+  if (!publicKey || typeof publicKey !== 'object' ||
+      publicKey.kty !== 'RSA' || typeof publicKey.n !== 'string' || typeof publicKey.e !== 'string') {
+    return res.status(400).json({ error: "Clé publique invalide (JWK RSA requis)." });
+  }
+  if (!encryptedPrivateKey || typeof encryptedPrivateKey !== 'object') {
+    return res.status(400).json({ error: "Clé privée chiffrée invalide." });
+  }
 
   try {
     db.prepare('UPDATE users SET public_key = ?, encrypted_private_key = ? WHERE id = ?')

@@ -39,6 +39,14 @@ const getExtension = (fileName: string): string => {
   return ext.slice(0, 4).toUpperCase();
 };
 
+// SÉCURITÉ (M4) : n'accepter que les URL de téléchargement internes.
+// downloadUrl provient du payload E2EE (contrôlé par l'émetteur) → bloquer toute URL absolue/externe.
+const isSafeDownloadUrl = (url: unknown): url is string =>
+  typeof url === 'string' &&
+  url.startsWith('/api/files/download/') &&
+  !url.includes('://') &&
+  !url.startsWith('//');
+
 export const isImageFile = (fileData?: FileDataPayload | null): boolean => {
   if (!fileData) return false;
   const mime = (fileData.fileType || '').toLowerCase();
@@ -102,6 +110,9 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
     setAutoLoadError(false);
 
     try {
+      if (!isSafeDownloadUrl(fileData.downloadUrl)) {
+        throw new Error("URL de téléchargement invalide.");
+      }
       const response = await axios.get(fileData.downloadUrl, {
         responseType: 'arraybuffer'
       });
@@ -188,6 +199,9 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
 
     try {
       // 1. Télécharger le blob binaire chiffré depuis le serveur
+      if (!isSafeDownloadUrl(fileData.downloadUrl)) {
+        throw new Error("URL de téléchargement invalide.");
+      }
       const response = await axios.get(fileData.downloadUrl, {
         responseType: 'arraybuffer',
         onDownloadProgress: (progressEvent) => {

@@ -20,7 +20,6 @@ export interface CachedEmoticonAsset {
   assetId: string;
   blob: Blob;
   mimeType: string;
-  keyBase64: string;
   lastAccessed: number;
   size: number;
 }
@@ -145,7 +144,8 @@ class CustomEmoticonsDB {
     });
   }
 
-  public async saveCachedAsset(assetId: string, blob: Blob, mimeType: string, keyBase64: string): Promise<void> {
+  // SÉCURITÉ (M6) : ne plus persister la clé AES dans le cache (elle n'était jamais relue).
+  public async saveCachedAsset(assetId: string, blob: Blob, mimeType: string): Promise<void> {
     if (!this.db) await this.init();
     await this.pruneCacheIfNeeded();
 
@@ -156,7 +156,6 @@ class CustomEmoticonsDB {
         assetId,
         blob,
         mimeType,
-        keyBase64,
         lastAccessed: Date.now(),
         size: blob.size
       };

@@ -332,7 +332,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
       // 4. Mettre en cache l'image déchiffrée localement
       const originalBlob = new Blob([fileBuffer], { type: imageMeta.mime });
-      await CustomEmoticonsDB.saveCachedAsset(serverEmoticon.id, originalBlob, imageMeta.mime, keyBase64);
+      await CustomEmoticonsDB.saveCachedAsset(serverEmoticon.id, originalBlob, imageMeta.mime);
 
       setSuccessMessage(t.customEmoticons.createdSuccess.replace('{shortcut}', shortcut));
       resetForm();

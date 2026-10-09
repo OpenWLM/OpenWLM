@@ -80,10 +80,28 @@ const httpServer = createServer(app);
 // socket.remoteAddress en source de vérité, CF-Connecting-IP uniquement depuis une IP Cloudflare de confiance.
 app.set('trust proxy', false);
 
+// SÉCURITÉ (M1) : Origines autorisées pour CORS/Socket.IO (whitelist stricte).
+// Le SPA est servi par ce même serveur (same-origin) ; la whitelist couvre le dev Vite et Electron.
+const allowedOrigins = [
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'file://'
+];
+if (process.env.ALLOWED_ORIGINS) {
+  allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean));
+}
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // requêtes sans en-tête Origin (curl, apps natives)
+  return allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:');
+};
+
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", 
-    methods: ["GET", "POST"]
+    origin: (origin, callback) => callback(null, isOriginAllowed(origin)),
+    methods: ["GET", "POST"],
+    credentials: true
   },
   pingTimeout: 60000, // Attendre 60s avant de considérer le client déconnecté
   pingInterval: 25000 // Envoyer un ping toutes les 25s
@@ -282,25 +300,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// SÉCURITÉ : Configuration CORS adaptée (support du dev Vite 5173, du port serveur 3001, Electron et réseau local)
-const allowedOrigins = [
-  'http://localhost:3001',
-  'http://127.0.0.1:3001',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'file://'
-];
-if (process.env.ALLOWED_ORIGINS) {
-  allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()));
-}
-
+// SÉCURITÉ (M1) : Configuration CORS — whitelist stricte (same-origin par défaut).
 const corsOptions = {
   origin: (origin, callback) => {
-    // Autoriser les requêtes sans origine (comme curl, apps mobiles, Electron avec file://) ou présentes dans la liste
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
-      return callback(null, true);
-    }
-    callback(null, true); // Permissif en local tout en gardant les en-têtes corrects
+    // Origine absente (curl, apps natives) ou en whitelist → autorisée ; sinon aucune en-tête CORS (blocage navigateur)
+    return callback(null, isOriginAllowed(origin));
   },
   methods: ['GET', 'POST'],
   optionsSuccessStatus: 200,
@@ -745,6 +749,39 @@ const accountLimiters = [
   resetE2eAccountLimiter
 ];
 
+/**
+ * SÉCURITÉ (M5) : limiteur de débit générique par IP fiable (getClientIp), pour endpoints sensibles.
+ */
+const createIpRateLimiter = ({ windowMs, limit, message }) => {
+  const store = new Map();
+  const limiter = (req, res, next) => {
+    const ip = getClientIp(req) || 'unknown';
+    const now = Date.now();
+    const timestamps = (store.get(ip) || []).filter(ts => now - ts < windowMs);
+    if (timestamps.length >= limit) {
+      return res.status(429).json({ error: message });
+    }
+    timestamps.push(now);
+    store.set(ip, timestamps);
+    next();
+  };
+  limiter.cleanup = () => {
+    const now = Date.now();
+    for (const [ip, timestamps] of store.entries()) {
+      const active = timestamps.filter(ts => now - ts < windowMs);
+      if (active.length === 0) store.delete(ip);
+      else store.set(ip, active);
+    }
+  };
+  return limiter;
+};
+
+const inviteRateLimiter = createIpRateLimiter({ windowMs: 60 * 1000, limit: 20, message: "Trop d'invitations envoyées. Veuillez réessayer dans une minute." });
+const captchaRateLimiter = createIpRateLimiter({ windowMs: 60 * 1000, limit: 30, message: "Trop de demandes de captcha. Veuillez réessayer dans une minute." });
+const sensitiveRateLimiter = createIpRateLimiter({ windowMs: 60 * 1000, limit: 60, message: "Trop de requêtes. Veuillez ralentir." });
+
+const ipRateLimiters = [inviteRateLimiter, captchaRateLimiter, sensitiveRateLimiter];
+
 const parseCookies = (cookieHeader) => {
   const list = {};
   if (!cookieHeader || typeof cookieHeader !== 'string') return list;
@@ -849,6 +886,11 @@ const cleanupMemoryMaps = () => {
   for (const limiter of accountLimiters) {
     limiter.cleanup();
   }
+
+  // 5. Purge des limiteurs IP génériques (M5)
+  for (const limiter of ipRateLimiters) {
+    limiter.cleanup();
+  }
 };
 
 // Exécution périodique toutes les 5 minutes (ne bloque pas la sortie de node si standalone)
@@ -867,11 +909,8 @@ app.get('/api/user/me', authenticateToken, (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
     if (!user) return res.status(404).json({ error: "Utilisateur non trouvé." });
     
-    // Génère/rafraîchit le token JWT pour la session mémoire vive (RAM / Socket)
-    const tv = user.token_version || 0;
-    const token = jwt.sign({ id: user.id, username: user.username, tv }, SECRET, { expiresIn: '24h' });
-
-    res.json({ success: true, token, user: toPrivateUserDTO(user) });
+    // SÉCURITÉ (M2) : le JWT n'est plus renvoyé dans le corps (auth par cookie HttpOnly uniquement).
+    res.json({ success: true, user: toPrivateUserDTO(user) });
   } catch (err) {
     res.status(500).json({ error: "Erreur serveur." });
   }
@@ -920,7 +959,7 @@ app.post('/api/logout', (req, res) => {
 /**
  * Générer un défi mathématique simple pour l'inscription
  */
-app.get('/api/captcha', (req, res) => {
+app.get('/api/captcha', captchaRateLimiter, (req, res) => {
   const num1 = Math.floor(Math.random() * 10) + 1;
   const num2 = Math.floor(Math.random() * 10) + 1;
   const id = crypto.randomUUID();
@@ -1024,7 +1063,8 @@ app.post('/api/login', authRateLimiter, (req, res) => {
     });
 
     // SÉCURITÉ : DTO pour éviter de fuiter hash/salt
-    res.json({ success: true, token, user: toPrivateUserDTO(user) });
+    // SÉCURITÉ (M2) : le JWT n'est plus renvoyé dans le corps (cookie HttpOnly uniquement).
+    res.json({ success: true, user: toPrivateUserDTO(user) });
   } else {
     res.status(401).json({ error: 'Identifiants invalides.' });
   }
@@ -1033,12 +1073,15 @@ app.post('/api/login', authRateLimiter, (req, res) => {
 /**
  * Envoi d'une invitation de contact
  */
-app.post('/api/invite', authenticateToken, (req, res) => {
+app.post('/api/invite', authenticateToken, inviteRateLimiter, (req, res) => {
   const { receiverUsername } = req.body;
   const senderId = req.user.id; // Sécurité : On utilise l'ID du token
   
   const receiver = db.prepare('SELECT id FROM users WHERE username = ?').get(receiverUsername);
-  if (!receiver) return res.status(404).json({ error: "Cet utilisateur n'existe pas." });
+  if (!receiver) {
+    // SÉCURITÉ (M5) : anti-énumération — réponse identique à un envoi réussi (ne révèle pas l'existence du compte)
+    return res.json({ success: true });
+  }
   if (senderId === receiver.id) return res.status(400).json({ error: "Vous ne pouvez pas vous ajouter vous-même." });
   
   // Vérifier si déjà contact
@@ -1197,7 +1240,7 @@ app.post('/api/contacts/delete', authenticateToken, (req, res) => {
 /**
  * Gestion du chiffrement E2EE - Clés publiques/privées
  */
-app.get('/api/user/:userId/public-key', authenticateToken, (req, res) => {
+app.get('/api/user/:userId/public-key', authenticateToken, sensitiveRateLimiter, (req, res) => {
   const targetId = parseInt(req.params.userId, 10);
   if (isNaN(targetId)) return res.status(400).json({ error: "Identifiant utilisateur invalide." });
 
@@ -1218,7 +1261,7 @@ app.get('/api/user/:userId/public-key', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/api/user/keys', authenticateToken, (req, res) => {
+app.post('/api/user/keys', authenticateToken, sensitiveRateLimiter, (req, res) => {
   const { publicKey, encryptedPrivateKey } = req.body;
   const userId = req.user.id;
 
@@ -1855,7 +1898,7 @@ app.get('/api/push/status', (req, res) => {
 });
 
 // Enregistrement d'un abonnement Push (Client Web / Android PWA)
-app.post('/api/push/subscribe', authenticateToken, (req, res) => {
+app.post('/api/push/subscribe', authenticateToken, sensitiveRateLimiter, (req, res) => {
   const { subscription } = req.body || {};
   if (!subscription || !subscription.endpoint) {
     return res.status(400).json({ error: "Abonnement Push invalide." });
@@ -1887,7 +1930,7 @@ app.post('/api/push/subscribe', authenticateToken, (req, res) => {
 });
 
 // Désabonnement Push
-app.post('/api/push/unsubscribe', authenticateToken, (req, res) => {
+app.post('/api/push/unsubscribe', authenticateToken, sensitiveRateLimiter, (req, res) => {
   const { endpoint } = req.body || {};
   if (!endpoint) {
     return res.status(400).json({ error: "Endpoint manquant." });
@@ -1903,7 +1946,7 @@ app.post('/api/push/unsubscribe', authenticateToken, (req, res) => {
 });
 
 // Test d'envoi Web Push pour le compte connecté
-app.post('/api/push/test', authenticateToken, async (req, res) => {
+app.post('/api/push/test', authenticateToken, sensitiveRateLimiter, async (req, res) => {
   if (!vapidConfig) {
     return res.status(400).json({ success: false, error: "Web Push non configuré sur le serveur (clés VAPID manquantes)." });
   }

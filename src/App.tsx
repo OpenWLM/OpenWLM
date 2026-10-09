@@ -1363,7 +1363,7 @@ const App: React.FC = () => {
         if (res.data) {
           const decryptedBlob = await decryptCustomEmoticon(res.data, info.key, info.mime || 'image/png');
           if (decryptedBlob) {
-            await CustomEmoticonsDB.saveCachedAsset(info.assetId, decryptedBlob, info.mime || 'image/png', info.key);
+            await CustomEmoticonsDB.saveCachedAsset(info.assetId, decryptedBlob, info.mime || 'image/png');
             const url = CustomEmoticonsDB.getOrCreateObjectUrl(info.assetId, decryptedBlob);
             setCustomEmoticonsMap(prev => ({
               ...prev,
@@ -1447,7 +1447,7 @@ const App: React.FC = () => {
             if (assetRes.data) {
               const decrypted = await decryptCustomEmoticon(assetRes.data, keyBase64, record.mimeType);
               if (decrypted) {
-                await CustomEmoticonsDB.saveCachedAsset(item.id, decrypted, record.mimeType, keyBase64);
+                await CustomEmoticonsDB.saveCachedAsset(item.id, decrypted, record.mimeType);
                 cachedBlob = decrypted;
               }
             }

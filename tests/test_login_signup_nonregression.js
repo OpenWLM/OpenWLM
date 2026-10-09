@@ -35,7 +35,7 @@ const httpRequest = (apiPath, method, body, headers = {}) => {
       res.on('end', () => {
         let parsed;
         try { parsed = JSON.parse(raw); } catch { parsed = raw; }
-        resolve({ status: res.statusCode, data: parsed });
+        resolve({ status: res.statusCode, data: parsed, setCookie: res.headers['set-cookie'] });
       });
     });
     req.on('error', reject);
@@ -82,7 +82,11 @@ test(
     const loginRes = await httpRequest('/api/login', 'POST', { username, password: authKeyHex });
     assert.equal(loginRes.status, 200, 'POST /api/login (valide) doit répondre 200');
     assert.equal(loginRes.data.success, true);
-    assert.equal(typeof loginRes.data.token, 'string', 'login renvoie un token');
+    assert.equal(loginRes.data.token, undefined, 'M2 : le token ne doit plus être renvoyé dans le corps');
+    assert.ok(
+      Array.isArray(loginRes.setCookie) && loginRes.setCookie.some((c) => c.startsWith('token=')),
+      'login définit le cookie de session HttpOnly'
+    );
 
     const badLoginRes = await httpRequest('/api/login', 'POST', { username, password: wrongKeyHex });
     assert.equal(badLoginRes.status, 401, 'POST /api/login (mauvais mot de passe) doit répondre 401');

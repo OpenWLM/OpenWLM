@@ -1198,7 +1198,15 @@ app.post('/api/contacts/delete', authenticateToken, (req, res) => {
  * Gestion du chiffrement E2EE - Clés publiques/privées
  */
 app.get('/api/user/:userId/public-key', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT public_key FROM users WHERE id = ?').get(req.params.userId);
+  const targetId = parseInt(req.params.userId, 10);
+  if (isNaN(targetId)) return res.status(400).json({ error: "Identifiant utilisateur invalide." });
+
+  // SÉCURITÉ : accès limité à soi-même ou à un contact mutuel non bloqué
+  if (req.user.id !== targetId && !canInteract(req.user.id, targetId).allowed) {
+    return res.status(403).json({ error: "Accès refusé." });
+  }
+
+  const user = db.prepare('SELECT public_key FROM users WHERE id = ?').get(targetId);
   if (user && user.public_key) {
     try {
       res.json({ publicKey: JSON.parse(user.public_key) });
@@ -1790,10 +1798,15 @@ app.post('/api/emoticons/custom/upload', authenticateToken, (req, res) => {
 // 3. Téléchargement d'un asset chiffré (Zero-Knowledge, accessible aux utilisateurs authentifiés)
 app.get('/api/emoticons/custom/asset/:assetId', authenticateToken, (req, res) => {
   const { assetId } = req.params;
-  const emoRecord = db.prepare('SELECT asset_filename, mime_type FROM custom_emoticons WHERE id = ?').get(assetId);
+  const emoRecord = db.prepare('SELECT asset_filename, mime_type, owner_id FROM custom_emoticons WHERE id = ?').get(assetId);
 
   if (!emoRecord) {
     return res.status(404).json({ error: "Émoticône introuvable." });
+  }
+
+  // SÉCURITÉ : accès réservé au propriétaire ou à un contact du propriétaire (destinataire potentiel)
+  if (emoRecord.owner_id !== req.user.id && !canInteract(req.user.id, emoRecord.owner_id).allowed) {
+    return res.status(403).json({ error: "Accès refusé." });
   }
 
   const filePath = path.join(EMOTICONS_UPLOADS_DIR, emoRecord.asset_filename);
@@ -2947,27 +2960,32 @@ io.on('connection', (socket) => {
     const userId = socket.user.id;
     const { target, gameType } = data || {};
 
+    // SÉCURITÉ : autorisation stricte (contact mutuel, non bloqué)
+    const check = canInteract(userId, target);
+    if (!check.allowed) return;
+
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
-    if (game) {
-      if (game.gameType === 'checkers' || gameType === 'checkers') {
-        game.board = createInitialCheckersBoard();
-        game.status = 'playing';
-        game.turn = game.playerWhite; // Les Blancs reprennent le premier tour
-      } else if (game.gameType === 'puissance4' || gameType === 'puissance4') {
-        game.board = createEmptyPuissance4Board();
-        game.status = 'playing';
-        game.turn = game.playerRed; // Les Rouges reprennent le premier tour
-      } else {
-        game.board = Array(9).fill(null);
-        game.status = 'playing';
-        game.turn = userId;
-      }
+    // SÉCURITÉ : ne rien diffuser en l'absence de partie active (anti-injection d'événement)
+    if (!game) return;
+
+    if (game.gameType === 'checkers' || gameType === 'checkers') {
+      game.board = createInitialCheckersBoard();
+      game.status = 'playing';
+      game.turn = game.playerWhite; // Les Blancs reprennent le premier tour
+    } else if (game.gameType === 'puissance4' || gameType === 'puissance4') {
+      game.board = createEmptyPuissance4Board();
+      game.status = 'playing';
+      game.turn = game.playerRed; // Les Rouges reprennent le premier tour
+    } else {
+      game.board = Array(9).fill(null);
+      game.status = 'playing';
+      game.turn = userId;
     }
 
     io.to(getUserRoom(target)).emit('game_restart', {
       from: userId,
-      gameType: game ? game.gameType : gameType
+      gameType: game.gameType
     });
   });
 
@@ -2977,8 +2995,14 @@ io.on('connection', (socket) => {
     const userId = socket.user.id;
     const { target } = data;
 
+    // SÉCURITÉ : autorisation stricte (contact mutuel, non bloqué)
+    const check = canInteract(userId, target);
+    if (!check.allowed) return;
+
     const gameKey = getGameKey(userId, target);
-    activeGames.delete(gameKey);
+    const hadGame = activeGames.delete(gameKey);
+    // SÉCURITÉ : ne diffuser que si une partie existait réellement (anti-injection d'événement)
+    if (!hadGame) return;
 
     io.to(getUserRoom(target)).emit('game_quit', {
       from: userId

@@ -2846,7 +2846,7 @@ io.on('connection', (socket) => {
   socket.on('checkers_move', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
-    const { target, from, to, isJump, captured, isPromotion } = data;
+    const { target, from, to } = data || {};
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
@@ -2866,7 +2866,10 @@ io.on('connection', (socket) => {
       return socket.emit('game_error', { message: "Coordonnées de coup invalides." });
     }
 
-    const currentPiece = game.board[from.row][from.col];
+    // SÉCURITÉ (ANTI-TRICHE) : validation AUTORITAIRE de la géométrie côté serveur.
+    // Le client ne fournit QUE from/to ; isJump, captured et isPromotion sont recalculés ici.
+    const board = game.board;
+    const currentPiece = board[from.row][from.col];
     if (!currentPiece) {
       return socket.emit('game_error', { message: "Aucune pièce sur la case de départ." });
     }
@@ -2879,45 +2882,82 @@ io.on('connection', (socket) => {
     }
 
     // Vérifier que la destination est libre
-    if (game.board[to.row][to.col] !== null) {
+    if (board[to.row][to.col] !== null) {
       return socket.emit('game_error', { message: "La case d'arrivée est déjà occupée." });
     }
 
-    // Retirer de la position de départ
-    game.board[from.row][from.col] = null;
+    const isKing = currentPiece === 'W' || currentPiece === 'B';
+    const dr = to.row - from.row;
+    const dc = to.col - from.col;
+    const adr = Math.abs(dr);
+    const adc = Math.abs(dc);
 
-    // Si saut, retirer la pièce capturée
-    if (isJump && captured && isValidCoord(captured)) {
-      game.board[captured.row][captured.col] = null;
+    // Directions verticales autorisées : pion = avant uniquement ; dame = avant + arrière.
+    // Blancs avancent vers le haut (row décroissant), Noirs vers le bas (row croissant).
+    const forwardDir = isWhite ? -1 : 1;
+    const allowedRowDirs = isKing ? [-1, 1] : [forwardDir];
+
+    let isJump = false;
+    let captured = null;
+
+    if (adr === 1 && adc === 1) {
+      // Déplacement simple d'une case en diagonale
+      if (!allowedRowDirs.includes(Math.sign(dr))) {
+        return socket.emit('game_error', { message: "Déplacement diagonal invalide." });
+      }
+    } else if (adr === 2 && adc === 2) {
+      // Saut : la case intermédiaire doit contenir une pièce ADVERSE
+      if (!allowedRowDirs.includes(Math.sign(dr))) {
+        return socket.emit('game_error', { message: "Saut diagonal invalide." });
+      }
+      const midR = from.row + Math.sign(dr);
+      const midC = from.col + Math.sign(dc);
+      const midPiece = board[midR][midC];
+      const isEnemy = midPiece && (isWhite ? (midPiece === 'b' || midPiece === 'B') : (midPiece === 'w' || midPiece === 'W'));
+      if (!isEnemy) {
+        return socket.emit('game_error', { message: "Saut invalide : aucune pièce adverse à capturer." });
+      }
+      isJump = true;
+      captured = { row: midR, col: midC };
+    } else {
+      return socket.emit('game_error', { message: "Coup invalide : une case en diagonale (ou deux pour capturer)." });
     }
 
-    // Promotion Dame si arrivée sur la dernière rangée opposée
-    let finalPiece = currentPiece;
-    if (isWhite && to.row === 0) finalPiece = 'W';
-    else if (!isWhite && to.row === 7) finalPiece = 'B';
+    // Application autoritaire sur la grille serveur
+    board[from.row][from.col] = null;
+    if (isJump && captured) {
+      board[captured.row][captured.col] = null;
+    }
 
-    game.board[to.row][to.col] = finalPiece;
+    // Promotion Dame si arrivée sur la dernière rangée adverse
+    const isPromotion = (isWhite && to.row === 0) || (!isWhite && to.row === 7);
+    const finalPiece = isPromotion ? (isWhite ? 'W' : 'B') : currentPiece;
+    board[to.row][to.col] = finalPiece;
 
     // Tour suivant
-    const nextTurn = (userId === game.playerWhite) ? game.playerBlack : game.playerWhite;
-    game.turn = nextTurn;
+    const nextTurnUserId = (userId === game.playerWhite) ? game.playerBlack : game.playerWhite;
+    game.turn = nextTurnUserId;
 
-    // Transmettre à l'adversaire
-    io.to(getUserRoom(target)).emit('checkers_move', {
-      from,
-      to,
-      isJump,
-      captured,
-      isPromotion: finalPiece === 'W' || finalPiece === 'B'
-    });
+    // Détection de fin de partie (adversaire totalement capturé)
+    const oppPrefix = isWhite ? 'b' : 'w';
+    let oppCount = 0;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const p = board[r][c];
+        if (p && p.toLowerCase() === oppPrefix) oppCount++;
+      }
+    }
+    let winner = null;
+    if (oppCount === 0) {
+      winner = isWhite ? 'white' : 'black';
+      game.status = 'finished';
+      game.scores[userId] = (game.scores[userId] || 0) + 1;
+    }
 
-    socket.emit('checkers_move_confirmed', {
-      from,
-      to,
-      isJump,
-      captured,
-      isPromotion: finalPiece === 'W' || finalPiece === 'B'
-    });
+    // Diffusion du coup VALIDÉ (isJump/captured/isPromotion calculés serveur)
+    const validatedMove = { from, to, isJump, captured, isPromotion, winner };
+    io.to(getUserRoom(target)).emit('checkers_move', validatedMove);
+    socket.emit('checkers_move_confirmed', validatedMove);
   });
 
   // 4c. Transmission et validation d'un coup de Puissance 4 (Connect Four)

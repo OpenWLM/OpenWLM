@@ -10,6 +10,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import multer from 'multer';
 import webpush from 'web-push';
+import { getClientIp } from './clientIdentity.js';
+import { createAccountRateLimiter } from './accountRateLimiter.js';
 
 /**
  * CONFIGURATION ET INITIALISATION
@@ -73,8 +75,10 @@ const uploadEmoticon = multer({
 const app = express();
 const httpServer = createServer(app);
 
-// SÉCURITÉ : Faire confiance au proxy Cloudflare pour récupérer l'IP réelle du client
-app.set('trust proxy', true);
+// SÉCURITÉ (E2) : Aucune confiance implicite à un proxy.
+// L'IP client fiable est résolue explicitement par getClientIp() (server/clientIdentity.js) :
+// socket.remoteAddress en source de vérité, CF-Connecting-IP uniquement depuis une IP Cloudflare de confiance.
+app.set('trust proxy', false);
 
 const io = new Server(httpServer, {
   cors: {
@@ -212,8 +216,9 @@ const initVapid = () => {
 
 const vapidConfig = initVapid();
 
-// SÉCURITÉ : Indispensable derrière Cloudflare Tunnel pour lire correctement l'en-tête X-Forwarded-Proto
-app.set('trust proxy', 1);
+// SÉCURITÉ (E2) : trust proxy reste désactivé (aucun X-Forwarded-* n'est utilisé pour l'IP).
+// X-Forwarded-Proto est lu directement ci-dessous uniquement pour décider du flag Secure / HSTS.
+app.set('trust proxy', false);
 
 // SÉCURITÉ : Masquer l'empreinte logicielle d'Express
 app.disable('x-powered-by');
@@ -669,11 +674,9 @@ const canInteract = (senderId, targetId) => {
  */
 const rateLimitStorage = new Map();
 const authRateLimiter = (req, res, next) => {
-  // SÉCURITÉ : Priorité à l'IP Cloudflare, puis au premier élément du X-Forwarded-For, sinon req.ip (via trust proxy)
-  const ip = req.headers['cf-connecting-ip'] || 
-             (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || 
-             req.ip || 
-             req.socket.remoteAddress;
+  // SÉCURITÉ (E2) : IP client fiable uniquement (socket.remoteAddress, ou CF-Connecting-IP derrière Cloudflare).
+  // X-Forwarded-For n'est jamais utilisé.
+  const ip = getClientIp(req) || 'unknown';
 
   const now = Date.now();
   const windowMs = 60000; // 1 minute
@@ -703,10 +706,8 @@ const authRateLimiter = (req, res, next) => {
  */
 const uploadRateLimitStorage = new Map();
 const uploadRateLimiter = (req, res, next) => {
-  const ip = req.headers['cf-connecting-ip'] || 
-             (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || 
-             req.ip || 
-             req.socket.remoteAddress;
+  // SÉCURITÉ (E2) : IP client fiable uniquement (jamais X-Forwarded-For).
+  const ip = getClientIp(req) || 'unknown';
 
   const now = Date.now();
   const windowMs = 60000;
@@ -744,6 +745,22 @@ const parseCookies = (cookieHeader) => {
   });
   return list;
 };
+
+/**
+ * SÉCURITÉ (E2) : Rate limiting par compte (en complément du rate limiting par IP fiable).
+ * Fenêtre 15 minutes. Réinitialisé sur succès légitime.
+ */
+const loginAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+const signupAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 5 });
+const changePasswordAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+const resetE2eAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+
+const accountLimiters = [
+  loginAccountLimiter,
+  signupAccountLimiter,
+  changePasswordAccountLimiter,
+  resetE2eAccountLimiter
+];
 
 /**
  * Middleware d'authentification par JWT
@@ -826,6 +843,11 @@ const cleanupMemoryMaps = () => {
     } else {
       uploadRateLimitStorage.set(ip, active);
     }
+  }
+
+  // 4. Purge des compteurs de rate limiting par compte inactifs
+  for (const limiter of accountLimiters) {
+    limiter.cleanup();
   }
 };
 
@@ -916,6 +938,12 @@ app.get('/api/captcha', (req, res) => {
  */
 app.post('/api/signup', authRateLimiter, (req, res) => {
   const { username, password, nickname, captchaId, captchaAnswer } = req.body;
+
+  // SÉCURITÉ (E2) : rate limiting par compte (par nom d'utilisateur)
+  const signupLimit = signupAccountLimiter.attempt(username);
+  if (!signupLimit.allowed) {
+    return res.status(429).json({ error: "Trop de tentatives d'inscription pour ce compte. Veuillez réessayer plus tard." });
+  }
   
   // 1. Validation du Captcha
   if (!captchaId || captchaAnswer === undefined) {
@@ -962,6 +990,12 @@ app.post('/api/login', authRateLimiter, (req, res) => {
   
   if (!username || !password) return res.status(400).json({ error: 'Identifiants requis.' });
 
+  // SÉCURITÉ (E2) : rate limiting par compte (par nom d'utilisateur) en plus du rate limiting par IP
+  const loginLimit = loginAccountLimiter.attempt(username);
+  if (!loginLimit.allowed) {
+    return res.status(429).json({ error: "Trop de tentatives de connexion pour ce compte. Veuillez réessayer plus tard." });
+  }
+
   if (typeof password !== 'string' || !/^[a-fA-F0-9]{64}$/.test(password)) {
     return res.status(400).json({ error: "Format de clé d'authentification invalide." });
   }
@@ -969,6 +1003,8 @@ app.post('/api/login', authRateLimiter, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   
   if (user && verifyPasswordHash(password, user.salt, user.password_hash)) {
+    // SÉCURITÉ (E2) : connexion réussie -> le quota du compte est remis à zéro
+    loginAccountLimiter.reset(username);
     // Création d'un token valable 24h avec token_version pour révocation
     const tv = user.token_version || 0;
     const token = jwt.sign({ id: user.id, username: user.username, tv }, SECRET, { expiresIn: '24h' });
@@ -1259,6 +1295,12 @@ app.post('/api/user/change-password', authenticateToken, (req, res) => {
   const newVault = newEncryptedPrivateKey || req.body.newVault;
   const userId = req.user.id;
 
+  // SÉCURITÉ (E2) : rate limiting par compte
+  const changeLimit = changePasswordAccountLimiter.attempt(userId);
+  if (!changeLimit.allowed) {
+    return res.status(429).json({ error: "Trop de tentatives de changement de mot de passe. Veuillez réessayer plus tard." });
+  }
+
   if (!oldKey || !newKey || !/^[a-fA-F0-9]{64}$/.test(oldKey) || !/^[a-fA-F0-9]{64}$/.test(newKey)) {
     return res.status(400).json({ error: "Format des clés d'authentification invalide (hex 256 bits requis)." });
   }
@@ -1285,6 +1327,8 @@ app.post('/api/user/change-password', authenticateToken, (req, res) => {
       // SÉCURITÉ : Incrémenter token_version pour révoquer toutes les sessions JWT existantes
       db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(userId);
     })();
+    // SÉCURITÉ (E2) : changement réussi -> quota du compte remis à zéro
+    changePasswordAccountLimiter.reset(userId);
     res.json({ success: true });
   } catch (err) {
     console.error("Change password error:", err);

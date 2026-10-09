@@ -176,7 +176,8 @@
     "fontTooltip": "Font",
     "send": "Send",
     "clearHistory": "Clear history",
-    "typing": "is typing a message..."
+    "typing": "is typing a message...",
+    "unknownSender": "Unknown sender"
   },
   "bot": {
     "name": "OpenWLM",

@@ -31,6 +31,7 @@ import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
+import { resolveMessageSide } from './utils/MessageIdentity';
 import { formatNickname } from './utils/NicknameFormatter';
 import DesktopToastContainer, { type ToastItem } from './components/DesktopToast';
 import {
@@ -1519,7 +1520,7 @@ const App: React.FC = () => {
       try {
         const potentialJson = JSON.parse(m.text);
         if (potentialJson && (potentialJson.keyReceiver || potentialJson.keySender)) {
-           const isSender = m.sender_id === user?.id || m.senderId === user?.id;
+           const isSender = resolveMessageSide(m, user?.id) === 'self';
            const payload = await decryptMessagePayload<any>(potentialJson, privateKey, isSender);
            if (payload) {
              if (payload.type === 'file' && payload.fileId) {
@@ -1540,7 +1541,7 @@ const App: React.FC = () => {
         }
       } catch { /* Pas du JSON chiffré */ }
 
-      const isSender = m.sender_id === user?.id || m.senderId === user?.id;
+      const isSender = resolveMessageSide(m, user?.id) === 'self';
       const formattedTime = formatMessageTime(m.timestamp, m.time);
       const contactObj = contactsRef.current.find(c => c.id === (m.sender_id || m.senderId));
       const contactResolvedName = contactObj ? (contactObj.nickname || contactObj.username) : null;
@@ -1681,7 +1682,7 @@ const App: React.FC = () => {
       // Réception d'un message (texte ou audio, éventuellement chiffré)
       newSocket.on('receive_message', async (data) => {
         const senderId = data.senderId || data.sender_id;
-        const isSender = senderId === user.id;
+        const isSender = resolveMessageSide({ senderId, sender_id: senderId }, user.id) === 'self';
         let decryptedData = { ...data };
         let fileData = data.fileData;
         let payloadSender: string | undefined = undefined;
@@ -4282,11 +4283,14 @@ const App: React.FC = () => {
                {/* Historique des messages (Scrollable) */}
                <div className="chat-log-scroll">
                   {(messages[activeChatId] || []).map((m, i) => {
-                    const isSender = m.sender_id === user?.id || m.senderId === user?.id || m.sender === myNickname;
+                    const messageSide = resolveMessageSide(m, user?.id);
+                    const isSender = messageSide === 'self';
                     const activeContact = activeChatId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === activeChatId);
                     const senderDisplayName = isSender 
                       ? (myNickname || user?.nickname || user?.username || 'Moi')
-                      : (m.sender && m.sender !== 'Contact' ? m.sender : (activeContact?.nickname || activeContact?.username || m.sender || 'Contact'));
+                      : (messageSide === 'unknown'
+                          ? t.chat.unknownSender
+                          : (m.sender && m.sender !== 'Contact' ? m.sender : (activeContact?.nickname || activeContact?.username || m.sender || 'Contact')));
 
                     const isImage = isImageFile(m.fileData);
                     const fileHeaderLabel = isSender

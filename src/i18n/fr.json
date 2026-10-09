@@ -176,7 +176,8 @@
     "fontTooltip": "Police",
     "send": "Envoyer",
     "clearHistory": "Effacer l'historique",
-    "typing": "est en train d'écrire un message..."
+    "typing": "est en train d'écrire un message...",
+    "unknownSender": "Expéditeur inconnu"
   },
   "bot": {
     "name": "OpenWLM",

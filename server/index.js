@@ -711,7 +711,8 @@ const rateLimitStorage = new Map();
 const authRateLimiter = (req, res, next) => {
   // SÉCURITÉ (E2) : IP client fiable uniquement (socket.remoteAddress, ou CF-Connecting-IP derrière Cloudflare).
   // X-Forwarded-For n'est jamais utilisé.
-  const ip = getClientIp(req) || 'unknown';
+  const ip = getClientIp(req);
+  if (!ip) return res.status(400).json({ error: "Adresse IP cliente non déterminable." });
 
   const now = Date.now();
   const windowMs = 60000; // 1 minute
@@ -742,7 +743,8 @@ const authRateLimiter = (req, res, next) => {
 const uploadRateLimitStorage = new Map();
 const uploadRateLimiter = (req, res, next) => {
   // SÉCURITÉ (E2) : IP client fiable uniquement (jamais X-Forwarded-For).
-  const ip = getClientIp(req) || 'unknown';
+  const ip = getClientIp(req);
+  if (!ip) return res.status(400).json({ error: "Adresse IP cliente non déterminable." });
 
   const now = Date.now();
   const windowMs = 60000;
@@ -786,7 +788,8 @@ const accountLimiters = [
 const createIpRateLimiter = ({ windowMs, limit, message }) => {
   const store = new Map();
   const limiter = (req, res, next) => {
-    const ip = getClientIp(req) || 'unknown';
+    const ip = getClientIp(req);
+    if (!ip) return res.status(400).json({ error: "Adresse IP cliente non déterminable." });
     const now = Date.now();
     const timestamps = (store.get(ip) || []).filter(ts => now - ts < windowMs);
     if (timestamps.length >= limit) {
@@ -1693,29 +1696,34 @@ app.post('/api/files/upload', authenticateToken, uploadRateLimiter, (req, res) =
       return res.status(403).json({ error: check.reason });
     }
 
-    // 4. SÉCURITÉ : Quota de stockage — 1 Go max de fichiers actifs par compte
-    const QUOTA_BYTES = 1 * 1024 * 1024 * 1024; // 1 Go
-    const usageRow = db.prepare('SELECT COALESCE(SUM(file_size), 0) as total FROM shared_files WHERE sender_id = ?').get(senderId);
-    const currentUsage = usageRow ? usageRow.total : 0;
-    if (currentUsage + fileSize > QUOTA_BYTES) {
-      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      const usedMB = Math.round(currentUsage / (1024 * 1024));
-      return res.status(413).json({ 
-        error: `Quota de stockage dépassé (${usedMB} Mo utilisés sur 1 Go). Attendez l'expiration de vos anciens fichiers.` 
-      });
-    }
-
     const fileId = crypto.randomUUID();
     const token = crypto.randomBytes(24).toString('hex');
     const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
     const expiresAt = Date.now() + FOUR_HOURS_MS;
 
+    // SÉCURITÉ : quota + insertion dans une même transaction (atomicité du contrôle de quota)
+    const QUOTA_BYTES = 1 * 1024 * 1024 * 1024; // 1 Go
     try {
-      const stmt = db.prepare(`
-        INSERT INTO shared_files (id, sender_id, receiver_id, filename, original_name, file_size, file_type, token, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(fileId, senderId, receiverId, req.file.filename, safeOriginalName, fileSize, safeFileType, token, expiresAt);
+      const currentUsage = db.transaction(() => {
+        const usageRow = db.prepare('SELECT COALESCE(SUM(file_size), 0) as total FROM shared_files WHERE sender_id = ?').get(senderId);
+        const usage = usageRow ? usageRow.total : 0;
+        if (usage + fileSize > QUOTA_BYTES) {
+          return usage; // quota dépassé : aucune insertion
+        }
+        db.prepare(`
+          INSERT INTO shared_files (id, sender_id, receiver_id, filename, original_name, file_size, file_type, token, expires_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(fileId, senderId, receiverId, req.file.filename, safeOriginalName, fileSize, safeFileType, token, expiresAt);
+        return null; // succès
+      })();
+
+      if (currentUsage !== null) {
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        const usedMB = Math.round(currentUsage / (1024 * 1024));
+        return res.status(413).json({
+          error: `Quota de stockage dépassé (${usedMB} Mo utilisés sur 1 Go). Attendez l'expiration de vos anciens fichiers.`
+        });
+      }
 
       res.json({
         success: true,
@@ -2284,6 +2292,15 @@ io.use((socket, next) => {
   });
 });
 
+// SÉCURITÉ : validation de forme/taille du signal WebRTC relayé (SDP/ICE opaque, borné)
+const isValidRtcSignal = (signal) => {
+  if (typeof signal === 'string') return signal.length > 0 && signal.length <= 65536;
+  if (signal && typeof signal === 'object') {
+    return typeof signal.type === 'string' && ['offer', 'answer', 'ice-candidate'].includes(signal.type);
+  }
+  return false;
+};
+
 io.on('connection', (socket) => {
   console.log('Utilisateur connecté au socket:', socket.id);
 
@@ -2667,6 +2684,7 @@ io.on('connection', (socket) => {
     const { target, signal, audioOnly } = data || {};
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) return;
+    if (!isValidRtcSignal(signal)) return;
 
     if (isUserOnline(target)) {
       // Récupérer l'identité réelle de l'appelant depuis la session authentifiée
@@ -2686,6 +2704,7 @@ io.on('connection', (socket) => {
     const { target, signal } = data || {};
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) return;
+    if (!isValidRtcSignal(signal)) return;
 
     if (isUserOnline(target)) {
       // On transmet le signal en précisant qui l'envoie (l'utilisateur du socket actuel)

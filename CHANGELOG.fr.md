@@ -11,6 +11,12 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié] - 2026-10-08
 
+### 🔒 Durcissement du client de bureau (Electron)
+- **Isolation stricte du renderer** : `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` et `webSecurity: true` (auparavant `nodeIntegration: true` / `contextIsolation: false`, ce qui permettait à tout contenu injecté ou chargé à distance d'exécuter du code Node arbitraire sur la machine hôte).
+- Désactivation de `nodeIntegrationInWorker`, `allowRunningInsecureContent`, `experimentalFeatures` et `webviewTag`.
+- La navigation externe (`will-navigate`) et l'ouverture de nouvelles fenêtres (`window.open`, `target=_blank`) sont bloquées dans l'application et déléguées au navigateur système.
+- Permissions de session limitées au strict nécessaire : `media` (appels WebRTC) et `notifications` (push) ; toute autre demande de permission est refusée.
+
 ### 🛡️ Sécurité & Vérification locale de contacts (Safety Number / IndexedDB)
 - **Vérification d'empreinte de clé publique (Safety Number)** :
   - Calcul déterministe d'empreinte SHA-256 canonique à partir des composants RSA (`e`, `kty`, `n`) de la clé publique de contact.

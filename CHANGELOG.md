@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - 2026-10-08
 
+### 🔒 Desktop Client (Electron) Renderer Hardening
+- **Strict renderer isolation**: `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` and `webSecurity: true` (previously `nodeIntegration: true` / `contextIsolation: false`, which let any injected or remotely loaded content execute arbitrary Node code on the host machine).
+- Disabled `nodeIntegrationInWorker`, `allowRunningInsecureContent`, `experimentalFeatures` and `webviewTag`.
+- External top-level navigation (`will-navigate`) and new windows (`window.open`, `target=_blank`) are blocked inside the app and delegated to the system browser instead.
+- Session permissions restricted to the strictly required `media` (WebRTC calls) and `notifications` (push); every other permission request is denied.
+
 ### 🛡️ Security & Local Contact Verification (Safety Number / IndexedDB)
 - **Public Key Fingerprint Verification (Safety Number)**:
   - Deterministic canonical SHA-256 fingerprint computation from contact public key RSA components (`e`, `kty`, `n`).

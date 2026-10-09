@@ -263,16 +263,36 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
       setTimeout(() => setStatusMessage(''), 4000);
     };
 
+    // RESYNC : après une reconnexion (veille mobile), récupérer l'état autoritaire du plateau
+    const requestResync = () => {
+      if (socket.connected) socket.emit('game_resync', { target: opponentId });
+    };
+    const onResync = (data: { active?: boolean; gameType?: string; board?: (string | null)[]; isMyTurn?: boolean }) => {
+      if (!data || !data.active || data.gameType !== 'morpion' || !Array.isArray(data.board)) return;
+      setBoard(data.board);
+      setIsMyTurn(Boolean(data.isMyTurn));
+      const result = checkWinner(data.board);
+      if (result && result.winnerSymbol === mySymbol) { setWinner('me'); setWinningLine(result.combo); }
+      else if (result && result.winnerSymbol === opponentSymbol) { setWinner('opponent'); setWinningLine(result.combo); }
+      else if (result && result.winnerSymbol === 'draw') { setWinner('draw'); setWinningLine(null); }
+      else { setWinner(null); setWinningLine(null); }
+    };
+
     socket.on('game_move', onGameMove);
     socket.on('game_restart', onGameRestart);
     socket.on('game_quit', onGameQuit);
     socket.on('game_error', onGameError);
+    socket.on('connect', requestResync);
+    socket.on('game_resync_state', onResync);
+    requestResync();
 
     return () => {
       socket.off('game_move', onGameMove);
       socket.off('game_restart', onGameRestart);
       socket.off('game_quit', onGameQuit);
       socket.off('game_error', onGameError);
+      socket.off('connect', requestResync);
+      socket.off('game_resync_state', onResync);
     };
   }, [socket, opponentId, opponentName, opponentSymbol, handleRestart, onClose, t]);
 

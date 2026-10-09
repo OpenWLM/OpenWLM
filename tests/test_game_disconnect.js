@@ -81,13 +81,18 @@ test('jeux : veille ≠ abandon (reprise possible), quit explicite = synchro', {
     s2.disconnect();
     assert.equal(await quitSeen, null, 'une déconnexion (veille) ne doit pas être un abandon');
 
-    // 2) B se reconnecte : la partie doit reprendre et rester jouable.
+    // 2) B (hors ligne) manque un coup de A, puis se reconnecte et resynchronise.
+    s1.emit('checkers_move', { target: IDS.b, from: { row: 5, col: 0 }, to: { row: 4, col: 1 } });
+    await wait(300); // B est hors ligne : il ne reçoit pas ce coup
+
     s2 = await connect(tok(IDS.b, 'gd_b'));
     await wait(300);
-    const moveSeen = onceOrNull(s2, 'checkers_move', 900);
-    s1.emit('checkers_move', { target: IDS.b, from: { row: 5, col: 0 }, to: { row: 4, col: 1 } });
-    const move = await moveSeen;
-    assert.ok(move && move.to && move.to.row === 4 && move.to.col === 1, 'la partie reprend après reconnexion');
+    const resyncSeen = onceOrNull(s2, 'game_resync_state', 900);
+    s2.emit('game_resync', { target: IDS.a });
+    const st = await resyncSeen;
+    assert.ok(st && st.active && st.gameType === 'checkers', 'le resync renvoie la partie active');
+    assert.equal(st.board[4][1], 'w', 'le plateau resynchronisé contient le coup joué hors-ligne');
+    assert.equal(st.isMyTurn, true, "c'est au tour de B après le coup de A");
 
     // 3) Quit explicite de A : B doit être prévenu.
     const explicitQuit = onceOrNull(s2, 'game_quit', 900);

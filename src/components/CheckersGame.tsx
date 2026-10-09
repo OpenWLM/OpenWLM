@@ -363,16 +363,43 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       setTimeout(() => setStatusMessage(''), 4000);
     };
 
+    // RESYNC : après une reconnexion (veille mobile), récupérer l'état autoritaire du plateau
+    const requestResync = () => {
+      if (socket.connected) socket.emit('game_resync', { target: opponentId });
+    };
+    const onResync = (data: { active?: boolean; gameType?: string; board?: Piece[][]; isMyTurn?: boolean }) => {
+      if (!data || !data.active || data.gameType !== 'checkers' || !Array.isArray(data.board)) return;
+      setBoard(data.board);
+      setIsMyTurn(Boolean(data.isMyTurn));
+      let mine = 0;
+      let theirs = 0;
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const p = data.board[r]?.[c];
+          if (!p) continue;
+          if (p.toLowerCase() === myPiecePrefix) mine++; else theirs++;
+        }
+      }
+      if (mine === 0) setWinner('opponent');
+      else if (theirs === 0) setWinner('me');
+      else setWinner(null);
+    };
+
     socket.on('checkers_move', onCheckersMove);
     socket.on('game_restart', onGameRestart);
     socket.on('game_quit', onGameQuit);
     socket.on('game_error', onGameError);
+    socket.on('connect', requestResync);
+    socket.on('game_resync_state', onResync);
+    requestResync();
 
     return () => {
       socket.off('checkers_move', onCheckersMove);
       socket.off('game_restart', onGameRestart);
       socket.off('game_quit', onGameQuit);
       socket.off('game_error', onGameError);
+      socket.off('connect', requestResync);
+      socket.off('game_resync_state', onResync);
     };
   }, [socket, opponentId, opponentName, myPiecePrefix, handleRestart, onClose, t]);
 

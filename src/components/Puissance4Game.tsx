@@ -354,16 +354,36 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
       if (data.message) alert(data.message);
     };
 
+    // RESYNC : après une reconnexion (veille mobile), récupérer l'état autoritaire du plateau
+    const requestResync = () => {
+      if (socket.connected) socket.emit('game_resync', { target: opponentId });
+    };
+    const onResync = (data: { active?: boolean; gameType?: string; board?: CellValue[][]; isMyTurn?: boolean }) => {
+      if (!data || !data.active || data.gameType !== 'puissance4' || !Array.isArray(data.board)) return;
+      setBoard(data.board);
+      setIsMyTurn(Boolean(data.isMyTurn));
+      const result = checkWinner(data.board);
+      if (result && result.winnerSymbol === mySymbol) { setWinner('me'); setWinningCells(result.winningCells); }
+      else if (result && result.winnerSymbol === opponentSymbol) { setWinner('opponent'); setWinningCells(result.winningCells); }
+      else if (result && result.winnerSymbol === 'draw') { setWinner('draw'); setWinningCells(null); }
+      else { setWinner(null); setWinningCells(null); }
+    };
+
     socket.on('puissance4_move', onPuissance4Move);
     socket.on('game_restart', onGameRestart);
     socket.on('game_quit', onGameQuit);
     socket.on('game_error', onGameError);
+    socket.on('connect', requestResync);
+    socket.on('game_resync_state', onResync);
+    requestResync();
 
     return () => {
       socket.off('puissance4_move', onPuissance4Move);
       socket.off('game_restart', onGameRestart);
       socket.off('game_quit', onGameQuit);
       socket.off('game_error', onGameError);
+      socket.off('connect', requestResync);
+      socket.off('game_resync_state', onResync);
     };
   }, [socket, opponentId, opponentName, opponentSymbol, isBotOpponent, handleRestart, onClose, t]);
 

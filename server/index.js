@@ -3137,6 +3137,30 @@ io.on('connection', (socket) => {
     });
   });
 
+  // 6bis. Re-synchronisation de l'état de la partie (après reconnexion / veille mobile)
+  socket.on('game_resync', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const userId = socket.user.id;
+    const { target } = data || {};
+
+    const check = canInteract(userId, target);
+    if (!check.allowed) return;
+
+    const gameKey = getGameKey(userId, target);
+    const game = activeGames.get(gameKey);
+    if (!game) {
+      return socket.emit('game_resync_state', { active: false });
+    }
+
+    socket.emit('game_resync_state', {
+      active: true,
+      gameType: game.gameType,
+      board: game.board,
+      isMyTurn: game.turn === userId,
+      status: game.status
+    });
+  });
+
   /**
    * Gestion de la déconnexion
    */

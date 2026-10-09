@@ -338,6 +338,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
                 <input 
                   type="text" 
                   value={nickname} 
+                  maxLength={50}
                   onChange={e => setNickname(e.target.value)} 
                   required 
                 />

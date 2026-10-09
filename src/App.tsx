@@ -3914,6 +3914,7 @@ const App: React.FC = () => {
                   <input 
                     className="user-name-input" 
                     value={myNickname} 
+                    maxLength={50}
                     autoFocus 
                     onChange={e => setMyNickname(e.target.value)} 
                     onBlur={() => { setIsEditingNickname(false); syncProfile({ nickname: myNickname }); }} 
@@ -3995,6 +3996,7 @@ const App: React.FC = () => {
                 <input 
                   className="user-psm-input" 
                   value={myPSM} 
+                  maxLength={150}
                   autoFocus 
                   onChange={e => setMyPSM(e.target.value)} 
                   onBlur={() => { setIsEditingPSM(false); syncProfile({ psm: myPSM }); }} 

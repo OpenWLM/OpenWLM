@@ -1003,6 +1003,11 @@ app.post('/api/signup', authRateLimiter, (req, res) => {
     return res.status(400).json({ error: 'Adresse de messagerie invalide (3-100 caractères, sans espaces).' });
   }
 
+  // 2bis. Validation de la longueur du surnom (anti-abus / stockage)
+  if (nickname !== undefined && nickname !== null && (typeof nickname !== 'string' || nickname.length > 50)) {
+    return res.status(400).json({ error: 'Surnom invalide (max 50 caractères).' });
+  }
+
   // 3. Validation de la clé d'authentification (Zero-Knowledge hex 256 bits)
   if (!password || typeof password !== 'string' || !/^[a-fA-F0-9]{64}$/.test(password)) {
     return res.status(400).json({ error: "Clé d'authentification invalide (format hex 256 bits requis)." });
@@ -1390,8 +1395,8 @@ app.post('/api/user/update', authenticateToken, (req, res) => {
   const userId = req.user.id;
 
   // Validation stricte des données reçues
-  if (nickname && nickname.length > 50) return res.status(400).json({ error: "Surnom trop long (max 50)." });
-  if (psm && psm.length > 150) return res.status(400).json({ error: "Message personnel trop long (max 150)." });
+  if (nickname !== undefined && (typeof nickname !== 'string' || nickname.length > 50)) return res.status(400).json({ error: "Surnom invalide (max 50 caractères)." });
+  if (psm !== undefined && (typeof psm !== 'string' || psm.length > 150)) return res.status(400).json({ error: "Message personnel invalide (max 150 caractères)." });
 
   if (avatar && !isValidPath(avatar)) return res.status(400).json({ error: "Image d'avatar invalide." });
   if (scene && !isValidPath(scene)) return res.status(400).json({ error: "Scène invalide." });

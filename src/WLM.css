@@ -4335,6 +4335,24 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   padding: 0 14px 14px;
 }
 
+.wlm-aero-dialog-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #22364a;
+  cursor: pointer;
+  user-select: none;
+}
+
+.wlm-aero-dialog-check input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
 @keyframes wlm-aero-fade {
   from { opacity: 0; }
   to { opacity: 1; }

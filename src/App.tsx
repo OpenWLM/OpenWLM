@@ -33,6 +33,7 @@ import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
 import DesktopToastContainer, { type ToastItem } from './components/DesktopToast';
+import AeroConfirmDialog from './components/AeroConfirmDialog';
 import {
   decideNotificationType,
   showSystemNotification,
@@ -883,6 +884,8 @@ const App: React.FC = () => {
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, contactId: number } | null>(null);
+  const [clearConfirmContactId, setClearConfirmContactId] = useState<number | null>(null);
+  const [clearNotice, setClearNotice] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
   const [inputText, setInputText] = useState('');
   const [isGroupOpen, setIsGroupOpen] = useState(true);
@@ -3703,12 +3706,16 @@ const App: React.FC = () => {
     }
   };
 
-  const handleClearHistory = async (contactId: number) => {
+  const handleClearHistory = (contactId: number) => {
     if (!user) return;
-    if (!window.confirm("Voulez-vous vraiment effacer TOUT l'historique de discussion avec ce contact (Local et Serveur) ? Cette action est irréversible.")) return;
+    setContextMenu(null);
+    setClearConfirmContactId(contactId);
+  };
 
+  const performClearHistory = async (contactId: number) => {
+    if (!user) return;
     try {
-      // 1. Supprimer sur le serveur
+      // 1. Supprimer sur le serveur (efface l'historique des DEUX côtés)
       await axios.post('/api/messages/clear', { userId: user.id, contactId });
 
       // 2. Supprimer en local (IndexedDB)
@@ -3720,12 +3727,9 @@ const App: React.FC = () => {
         delete next[contactId];
         return next;
       });
-
-      setContextMenu(null);
-      alert("Historique effacé avec succès.");
     } catch (err) {
       console.error("Erreur lors de la suppression de l'historique:", err);
-      alert("Une erreur est survenue lors de la suppression de l'historique.");
+      setClearNotice(t.roster.clearHistoryError);
     }
   };
 
@@ -5673,6 +5677,27 @@ const App: React.FC = () => {
       )}
 
       {/* Menu Contextuel (Clic droit sur un contact) */}
+      {clearConfirmContactId !== null && (
+        <AeroConfirmDialog
+          title={t.roster.contextClearHistory}
+          message={t.roster.clearHistoryWarning}
+          checkboxLabel={t.roster.clearHistoryConfirmCheckbox}
+          confirmLabel={t.roster.clearHistoryConfirmBtn}
+          cancelLabel={t.common.cancel}
+          danger
+          onConfirm={() => { const id = clearConfirmContactId; setClearConfirmContactId(null); performClearHistory(id); }}
+          onCancel={() => setClearConfirmContactId(null)}
+        />
+      )}
+      {clearNotice && (
+        <AeroConfirmDialog
+          title={t.roster.contextClearHistory}
+          message={clearNotice}
+          icon="ℹ️"
+          confirmLabel="OK"
+          onConfirm={() => setClearNotice(null)}
+        />
+      )}
       {contextMenu && (
         <div className="wlm-status-dropdown" style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 10000 }}>
           <div className="dropdown-item" onClick={() => openChat(contextMenu.contactId)}>{t.roster.contextSendIM}</div>

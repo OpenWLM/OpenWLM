@@ -79,6 +79,10 @@
     "offline": "Hors ligne"
   },
   "roster": {
+    "clearHistoryWarning": "⚠️ L'historique sera effacé pour vous ET pour votre contact (côté serveur et sur tous vos appareils). Cette action est irréversible.",
+    "clearHistoryConfirmCheckbox": "Je suis sûr(e) de vouloir effacer l'historique des deux côtés",
+    "clearHistoryConfirmBtn": "Effacer définitivement",
+    "clearHistoryError": "Une erreur est survenue lors de la suppression de l'historique.",
     "contacts": "Contacts",
     "favorites": "Favoris",
     "otherContacts": "Autres contacts",

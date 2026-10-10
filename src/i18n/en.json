@@ -79,6 +79,10 @@
     "offline": "Appear offline"
   },
   "roster": {
+    "clearHistoryWarning": "⚠️ The history will be erased for you AND your contact (server-side and on all your devices). This cannot be undone.",
+    "clearHistoryConfirmCheckbox": "I'm sure I want to erase the history on both sides",
+    "clearHistoryConfirmBtn": "Delete permanently",
+    "clearHistoryError": "An error occurred while deleting the history.",
     "contacts": "Contacts",
     "favorites": "Favorites",
     "otherContacts": "Other contacts",

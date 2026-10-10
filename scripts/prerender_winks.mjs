@@ -192,10 +192,12 @@ try {
 
     const outWebp = path.join(winksDir, id, `${id}.webp`);
     const delay = Math.max(20, Math.round(1000 / meta.fps));
-    execFileSync('img2webp', ['-loop', '0', '-lossy', '-q', '80', '-d', String(delay), ...files, '-o', outWebp]);
+    // -loop 1 : lecture UNIQUE (pas de boucle infinie → l'anim ne repart pas avant la fermeture)
+    execFileSync('img2webp', ['-loop', '1', '-lossy', '-q', '80', '-d', String(delay), ...files, '-o', outWebp]);
     const sizeKb = (fs.statSync(outWebp).size / 1024).toFixed(0);
     const audioKb = captured.audioB64 ? (Buffer.from(captured.audioB64, 'base64').length / 1024).toFixed(0) : '0';
-    console.log(`${id.padEnd(15)} peintes=${String(painted).padStart(3)} -> ${target} frames  ${meta.w}x${meta.h} @${meta.fps}fps  fond=${bgHex}  décal=${captured.recOff}ms  webp ${sizeKb} Ko  audio ${audioKb} Ko`);
+    const totalMs = target * delay;
+    console.log(`${id.padEnd(15)} peintes=${String(painted).padStart(3)} -> ${target} frames  ${meta.w}x${meta.h} @${meta.fps}fps  fond=${bgHex}  décal=${captured.recOff}ms  durée=${totalMs}ms  webp ${sizeKb} Ko  audio ${audioKb} Ko`);
   }
 } finally {
   await browser.close();

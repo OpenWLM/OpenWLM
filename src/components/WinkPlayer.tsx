@@ -10,25 +10,26 @@ interface WinkPlayerProps {
   onFinish: () => void;
 }
 
-// Taille native + durée (s) + décalage audio (ms) de chaque clip (parsés depuis les .swf d'origine).
+// Taille native + décalage audio (ms) + durée totale de l'anim WebP (ms), mesurés au pré-rendu.
 // `a` = offset entre le début d'enregistrement du son et le début de capture des frames : on
 // saute ce silence initial pour que le son tombe pile sur l'animation.
-const WINK_META: Record<string, { w: number; h: number; d: number; a: number }> = {
-  bouncy_ball: { w: 640, h: 480, d: 7.3, a: 261 },
-  bow: { w: 640, h: 480, d: 11.3, a: 182 },
-  dancing_pig: { w: 640, h: 480, d: 11.3, a: 170 },
-  eyeball: { w: 550, h: 450, d: 5.7, a: 174 },
-  frog: { w: 640, h: 480, d: 9.8, a: 175 },
-  guitar_smash: { w: 150, h: 125, d: 6.8, a: 167 },
-  heart: { w: 125, h: 118, d: 6.2, a: 165 },
-  kiss: { w: 160, h: 120, d: 6.8, a: 165 },
-  knock: { w: 325, h: 260, d: 2.4, a: 174 },
-  lipstick_girl: { w: 640, h: 480, d: 9.2, a: 166 },
-  love_letter: { w: 190, h: 400, d: 8.0, a: 167 },
-  notes: { w: 400, h: 350, d: 8.7, a: 173 },
-  silly_face: { w: 225, h: 400, d: 7.7, a: 181 },
-  stars: { w: 450, h: 425, d: 6.5, a: 166 },
-  water_balloon: { w: 640, h: 480, d: 7.7, a: 191 }
+// `t` = durée exacte du WebP → on ferme l'overlay pile à la fin (pas de redémarrage visible).
+const WINK_META: Record<string, { w: number; h: number; a: number; t: number }> = {
+  bouncy_ball: { w: 640, h: 480, a: 285, t: 7221 },
+  bow: { w: 640, h: 480, a: 182, t: 11288 },
+  dancing_pig: { w: 640, h: 480, a: 173, t: 11205 },
+  eyeball: { w: 550, h: 450, a: 179, t: 5712 },
+  frog: { w: 640, h: 480, a: 176, t: 9711 },
+  guitar_smash: { w: 150, h: 125, a: 172, t: 6723 },
+  heart: { w: 125, h: 118, a: 172, t: 6237 },
+  kiss: { w: 160, h: 120, a: 181, t: 6723 },
+  knock: { w: 325, h: 260, a: 169, t: 2436 },
+  lipstick_girl: { w: 640, h: 480, a: 193, t: 9130 },
+  love_letter: { w: 190, h: 400, a: 167, t: 8000 },
+  notes: { w: 400, h: 350, a: 185, t: 8736 },
+  silly_face: { w: 225, h: 400, a: 187, t: 7784 },
+  stars: { w: 450, h: 425, a: 176, t: 6474 },
+  water_balloon: { w: 640, h: 480, a: 178, t: 7636 }
 };
 
 // Contexte audio partagé (sert uniquement à mesurer la latence de sortie du device).
@@ -68,8 +69,8 @@ const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
     }
     // Démarre l'animation quand le son atteint réellement les haut-parleurs.
     const t = setTimeout(() => setStarted(true), Math.round(latency * 1000));
-    // Laisser l'animation se terminer exactement à la durée du clip (clic pour fermer avant)
-    const timer = setTimeout(() => onFinish(), ((meta ? meta.d : 8) + latency) * 1000 + 400);
+    // Fermer pile à la fin de l'anim WebP (qui démarre après `latency`) — clic pour fermer avant
+    const timer = setTimeout(() => onFinish(), (meta?.t ?? 8000) + Math.round(latency * 1000) + 80);
     return () => { clearTimeout(t); clearTimeout(timer); };
   }, [winkId, onFinish, meta]);
 

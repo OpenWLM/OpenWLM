@@ -199,3 +199,27 @@ test('P1 socket : un JWT expiré en cours de connexion est fermé par le balayag
   });
   assert.equal(await disconnected, true, 'la socket doit être fermée après expiration du JWT');
 });
+
+test('messages/clear : impossible d’effacer la conversation d’AUTRES utilisateurs (anti-IDOR)', async () => {
+  const db = new Database(path.join(tmpDir, 'messenger.db'));
+  try {
+    // Utilisateur C + relation B<->C + un message B->C
+    const salt = crypto.randomBytes(16).toString('hex');
+    const carolId = Number(db.prepare("INSERT INTO users (username, nickname, status, password_hash, salt, token_version) VALUES ('iso_carol','Carol','online',?,?,0)").run(hashPwd(PWD, salt), salt).lastInsertRowid);
+    db.prepare('INSERT OR IGNORE INTO contacts (user_id, contact_id, status, blocked) VALUES (?,?,1,0)').run(bobId, carolId);
+    db.prepare('INSERT OR IGNORE INTO contacts (user_id, contact_id, status, blocked) VALUES (?,?,1,0)').run(carolId, bobId);
+    const bcMsg = db.prepare("INSERT INTO messages (sender_id, receiver_id, text, timestamp) VALUES (?,?, 'secret B-C', ?)").run(bobId, carolId, new Date().toISOString());
+    const bcId = Number(bcMsg.lastInsertRowid);
+
+    // Alice (A) tente d'effacer la conversation de B et C, en mentant sur userId dans le corps
+    const res = await reqJson('/api/messages/clear', 'POST', tok(aliceId), { userId: bobId, contactId: carolId });
+    assert.equal(res.status, 200);
+    assert.equal(db.prepare('SELECT COUNT(*) as c FROM messages WHERE id = ?').get(bcId).c, 1, 'le message B↔C ne doit PAS être effacé par A');
+
+    // Alice efface SA conversation avec Bob → A↔B part, B↔C reste
+    const abMsg = db.prepare("INSERT INTO messages (sender_id, receiver_id, text, timestamp) VALUES (?,?, 'msg A-B', ?)").run(aliceId, bobId, new Date().toISOString());
+    await reqJson('/api/messages/clear', 'POST', tok(aliceId), { contactId: bobId });
+    assert.equal(db.prepare('SELECT COUNT(*) as c FROM messages WHERE id = ?').get(Number(abMsg.lastInsertRowid)).c, 0, 'la conversation A↔B doit être effacée');
+    assert.equal(db.prepare('SELECT COUNT(*) as c FROM messages WHERE id = ?').get(bcId).c, 1, 'la conversation B↔C doit rester intacte');
+  } finally { db.close(); }
+});

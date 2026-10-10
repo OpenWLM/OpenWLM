@@ -80,10 +80,32 @@ export const cleanupOrphanUploads = () => {
 export const createFilesRouter = () => {
   const router = Router();
 
+  // SÉCURITÉ : borne les uploads simultanés par compte (le quota persistant ne borne pas les écritures en cours)
+  const inFlightUploads = new Map();
+  const MAX_CONCURRENT_UPLOADS = 3;
+
   /**
    * Upload d'un fichier chiffré
    */
-  router.post('/files/upload', authenticateToken, uploadRateLimiter, (req, res) => {
+  router.post('/files/upload', authenticateToken, uploadRateLimiter, (req, res, next) => {
+    const uid = req.user.id;
+    const cur = inFlightUploads.get(uid) || 0;
+    if (cur >= MAX_CONCURRENT_UPLOADS) {
+      return res.status(429).json({ error: "Trop de téléversements simultanés. Réessayez dans un instant." });
+    }
+    inFlightUploads.set(uid, cur + 1);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      const c = inFlightUploads.get(uid) || 1;
+      if (c <= 1) inFlightUploads.delete(uid);
+      else inFlightUploads.set(uid, c - 1);
+    };
+    res.on('finish', release);
+    res.on('close', release);
+    next();
+  }, (req, res) => {
     upload.single('file')(req, res, (err) => {
       if (err) {
         if (err instanceof multer.MulterError) {

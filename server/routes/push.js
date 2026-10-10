@@ -126,6 +126,22 @@ export const dispatchPushNotification = async (receiverId, payload) => {
   }
 };
 
+// SÉCURITÉ (anti-SSRF) : n'autoriser que des endpoints Push HTTPS publics
+const isAllowedPushEndpoint = (endpoint) => {
+  try {
+    const u = new URL(String(endpoint));
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return false;
+    if (host.startsWith('[') || host.includes(':')) return false; // littéraux IPv6
+    if (/^(127\.|10\.|0\.|169\.254\.|192\.168\.)/.test(host)) return false;
+    if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(host)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const createPushRouter = () => {
   const router = Router();
 
@@ -145,6 +161,17 @@ export const createPushRouter = () => {
     }
 
     const { endpoint, keys } = subscription;
+    // SÉCURITÉ : anti-SSRF — n'accepter que des endpoints Push HTTPS publics
+    if (!isAllowedPushEndpoint(endpoint)) {
+      return res.status(400).json({ error: "Endpoint Push invalide (HTTPS public requis)." });
+    }
+    // SÉCURITÉ : plafonner le nombre d'abonnements par compte (anti-ressources)
+    const already = db.prepare('SELECT id FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').get(endpoint, req.user.id);
+    if (!already) {
+      const cnt = db.prepare('SELECT COUNT(*) as c FROM push_subscriptions WHERE user_id = ?').get(req.user.id).c;
+      if (cnt >= 20) return res.status(400).json({ error: "Trop d'abonnements Push (maximum 20)." });
+    }
+
     const p256dh = keys?.p256dh || null;
     const auth = keys?.auth || null;
     const userAgent = req.headers['user-agent'] || null;

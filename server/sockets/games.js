@@ -290,7 +290,7 @@ export const registerGameHandlers = (io, socket) => {
       return socket.emit('game_error', { message: "Ce n'est pas votre tour de jouer !" });
     }
 
-    const isValidCoord = (c) => c && typeof c.row === 'number' && typeof c.col === 'number' &&
+    const isValidCoord = (c) => c && Number.isInteger(c.row) && Number.isInteger(c.col) &&
                                 c.row >= 0 && c.row < 8 && c.col >= 0 && c.col < 8;
 
     if (!isValidCoord(from) || !isValidCoord(to)) {

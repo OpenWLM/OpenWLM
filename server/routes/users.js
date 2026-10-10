@@ -74,7 +74,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
 
     const invite = db.prepare('SELECT * FROM invitations WHERE id = ?').get(invitationId);
 
-    if (invite && invite.receiver_id === userId) {
+    if (invite && invite.receiver_id === userId && invite.status === 'pending') {
       try {
         db.transaction(() => {
           db.prepare('INSERT OR IGNORE INTO contacts (user_id, contact_id) VALUES (?, ?)').run(invite.sender_id, invite.receiver_id);
@@ -206,7 +206,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
    * Sauvegarde des clés E2E
    */
   router.post('/user/keys', authenticateToken, sensitiveRateLimiter, (req, res) => {
-    const { publicKey, encryptedPrivateKey } = req.body;
+    const { publicKey, encryptedPrivateKey, authKeyHex } = req.body;
     const userId = req.user.id;
 
     if (!publicKey || typeof publicKey !== 'object' ||
@@ -215,6 +215,16 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     }
     if (!encryptedPrivateKey || typeof encryptedPrivateKey !== 'object') {
       return res.status(400).json({ error: "Clé privée chiffrée invalide." });
+    }
+
+    // SÉCURITÉ : remplacer des clés EXISTANTES exige la preuve du mot de passe
+    // (sinon une session volée pourrait rotater l'identité cryptographique sans le mot de passe).
+    const existing = db.prepare('SELECT public_key, password_hash, salt FROM users WHERE id = ?').get(userId);
+    if (existing && existing.public_key) {
+      if (!authKeyHex || typeof authKeyHex !== 'string' ||
+          !verifyPasswordHash(authKeyHex, existing.salt, existing.password_hash)) {
+        return res.status(403).json({ error: "Clé d'authentification requise pour remplacer les clés existantes." });
+      }
     }
 
     try {
@@ -371,6 +381,13 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
 
     if (!verifyPasswordHash(oldKey, user.salt, user.password_hash)) {
       return res.status(401).json({ error: 'Ancien mot de passe incorrect.' });
+    }
+
+    // SÉCURITÉ : si un coffre existe déjà, un nouveau coffre est OBLIGATOIRE
+    // (sinon le mot de passe change mais le coffre reste chiffré avec l'ancienne clé → désync).
+    const vaultRow = db.prepare('SELECT encrypted_private_key FROM users WHERE id = ?').get(userId);
+    if (vaultRow && vaultRow.encrypted_private_key && !newVault) {
+      return res.status(400).json({ error: "Le nouveau coffre de clés est requis pour changer le mot de passe." });
     }
 
     const newSalt = crypto.randomBytes(16).toString('hex');

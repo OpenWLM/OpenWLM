@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { db } from '../db.js';
-import { authenticateToken, canInteract } from '../middleware/auth.js';
+import { authenticateToken, canInteract, uploadRateLimiter } from '../middleware/auth.js';
 import { UPLOADS_DIR } from './files.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -55,7 +55,7 @@ export const createEmoticonsRouter = () => {
   /**
    * Upload d'un asset chiffré d'émoticône personnalisée
    */
-  router.post('/emoticons/custom/upload', authenticateToken, (req, res) => {
+  router.post('/emoticons/custom/upload', authenticateToken, uploadRateLimiter, (req, res) => {
     uploadEmoticon.single('file')(req, res, (err) => {
       if (err) {
         if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {

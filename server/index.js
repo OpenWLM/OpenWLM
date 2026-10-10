@@ -132,7 +132,13 @@ app.get('/manifest.json', (req, res) => {
 });
 
 // Fichiers statiques du build Vite
-app.use(express.static(path.join(__dirname, '../dist'), { redirect: false }));
+app.use(express.static(path.join(__dirname, '../dist'), {
+  redirect: false,
+  // Les audios de winks (.webm) sont joués via <audio> → MIME audio/webm
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.webm')) res.setHeader('Content-Type', 'audio/webm');
+  }
+}));
 
 // Purge périodique des fichiers expirés et orphelins
 cleanupExpiredFiles();

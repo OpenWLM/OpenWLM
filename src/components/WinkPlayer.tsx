@@ -1,11 +1,9 @@
-import React, { useEffect } from 'react';
-import SoundManager from '../utils/SoundManager';
-import Synthesis from '../utils/Synthesis';
+import React, { useEffect, useRef } from 'react';
 
 /**
  * Lecteur de Clins d'œil (Winks) MSN.
- * Joue les animations pré-rendues depuis les .swf ORIGINAUX de WLM 2009 (WebP animé — léger,
- * natif, sans émulateur Flash au runtime) + le son côté client (les SWF n'ont pas d'audio).
+ * Joue l'animation pré-rendue depuis les .swf ORIGINAUX de WLM 2009 (WebP animé) + le SON
+ * ORIGINAL (extrait du SWF via Ruffle, capturé en WebM) — synchronisés.
  */
 interface WinkPlayerProps {
   winkId: string;
@@ -31,28 +29,16 @@ const WINK_META: Record<string, { w: number; h: number; d: number }> = {
   water_balloon: { w: 640, h: 480, d: 7.7 }
 };
 
-// Sons MSN par clin d'œil (le son vient du client, comme dans l'original)
-const WINK_SOUND: Record<string, string> = {
-  kiss: 'KISS',
-  guitar_smash: 'GUITAR_SMASH',
-  bouncy_ball: 'BOUNCY_BALL',
-  knock: 'KNOCK'
-};
-
 const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
   const meta = WINK_META[winkId];
 
   useEffect(() => {
-    // Son
-    try {
-      if (winkId === 'frog') {
-        setTimeout(() => { try { Synthesis.playCatch(); } catch { /* ignore */ } }, 1800);
-        setTimeout(() => { try { Synthesis.playBurp(); } catch { /* ignore */ } }, 2500);
-      } else {
-        SoundManager.play(WINK_SOUND[winkId] || 'ONLINE');
-      }
-    } catch { /* ignore */ }
-
+    // Son ORIGINAL (extrait du SWF), démarré en synchro avec l'animation
+    const a = audioRef.current;
+    if (a) {
+      try { a.currentTime = 0; a.play().catch(() => { /* autoplay bloqué */ }); } catch { /* ignore */ }
+    }
     // Laisser l'animation se terminer exactement à la durée du clip (clic pour fermer avant)
     const timer = setTimeout(() => onFinish(), (meta ? meta.d : 8) * 1000 + 400);
     return () => clearTimeout(timer);
@@ -67,6 +53,7 @@ const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
           style={{ width: meta?.w ? `${meta.w}px` : undefined, height: meta?.h ? `${meta.h}px` : undefined }}
           draggable={false}
         />
+        <audio ref={audioRef} src={`/assets/winks/${winkId}/${winkId}.webm`} preload="auto" />
       </div>
     </div>
   );

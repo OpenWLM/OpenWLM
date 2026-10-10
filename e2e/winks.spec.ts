@@ -9,10 +9,12 @@ const WINKS = [
   'knock', 'lipstick_girl', 'love_letter', 'notes', 'silly_face', 'stars', 'water_balloon'
 ];
 
-test('winks : les WebP pré-rendus sont servis (image/webp)', async ({ request }) => {
+test('winks : WebP (anim) + WebM (audio) pré-rendus servis', async ({ request }) => {
   for (const id of WINKS) {
-    const r = await request.get(`/assets/winks/${id}/${id}.webp`);
-    expect(r.status(), `${id} status`).toBe(200);
-    expect(r.headers()['content-type'], `${id} type`).toContain('image/webp');
+    const w = await request.get(`/assets/winks/${id}/${id}.webp`);
+    expect(w.status(), `${id} webp status`).toBe(200);
+    expect(w.headers()['content-type'], `${id} webp type`).toContain('image/webp');
+    const a = await request.get(`/assets/winks/${id}/${id}.webm`);
+    expect(a.status(), `${id} audio status`).toBe(200);
   }
 });

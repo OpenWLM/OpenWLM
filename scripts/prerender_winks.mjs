@@ -56,8 +56,28 @@ const ids = args.length ? args : fs.readdirSync(winksDir).filter((d) => fs.exist
 const PORT = 3199;
 const server = await startServer(PORT);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'winkpr-'));
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
 const page = await browser.newPage();
+// Capture aussi l'AUDIO : route la sortie Web Audio de Ruffle vers un MediaRecorder
+await page.addInitScript(() => {
+  const W = window;
+  W.__audioChunks = [];
+  const Orig = W.AudioContext || W.webkitAudioContext;
+  if (!Orig) return;
+  W.AudioContext = class extends Orig {
+    constructor(...args) {
+      super(...args);
+      try {
+        const msd = this.createMediaStreamDestination();
+        Object.defineProperty(this, 'destination', { get() { return msd; } });
+        const rec = new MediaRecorder(msd.stream);
+        rec.ondataavailable = (e) => { if (e.data.size) W.__audioChunks.push(e.data); };
+        rec.start();
+        W.__rec = rec;
+      } catch (e) { W.__audioErr = String(e); }
+    }
+  };
+});
 await page.goto(`http://127.0.0.1:${PORT}/`);
 
 try {
@@ -66,26 +86,43 @@ try {
     const meta = swfMeta(swf);
     const capMs = Math.ceil(meta.duration * 1000) + 400;
 
-    const dataUrls = await page.evaluate(async ({ swfUrl, capMs, w, h }) => {
+    const captured = await page.evaluate(async ({ swfUrl, capMs, w, h }) => {
+      const W = window;
+      W.__audioChunks = [];
       document.querySelectorAll('ruffle-player').forEach((p) => p.remove());
-      if (!window.RufflePlayer) {
+      if (!W.RufflePlayer) {
         await new Promise((res, rej) => { const s = document.createElement('script'); s.src = '/ruffle/ruffle.js'; s.onload = () => res(); s.onerror = () => rej(new Error('ruffle')); document.head.appendChild(s); });
       }
-      const player = window.RufflePlayer.newest().createPlayer();
+      const player = W.RufflePlayer.newest().createPlayer();
       player.style.width = w + 'px';
       player.style.height = h + 'px';
       document.body.appendChild(player);
       await new Promise((res) => { player.addEventListener('loadeddata', () => res(), { once: true }); setTimeout(res, 4000); player.ruffle().load(swfUrl); });
       await new Promise((r) => setTimeout(r, 150));
       const cv = (player.shadowRoot && player.shadowRoot.querySelector('canvas')) || player.querySelector('canvas');
-      if (!cv) return [];
-      const out = []; const t0 = performance.now();
-      await new Promise((resolve) => {
-        const tick = () => { out.push(cv.toDataURL('image/png')); if (performance.now() - t0 < capMs) requestAnimationFrame(tick); else resolve(); };
-        requestAnimationFrame(tick);
-      });
-      return out;
+      const out = [];
+      if (cv) {
+        const t0 = performance.now();
+        await new Promise((resolve) => { const tick = () => { out.push(cv.toDataURL('image/png')); if (performance.now() - t0 < capMs) requestAnimationFrame(tick); else resolve(); }; requestAnimationFrame(tick); });
+      }
+      let audioB64 = '';
+      try { if (W.__rec) W.__rec.stop(); } catch { /* ignore */ }
+      await new Promise((r) => setTimeout(r, 300));
+      try {
+        const blob = new Blob(W.__audioChunks || [], { type: 'audio/webm' });
+        const ab = await blob.arrayBuffer();
+        const bytes = new Uint8Array(ab);
+        let s = ''; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+        audioB64 = btoa(s);
+      } catch { /* ignore */ }
+      return { frames: out, audioB64 };
     }, { swfUrl: `/assets/winks/${id}/${id}.swf`, capMs, w: meta.w, h: meta.h });
+
+    const dataUrls = captured.frames;
+    // Écrire l'audio capturé (synchronisé à l'anim, extrait de Ruffle)
+    if (captured.audioB64) {
+      fs.writeFileSync(path.join(winksDir, id, `${id}.webm`), Buffer.from(captured.audioB64, 'base64'));
+    }
 
     // Ne garder que les frames réellement peintes (alpha moyen ~255 ; le reste = buffer vidé)
     const kept = [];
@@ -110,7 +147,8 @@ try {
     const delay = Math.max(20, Math.round(1000 / meta.fps));
     execFileSync('img2webp', ['-loop', '0', '-d', String(delay), ...files, '-o', outWebp]);
     const sizeKb = (fs.statSync(outWebp).size / 1024).toFixed(0);
-    console.log(`${id.padEnd(15)} peintes=${String(painted).padStart(3)} -> ${target} frames  ${meta.w}x${meta.h} @${meta.fps}fps  webp ${sizeKb} Ko`);
+    const audioKb = captured.audioB64 ? (Buffer.from(captured.audioB64, 'base64').length / 1024).toFixed(0) : '0';
+    console.log(`${id.padEnd(15)} peintes=${String(painted).padStart(3)} -> ${target} frames  ${meta.w}x${meta.h} @${meta.fps}fps  webp ${sizeKb} Ko  audio ${audioKb} Ko`);
   }
 } finally {
   await browser.close();

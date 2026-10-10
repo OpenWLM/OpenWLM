@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'dist-electron', 'src.backup_*', 'release', 'playwright-report', 'test-results']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -22,6 +22,12 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-empty': 'warn',
+      // HMR/Fast-Refresh uniquement : nos modules partagent composants + helpers/constantes
+      // volontairement (i18n, App, NicknameFormatter…) → warn, pas bloquant.
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      // Règle React 19 : nos appels impurs (Date.now/Math.random) sont dans des handlers
+      // d'événements, pas dans le render → warn, pas bloquant.
+      'react-hooks/purity': 'warn',
       'react-hooks/immutability': 'warn',
       'react-hooks/preserve-manual-memoization': 'warn',
       'react-hooks/set-state-in-effect': 'warn',

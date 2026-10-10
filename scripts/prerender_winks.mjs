@@ -62,12 +62,14 @@ const page = await browser.newPage();
 await page.addInitScript(() => {
   const W = window;
   W.__audioChunks = [];
+  W.__recStart = 0;
   const Orig = W.AudioContext || W.webkitAudioContext;
   if (!Orig) return;
   W.AudioContext = class extends Orig {
     constructor(...args) {
       super(...args);
       try {
+        W.__recStart = performance.now();
         const msd = this.createMediaStreamDestination();
         Object.defineProperty(this, 'destination', { get() { return msd; } });
         const rec = new MediaRecorder(msd.stream);
@@ -101,8 +103,12 @@ try {
       await new Promise((r) => setTimeout(r, 150));
       const cv = (player.shadowRoot && player.shadowRoot.querySelector('canvas')) || player.querySelector('canvas');
       const out = [];
+      let recOff = 0;
       if (cv) {
         const t0 = performance.now();
+        // Offset entre le début d'enregistrement audio et le début de capture des frames :
+        // on le « sautera » à la lecture pour aligner exactement son et animation.
+        recOff = W.__recStart ? Math.max(0, Math.round(t0 - W.__recStart)) : 0;
         await new Promise((resolve) => { const tick = () => { out.push(cv.toDataURL('image/png')); if (performance.now() - t0 < capMs) requestAnimationFrame(tick); else resolve(); }; requestAnimationFrame(tick); });
       }
       let audioB64 = '';
@@ -115,7 +121,7 @@ try {
         let s = ''; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
         audioB64 = btoa(s);
       } catch { /* ignore */ }
-      return { frames: out, audioB64 };
+      return { frames: out, audioB64, recOff };
     }, { swfUrl: `/assets/winks/${id}/${id}.swf`, capMs, w: meta.w, h: meta.h });
 
     const dataUrls = captured.frames;
@@ -141,14 +147,55 @@ try {
     const picked = Array.from({ length: target }, (_, i) => kept[Math.min(kept.length - 1, Math.round(i * step))]);
 
     const dir = path.join(tmp, id); fs.mkdirSync(dir, { recursive: true });
-    const files = picked.map((buf, i) => { const p = path.join(dir, `f${String(i).padStart(4, '0')}.png`); fs.writeFileSync(p, buf); return p; });
+
+    // Détourage : le fond (fill uni de Ruffle, souvent blanc) est rendu transparent par
+    // FLOOD-FILL depuis les bords → ne retire QUE le fond CONNECTÉ au bord, ce qui préserve
+    // le blanc INTERNE du personnage (ex : les yeux de la grenouille).
+    const TOL = 28;
+    const keyedFrame = (data, W, H) => {
+      const n = W * H;
+      const bc = new Map();
+      const badd = (i) => { const o = i * 4; const k = `${data[o]},${data[o + 1]},${data[o + 2]}`; bc.set(k, (bc.get(k) || 0) + 1); };
+      for (let x = 0; x < W; x++) { badd(x); badd((H - 1) * W + x); }
+      for (let y = 0; y < H; y++) { badd(y * W); badd(y * W + W - 1); }
+      const bg = [...bc.entries()].sort((a, b) => b[1] - a[1])[0][0].split(',').map(Number);
+      const match = (i) => { const o = i * 4; return Math.abs(data[o] - bg[0]) <= TOL && Math.abs(data[o + 1] - bg[1]) <= TOL && Math.abs(data[o + 2] - bg[2]) <= TOL; };
+      const seen = new Uint8Array(n);
+      const stack = [];
+      for (let x = 0; x < W; x++) { stack.push(x); stack.push((H - 1) * W + x); }
+      for (let y = 0; y < H; y++) { stack.push(y * W); stack.push(y * W + W - 1); }
+      while (stack.length) {
+        const i = stack.pop();
+        if (seen[i]) continue; seen[i] = 1;
+        if (!match(i)) continue;
+        data[i * 4 + 3] = 0;
+        const x = i % W, y = (i - x) / W;
+        if (x > 0) stack.push(i - 1);
+        if (x < W - 1) stack.push(i + 1);
+        if (y > 0) stack.push(i - W);
+        if (y < H - 1) stack.push(i + W);
+      }
+      return bg;
+    };
+
+    // Détourer chaque frame puis encoder en WebP animé AVEC alpha
+    const files = [];
+    let bgHex = '';
+    for (let i = 0; i < picked.length; i++) {
+      const { data, info } = await sharp(picked[i]).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const bg = keyedFrame(data, info.width, info.height);
+      if (i === 0) bgHex = '#' + bg.map((v) => v.toString(16).padStart(2, '0')).join('');
+      const p = path.join(dir, `f${String(i).padStart(4, '0')}.png`);
+      await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toFile(p);
+      files.push(p);
+    }
 
     const outWebp = path.join(winksDir, id, `${id}.webp`);
     const delay = Math.max(20, Math.round(1000 / meta.fps));
-    execFileSync('img2webp', ['-loop', '0', '-d', String(delay), ...files, '-o', outWebp]);
+    execFileSync('img2webp', ['-loop', '0', '-lossy', '-q', '80', '-d', String(delay), ...files, '-o', outWebp]);
     const sizeKb = (fs.statSync(outWebp).size / 1024).toFixed(0);
     const audioKb = captured.audioB64 ? (Buffer.from(captured.audioB64, 'base64').length / 1024).toFixed(0) : '0';
-    console.log(`${id.padEnd(15)} peintes=${String(painted).padStart(3)} -> ${target} frames  ${meta.w}x${meta.h} @${meta.fps}fps  webp ${sizeKb} Ko  audio ${audioKb} Ko`);
+    console.log(`${id.padEnd(15)} peintes=${String(painted).padStart(3)} -> ${target} frames  ${meta.w}x${meta.h} @${meta.fps}fps  fond=${bgHex}  décal=${captured.recOff}ms  webp ${sizeKb} Ko  audio ${audioKb} Ko`);
   }
 } finally {
   await browser.close();

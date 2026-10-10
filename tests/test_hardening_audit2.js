@@ -90,15 +90,16 @@ test('#2 /user/keys : remplacement exige la preuve du mot de passe', { skip: ser
   seedUser(10001, 'hk_user');
   try {
     const t = tok(10001, 'hk_user');
-    const jwk = (n) => ({ kty: 'RSA', n, e: 'AQAB' });
+    const jwk = (n) => ({ kty: 'RSA', n: 'A'.repeat(200) + n, e: 'AQAB' });
+    const vault = { encryptedKeyBase64: 'A'.repeat(100), ivBase64: 'A'.repeat(16) };
     // Première installation (aucune clé) → autorisée sans mot de passe
-    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: {} })).status, 200);
+    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault })).status, 200);
     // Remplacement sans mot de passe → refusé
-    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: {} })).status, 403);
+    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault })).status, 403);
     // Remplacement avec mauvais mot de passe → refusé
-    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: {}, authKeyHex: NEWPWD })).status, 403);
+    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault, authKeyHex: NEWPWD })).status, 403);
     // Remplacement avec le bon mot de passe → accepté
-    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: {}, authKeyHex: PWD })).status, 200);
+    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault, authKeyHex: PWD })).status, 200);
   } finally { cleanup(); }
 });
 
@@ -112,7 +113,7 @@ test('#3 change-password : nouveau coffre requis si un coffre existe', { skip: s
     const noVault = await reqJson('/api/user/change-password', 'POST', t, { oldAuthKeyHex: PWD, newAuthKeyHex: NEWPWD });
     assert.equal(noVault.status, 400, 'un coffre existant impose un nouveau coffre');
     // Avec nouveau coffre → accepté
-    const withVault = await reqJson('/api/user/change-password', 'POST', t, { oldAuthKeyHex: PWD, newAuthKeyHex: NEWPWD, newEncryptedPrivateKey: { iv: 'z', data: 'w' } });
+    const withVault = await reqJson('/api/user/change-password', 'POST', t, { oldAuthKeyHex: PWD, newAuthKeyHex: NEWPWD, newEncryptedPrivateKey: { encryptedKeyBase64: 'A'.repeat(100), ivBase64: 'A'.repeat(16) } });
     assert.equal(withVault.status, 200, 'avec coffre → accepté');
   } finally { cleanup(); }
 });

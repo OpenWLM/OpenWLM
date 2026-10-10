@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
+import dns from 'dns';
 import webpush from 'web-push';
 import { fileURLToPath } from 'url';
 import { db } from '../db.js';
@@ -126,16 +127,31 @@ export const dispatchPushNotification = async (receiverId, payload) => {
   }
 };
 
-// SÉCURITÉ (anti-SSRF) : n'autoriser que des endpoints Push HTTPS publics
-const isAllowedPushEndpoint = (endpoint) => {
+// SÉCURITÉ (anti-SSRF) : détection d'adresses IP privées/réservées (v4 + v6)
+const isPrivateIp = (ip) => {
+  if (!ip || typeof ip !== 'string') return false;
+  if (ip.includes(':')) {
+    const l = ip.toLowerCase();
+    return l === '::1' || l === '::' || l.startsWith('fc') || l.startsWith('fd') || l.startsWith('fe80');
+  }
+  const parts = ip.split('.');
+  if (parts.length !== 4 || parts.some((p) => !/^\d+$/.test(p))) return false; // pas une IPv4 littérale → pas « privé »
+  const [a, b] = parts.map(Number);
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) ||
+         (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
+};
+
+// SÉCURITÉ (anti-SSRF) : endpoint Push HTTPS public, ET l'hôte doit résoudre vers une IP publique
+const isAllowedPushEndpoint = async (endpoint) => {
   try {
     const u = new URL(String(endpoint));
     if (u.protocol !== 'https:') return false;
     const host = u.hostname.toLowerCase();
     if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return false;
     if (host.startsWith('[') || host.includes(':')) return false; // littéraux IPv6
-    if (/^(127\.|10\.|0\.|169\.254\.|192\.168\.)/.test(host)) return false;
-    if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(host)) return false;
+    if (isPrivateIp(host)) return false;
+    const { address } = await dns.promises.lookup(host);
+    if (isPrivateIp(address)) return false;
     return true;
   } catch {
     return false;
@@ -154,15 +170,15 @@ export const createPushRouter = () => {
     });
   });
 
-  router.post('/push/subscribe', authenticateToken, sensitiveRateLimiter, (req, res) => {
+  router.post('/push/subscribe', authenticateToken, sensitiveRateLimiter, async (req, res) => {
     const { subscription } = req.body || {};
     if (!subscription || !subscription.endpoint) {
       return res.status(400).json({ error: "Abonnement Push invalide." });
     }
 
     const { endpoint, keys } = subscription;
-    // SÉCURITÉ : anti-SSRF — n'accepter que des endpoints Push HTTPS publics
-    if (!isAllowedPushEndpoint(endpoint)) {
+    // SÉCURITÉ : anti-SSRF — HTTPS public + résolution DNS vers une IP publique
+    if (!(await isAllowedPushEndpoint(endpoint))) {
       return res.status(400).json({ error: "Endpoint Push invalide (HTTPS public requis)." });
     }
     // SÉCURITÉ : plafonner le nombre d'abonnements par compte (anti-ressources)

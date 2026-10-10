@@ -57,9 +57,10 @@ test('/api/user/keys : JWK RSA + coffre valides acceptés, formes invalides reje
   seed();
   try {
     const token = tok(UID, 'kv_user');
-    const validJwk = { kty: 'RSA', n: 'abc', e: 'AQAB' };
+    const validJwk = { kty: 'RSA', n: 'A'.repeat(342), e: 'AQAB' };
+    const validVault = { encryptedKeyBase64: 'A'.repeat(100), ivBase64: 'A'.repeat(16) };
 
-    const ok = await post('/api/user/keys', token, { publicKey: validJwk, encryptedPrivateKey: { iv: 'x', data: 'y' } });
+    const ok = await post('/api/user/keys', token, { publicKey: validJwk, encryptedPrivateKey: validVault });
     assert.equal(ok.status, 200, 'JWK RSA + coffre valides acceptés');
 
     const badKty = await post('/api/user/keys', token, { publicKey: { kty: 'EC', n: 'a', e: 'b' }, encryptedPrivateKey: {} });

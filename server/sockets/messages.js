@@ -78,6 +78,9 @@ export const registerMessageHandlers = (io, socket) => {
         messageToDeliver.delivery_status = 'sent';
       } catch (err) {
         console.error("Erreur insertion BDD message:", err);
+        // SÉCURITÉ/FIABILITÉ : ne pas présenter un échec de persistance comme un succès
+        if (typeof callback === 'function') callback({ success: false, error: "Échec de l'enregistrement du message." });
+        return;
       }
     } else {
       messageToDeliver.isPrivate = true;
@@ -181,11 +184,14 @@ export const registerMessageHandlers = (io, socket) => {
       maxValidId = maxRow ? Number(maxRow.max_id) : 0;
     } catch (e) {}
 
-    const clampedLastId = Math.min(Math.max(0, rawLastId), maxValidId);
+    // PRIVÉ : conserver l'id temporaire brut (aucun id SQL à clamper) ; NORMAL : clamper sur les ids SQL réels
+    let emittedLastId = rawLastId;
 
     if (!isPrivate) {
       // SÉCURITÉ : aucun message valide dans la conversation → ne rien persister ni diffuser
       if (maxValidId <= 0) return;
+
+      const clampedLastId = Math.min(Math.max(0, rawLastId), maxValidId);
 
       // Progression strictement monotone : refuser toute régression en arrière
       let currentReadId = 0;
@@ -195,6 +201,7 @@ export const registerMessageHandlers = (io, socket) => {
       } catch (e) {}
       if (clampedLastId <= currentReadId) return;
 
+      emittedLastId = clampedLastId;
       const now = Date.now();
       try {
         db.transaction(() => {
@@ -219,13 +226,13 @@ export const registerMessageHandlers = (io, socket) => {
 
     io.to(getUserRoom(cId)).emit('conversation_read', {
       contactId: readerId,
-      lastReadMessageId: clampedLastId,
+      lastReadMessageId: emittedLastId,
       isPrivate: !!isPrivate
     });
 
     socket.to(getUserRoom(readerId)).emit('conversation_read', {
       contactId: cId,
-      lastReadMessageId: clampedLastId,
+      lastReadMessageId: emittedLastId,
       isPrivate: !!isPrivate
     });
   });

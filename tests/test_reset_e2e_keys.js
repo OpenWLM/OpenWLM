@@ -154,7 +154,7 @@ after(() => {
 });
 
 test('1. Contrôle d’accès : Rejet des requêtes non autorisées ou usurpées', async () => {
-  const newPubKey = { kty: 'RSA', n: 'new_n_1', e: 'AQAB' };
+  const newPubKey = { kty: 'RSA', n: 'A'.repeat(342), e: 'AQAB' };
   const newPrivKey = { encryptedKeyBase64: 'enc1', ivBase64: 'iv1' };
 
   // A. Sans token JWT
@@ -232,8 +232,8 @@ test('2. Atomicité & Destruction intégrale : Remplacement des clés, purge des
   await new Promise(r => setTimeout(r, 150));
 
   // C. Alice exécute le reset légitime
-  const freshAlicePubKey = { kty: 'RSA', n: 'alice_brand_new_public_key_modulus', e: 'AQAB' };
-  const freshAlicePrivKey = { encryptedKeyBase64: 'alice_new_vault_enc', ivBase64: 'alice_new_vault_iv' };
+  const freshAlicePubKey = { kty: 'RSA', n: 'A'.repeat(342), e: 'AQAB' };
+  const freshAlicePrivKey = { encryptedKeyBase64: 'QWxpY2VOZXdWYXVsdEVuYw==', ivBase64: 'QWxpY2VOZXdJdg==' };
 
   const resetRes = await fetch(`http://127.0.0.1:${port}/api/user/reset-e2e-keys`, {
     method: 'POST',

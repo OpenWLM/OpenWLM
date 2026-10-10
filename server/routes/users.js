@@ -16,6 +16,21 @@ import {
   verifyPasswordHash 
 } from '../middleware/auth.js';
 
+// SÉCURITÉ : validation de la forme du coffre chiffré (champs + encodage base64)
+const isValidVault = (v) => {
+  if (!v || typeof v !== 'object') return false;
+  const { encryptedKeyBase64, ivBase64 } = v;
+  if (typeof encryptedKeyBase64 !== 'string' || typeof ivBase64 !== 'string') return false;
+  if (encryptedKeyBase64.length === 0 || ivBase64.length === 0) return false;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encryptedKeyBase64)) return false;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(ivBase64)) return false;
+  return true;
+};
+
+// SÉCURITÉ : JWK RSA plausible (kty + modulus n d'une taille minimale + exposant)
+const isValidRsaJwk = (k) => Boolean(k) && typeof k === 'object' && k.kty === 'RSA' &&
+  typeof k.n === 'string' && k.n.length >= 100 && typeof k.e === 'string' && k.e.length > 0;
+
 export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   const router = Router();
 
@@ -209,12 +224,11 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     const { publicKey, encryptedPrivateKey, authKeyHex } = req.body;
     const userId = req.user.id;
 
-    if (!publicKey || typeof publicKey !== 'object' ||
-        publicKey.kty !== 'RSA' || typeof publicKey.n !== 'string' || typeof publicKey.e !== 'string') {
+    if (!isValidRsaJwk(publicKey)) {
       return res.status(400).json({ error: "Clé publique invalide (JWK RSA requis)." });
     }
-    if (!encryptedPrivateKey || typeof encryptedPrivateKey !== 'object') {
-      return res.status(400).json({ error: "Clé privée chiffrée invalide." });
+    if (!isValidVault(encryptedPrivateKey)) {
+      return res.status(400).json({ error: "Coffre de clés invalide (encryptedKeyBase64/ivBase64 requis)." });
     }
 
     // SÉCURITÉ : remplacer des clés EXISTANTES exige la preuve du mot de passe
@@ -256,7 +270,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
       return res.status(400).json({ error: "Format de la clé d'authentification invalide (hex 256 bits requis)." });
     }
 
-    if (!publicKey || typeof publicKey !== 'object' || !encryptedPrivateKey || typeof encryptedPrivateKey !== 'object') {
+    if (!isValidRsaJwk(publicKey) || !isValidVault(encryptedPrivateKey)) {
       return res.status(400).json({ error: "Clés cryptographiques invalides ou manquantes." });
     }
 
@@ -388,6 +402,9 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     const vaultRow = db.prepare('SELECT encrypted_private_key FROM users WHERE id = ?').get(userId);
     if (vaultRow && vaultRow.encrypted_private_key && !newVault) {
       return res.status(400).json({ error: "Le nouveau coffre de clés est requis pour changer le mot de passe." });
+    }
+    if (newVault && !isValidVault(newVault)) {
+      return res.status(400).json({ error: "Coffre de clés invalide (encryptedKeyBase64/ivBase64 requis)." });
     }
 
     const newSalt = crypto.randomBytes(16).toString('hex');

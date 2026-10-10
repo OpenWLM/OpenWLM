@@ -83,7 +83,7 @@ test('change-password : la socket est réellement déconnectée + session renouv
     const res = await postJson('/api/user/change-password', tok(), {
       oldAuthKeyHex: OLD_KEY,
       newAuthKeyHex: NEW_KEY,
-      newEncryptedPrivateKey: { iv: 'x', data: 'y' }
+      newEncryptedPrivateKey: { encryptedKeyBase64: 'A'.repeat(100), ivBase64: 'A'.repeat(16) }
     });
     assert.equal(res.status, 200, 'changement de mot de passe accepté');
     assert.ok(Array.isArray(res.setCookie) && res.setCookie.some((c) => c.startsWith('token=')), 'session courante renouvelée (Set-Cookie)');

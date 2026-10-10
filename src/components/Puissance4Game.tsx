@@ -3,6 +3,7 @@ import { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
+import GameDialog from './GameDialog';
 
 interface Puissance4GameProps {
   socket: Socket | null;
@@ -117,6 +118,7 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
   const [winningCells, setWinningCells] = useState<[number, number][] | null>(null);
   const [hoverCol, setHoverCol] = useState<number | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [dialog, setDialog] = useState<{ message: string; onOk?: () => void } | null>(null);
   const [lastMoveCell, setLastMoveCell] = useState<[number, number] | null>(null);
 
   // Trouver la ligne d'atterrissage pour une colonne donnée (gravité)
@@ -346,12 +348,11 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
 
     const onGameQuit = (data: { from: number }) => {
       if (data.from !== opponentId) return;
-      setStatusMessage(t.games.opponentQuit.replace('{name}', opponentName));
-      setTimeout(() => onClose(), 2500);
+      setDialog({ message: t.games.opponentQuit.replace('{name}', opponentName), onOk: onClose });
     };
 
     const onGameError = (data: { message: string }) => {
-      if (data.message) alert(data.message);
+      if (data.message) setDialog({ message: data.message });
     };
 
     // RESYNC : après une reconnexion (veille mobile), récupérer l'état autoritaire du plateau
@@ -397,6 +398,13 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
 
   return (
     <div className="wlm-game-side-panel">
+      {dialog && (
+        <GameDialog
+          title={t.games.noticeTitle}
+          message={dialog.message}
+          onClose={() => { const cb = dialog.onOk; setDialog(null); cb?.(); }}
+        />
+      )}
       {/* En-tête de panneau Aero */}
       <div className="wlm-game-header">
         <div className="wlm-game-title">

@@ -194,6 +194,7 @@
     "nudgeAck": "Wizz bien reçu."
   },
   "games": {
+    "noticeTitle": "OpenWLM — Jeux",
     "morpion": "Morpion (Tic-Tac-Toe)",
     "checkers": "Jeu de dames",
     "puissance4": "Puissance 4",

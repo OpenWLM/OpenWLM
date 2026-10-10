@@ -3,6 +3,7 @@ import { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
+import GameDialog from './GameDialog';
 
 export type Piece = 'w' | 'W' | 'b' | 'B' | null;
 
@@ -75,6 +76,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [opponentScore, setOpponentScore] = useState(0);
   const [winner, setWinner] = useState<'me' | 'opponent' | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [dialog, setDialog] = useState<{ message: string; onOk?: () => void } | null>(null);
   const [lastMove, setLastMove] = useState<{ from: Position; to: Position } | null>(null);
 
   const isWhite = myColor === 'white';
@@ -354,8 +356,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
     const onGameQuit = (data: { from: number }) => {
       if (data.from !== opponentId) return;
-      alert(t.games.opponentQuit.replace('{name}', opponentName));
-      onClose();
+      setDialog({ message: t.games.opponentQuit.replace('{name}', opponentName), onOk: onClose });
     };
 
     const onGameError = (data: { message: string }) => {
@@ -410,6 +411,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
   return (
     <div className="wlm-game-side-panel">
+      {dialog && (
+        <GameDialog
+          title={t.games.noticeTitle}
+          message={dialog.message}
+          onClose={() => { const cb = dialog.onOk; setDialog(null); cb?.(); }}
+        />
+      )}
       {/* En-tête Aero du panneau de jeu */}
       <div className="wlm-game-header">
         <div className="wlm-game-title">

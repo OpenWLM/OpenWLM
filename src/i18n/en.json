@@ -194,6 +194,7 @@
     "nudgeAck": "Nudge received."
   },
   "games": {
+    "noticeTitle": "OpenWLM — Games",
     "morpion": "Tic-Tac-Toe",
     "checkers": "Checkers",
     "puissance4": "Connect Four",

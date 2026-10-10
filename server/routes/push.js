@@ -89,6 +89,13 @@ export const dispatchPushNotification = async (receiverId, payload) => {
 
     await Promise.all(subs.map(async (sub) => {
       try {
+        // SÉCURITÉ : re-vérifier la destination AU MOMENT DE L'ENVOI (anti-DNS-rebinding +
+        // couvre les abonnements historiques jamais réévalués). Le nombre est borné (≤20/compte).
+        if (!(await isAllowedPushEndpoint(sub.endpoint))) {
+          failed++;
+          console.warn(`[WebPush] Endpoint non autorisé ignoré: ${String(sub.endpoint).slice(0, 45)}...`);
+          return;
+        }
         const pushSubscription = {
           endpoint: sub.endpoint,
           keys: {
@@ -132,6 +139,9 @@ const isPrivateIp = (ip) => {
   if (!ip || typeof ip !== 'string') return false;
   if (ip.includes(':')) {
     const l = ip.toLowerCase();
+    // IPv4 encapsulée en IPv6 (::ffff:a.b.c.d) → évaluer la partie IPv4
+    const mapped = l.match(/::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+    if (mapped) return isPrivateIp(mapped[1]);
     return l === '::1' || l === '::' || l.startsWith('fc') || l.startsWith('fd') || l.startsWith('fe80');
   }
   const parts = ip.split('.');
@@ -194,11 +204,15 @@ export const createPushRouter = () => {
     const now = Date.now();
 
     try {
+      // SÉCURITÉ : ne jamais réattribuer un endpoint appartenant à un AUTRE compte.
+      const owner = db.prepare('SELECT user_id FROM push_subscriptions WHERE endpoint = ?').get(endpoint);
+      if (owner && Number(owner.user_id) !== Number(req.user.id)) {
+        return res.status(409).json({ error: "Cet endpoint Push appartient déjà à un autre compte." });
+      }
       const stmt = db.prepare(`
         INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(endpoint) DO UPDATE SET
-          user_id = excluded.user_id,
           p256dh = excluded.p256dh,
           auth = excluded.auth,
           user_agent = excluded.user_agent,

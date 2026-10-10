@@ -156,6 +156,11 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
         db.prepare('UPDATE users SET status = ? WHERE id = ?').run('offline', userId);
         broadcastStatusToContacts(userId, { id: userId, userId: userId, status: 'offline' });
       }
+
+      // SÉCURITÉ : ne pas laisser une socket authentifiée active mais absente du registre.
+      // On la retire de ses rooms et on ferme réellement la connexion.
+      try { socket.leave(getUserRoom(userId)); } catch { /* ignore */ }
+      socket.disconnect(true);
     });
   });
 };

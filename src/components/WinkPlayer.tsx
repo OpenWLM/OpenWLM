@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 /**
  * Lecteur de Clins d'œil (Winks) MSN.
@@ -31,16 +31,34 @@ const WINK_META: Record<string, { w: number; h: number; d: number; a: number }> 
   water_balloon: { w: 640, h: 480, d: 7.7, a: 191 }
 };
 
+// Contexte audio partagé (sert uniquement à mesurer la latence de sortie du device).
+let sharedCtx: AudioContext | null = null;
+function outputLatencySec(): number {
+  try {
+    const AC: typeof AudioContext | undefined = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext
+      || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return 0.06;
+    if (!sharedCtx) sharedCtx = new AC();
+    if (sharedCtx.state === 'suspended') sharedCtx.resume().catch(() => { /* geste requis */ });
+    const l = (sharedCtx as AudioContext & { outputLatency?: number }).outputLatency || sharedCtx.baseLatency || 0.06;
+    return Math.min(0.5, Math.max(0, l));
+  } catch { return 0.06; }
+}
+
 const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const meta = WINK_META[winkId];
+  // L'anim ne démarre qu'après la latence de sortie audio → son et image tombent ensemble
+  // quel que soit l'appareil (la latence est bien plus élevée sur mobile).
+  const [started, setStarted] = useState(false);
   // Nonce unique par montage : force le navigateur à (re)démarrer l'animation WebP
   // depuis la frame 0 à chaque lancement (sinon la phase dérive vs le son).
-  const nonce = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const [nonce] = useState(() => `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   useEffect(() => {
+    const latency = outputLatencySec();
     // Son ORIGINAL (extrait du SWF) : on saute le silence initial (décal) pour caler le son
-    // exactement sur l'animation, puis on démarre.
+    // exactement sur l'animation, puis on démarre tout de suite.
     const a = audioRef.current;
     if (a) {
       try {
@@ -48,20 +66,24 @@ const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
         a.play().catch(() => { /* autoplay bloqué */ });
       } catch { /* ignore */ }
     }
+    // Démarre l'animation quand le son atteint réellement les haut-parleurs.
+    const t = setTimeout(() => setStarted(true), Math.round(latency * 1000));
     // Laisser l'animation se terminer exactement à la durée du clip (clic pour fermer avant)
-    const timer = setTimeout(() => onFinish(), (meta ? meta.d : 8) * 1000 + 400);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => onFinish(), ((meta ? meta.d : 8) + latency) * 1000 + 400);
+    return () => { clearTimeout(t); clearTimeout(timer); };
   }, [winkId, onFinish, meta]);
 
   return (
     <div className="wink-overlay" onClick={onFinish} style={{ pointerEvents: 'auto', cursor: 'pointer' }}>
       <div className="wink-canvas">
-        <img
-          src={`/assets/winks/${winkId}/${winkId}.webp?n=${nonce.current}`}
-          alt={`Clin d'œil ${winkId}`}
-          style={{ width: meta?.w ? `${meta.w}px` : undefined, height: meta?.h ? `${meta.h}px` : undefined }}
-          draggable={false}
-        />
+        {started && (
+          <img
+            src={`/assets/winks/${winkId}/${winkId}.webp?n=${nonce}`}
+            alt={`Clin d'œil ${winkId}`}
+            style={{ width: meta?.w ? `${meta.w}px` : undefined, height: meta?.h ? `${meta.h}px` : undefined }}
+            draggable={false}
+          />
+        )}
         <audio ref={audioRef} src={`/assets/winks/${winkId}/${winkId}.webm`} preload="auto" />
       </div>
     </div>

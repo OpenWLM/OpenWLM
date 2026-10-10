@@ -160,9 +160,15 @@ self.addEventListener('push', (event) => {
     renotify: true
   };
 
-  event.waitUntil(
-    self.registration.showNotification(payload.title, options)
-  );
+  event.waitUntil((async () => {
+    // Anti-doublon : si l'application est OUVERTE au premier plan, c'est ELLE qui affiche
+    // sa propre notification (avec le CONTENU déchiffré côté client, le serveur n'ayant pas la clé).
+    try {
+      const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (clientList.some((c) => c.focused)) return;
+    } catch { /* ignore */ }
+    await self.registration.showNotification(payload.title, options);
+  })());
 });
 
 // Clic sur une notification système déclenchée via ServiceWorkerRegistration ou Web Push

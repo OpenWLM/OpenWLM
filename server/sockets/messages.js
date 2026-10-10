@@ -112,7 +112,8 @@ export const registerMessageHandlers = (io, socket) => {
       title: `${pushSenderName} - OpenWLM`,
       body: pushBody,
       senderId: senderId,
-      url: `/?chat=${senderId}`
+      url: `/?chat=${senderId}`,
+      tag: `openwlm-chat-${senderId}`
     });
 
     if (typeof callback === 'function') {
@@ -267,7 +268,8 @@ export const registerMessageHandlers = (io, socket) => {
       title: `${senderDisplayName} - OpenWLM`,
       body: '💥 [Wizz !]',
       senderId: senderId,
-      url: `/?chat=${senderId}`
+      url: `/?chat=${senderId}`,
+      tag: `openwlm-chat-${senderId}`
     });
   });
 

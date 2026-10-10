@@ -23,6 +23,17 @@ const rtcRateAllowed = (userId, limit, windowMs = 10000) => {
   return true;
 };
 
+// SÉCURITÉ : purge périodique des compteurs RTC inactifs (évite la croissance mémoire)
+const rtcCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [uid, ts] of rtcSignalLimits.entries()) {
+    const active = ts.filter((t) => now - t < 10000);
+    if (active.length === 0) rtcSignalLimits.delete(uid);
+    else rtcSignalLimits.set(uid, active);
+  }
+}, 60000);
+if (rtcCleanupTimer.unref) rtcCleanupTimer.unref();
+
 export const registerWebRtcHandlers = (io, socket) => {
   socket.on('call_request', (data) => {
     const { target, signal, audioOnly } = data || {};

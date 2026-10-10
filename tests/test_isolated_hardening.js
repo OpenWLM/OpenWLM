@@ -88,6 +88,9 @@ before(async () => {
   const insert = db.prepare("INSERT INTO users (username, nickname, status, password_hash, salt, token_version) VALUES (?, ?, 'online', ?, ?, 0)");
   aliceId = Number(insert.run('iso_alice', 'Alice', hashPwd(PWD, salt), salt).lastInsertRowid);
   bobId = Number(insert.run('iso_bob', 'Bob', hashPwd(PWD, salt), salt).lastInsertRowid);
+  const contact = db.prepare('INSERT INTO contacts (user_id, contact_id, status, blocked) VALUES (?, ?, 1, 0)');
+  contact.run(aliceId, bobId);
+  contact.run(bobId, aliceId);
   db.close();
 });
 
@@ -130,4 +133,58 @@ test('P2 keys : remplacement de clés exige la preuve du mot de passe', async ()
   assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault })).status, 200, 'première installation');
   assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault })).status, 403, 'remplacement sans mot de passe refusé');
   assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault, authKeyHex: PWD })).status, 200, 'remplacement avec mot de passe accepté');
+});
+
+test('P2 jeux : game_restart suit le TYPE ENREGISTRÉ (pas le type client)', async () => {
+  const s1 = await connect(tok(aliceId));
+  const s2 = await connect(tok(bobId));
+  try {
+    s1.emit('game_invite', { target: bobId, gameType: 'checkers' });
+    await new Promise((r) => setTimeout(r, 250));
+    s2.emit('game_accept', { target: aliceId, gameType: 'checkers' });
+    await new Promise((r) => setTimeout(r, 450));
+    // game_restart avec un type MENSONGER (morpion) → la grille doit rester un plateau de dames (8×8)
+    s1.emit('game_restart', { target: bobId, gameType: 'morpion' });
+    await new Promise((r) => setTimeout(r, 300));
+    const st = await new Promise((resolve) => {
+      s1.once('game_resync_state', resolve);
+      s1.emit('game_resync', { target: bobId });
+      setTimeout(() => resolve(null), 800);
+    });
+    assert.ok(st && Array.isArray(st.board) && st.board.length === 8, 'la grille reste un plateau de dames (8×8)');
+  } finally { s1.disconnect(); s2.disconnect(); }
+});
+
+test('P2 messages : message_delivered n’accuse pas un message inexistant', async () => {
+  const a = await connect(tok(aliceId));
+  const b = await connect(tok(bobId));
+  try {
+    await new Promise((r) => setTimeout(r, 150));
+    a.statusUpdates = [];
+    a.on('message_status_updated', (u) => a.statusUpdates.push(u));
+    const ack = await new Promise((resolve) => a.emit('send_message', { senderId: aliceId, receiverId: bobId, text: 'hello', isPrivate: false }, resolve));
+    assert.equal(ack?.success, true, 'message accepté');
+    const realId = ack.id;
+
+    b.emit('message_delivered', { messageId: 999999999, senderId: aliceId, isPrivate: false });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(a.statusUpdates.length, 0, 'aucun accusé pour un message inexistant');
+
+    b.emit('message_delivered', { messageId: realId, senderId: aliceId, isPrivate: false });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(a.statusUpdates.some((u) => u.messageId === realId), 'accusé du vrai message remonté');
+  } finally { a.disconnect(); b.disconnect(); }
+});
+
+test('P2 messages : ids privés uniques (pas de collision Date.now)', async () => {
+  const a = await connect(tok(aliceId));
+  try {
+    await new Promise((r) => setTimeout(r, 150));
+    const ids = await Promise.all([
+      new Promise((resolve) => a.emit('send_message', { senderId: aliceId, receiverId: bobId, text: 'p1', isPrivate: true }, resolve)),
+      new Promise((resolve) => a.emit('send_message', { senderId: aliceId, receiverId: bobId, text: 'p2', isPrivate: true }, resolve))
+    ]);
+    assert.ok(ids[0]?.id && ids[1]?.id, 'acks privés avec id');
+    assert.notEqual(ids[0].id, ids[1].id, 'les ids privés ne doivent pas entrer en collision');
+  } finally { a.disconnect(); }
 });

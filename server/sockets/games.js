@@ -458,7 +458,7 @@ export const registerGameHandlers = (io, socket) => {
   socket.on('game_restart', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
-    const { target, gameType } = data || {};
+    const { target } = data || {};
 
     const check = canInteract(userId, target);
     if (!check.allowed) return;
@@ -467,11 +467,12 @@ export const registerGameHandlers = (io, socket) => {
     const game = activeGames.get(gameKey);
     if (!game) return;
 
-    if (game.gameType === 'checkers' || gameType === 'checkers') {
+    // SÉCURITÉ : la grille suit le TYPE ENREGISTRÉ de la partie (jamais le type fourni par le client).
+    if (game.gameType === 'checkers') {
       game.board = createInitialCheckersBoard();
       game.status = 'playing';
       game.turn = game.playerWhite;
-    } else if (game.gameType === 'puissance4' || gameType === 'puissance4') {
+    } else if (game.gameType === 'puissance4') {
       game.board = createEmptyPuissance4Board();
       game.status = 'playing';
       game.turn = game.playerRed;

@@ -62,6 +62,7 @@ export const cleanupOrphanUploads = () => {
     const now = Date.now();
     for (const entry of fs.readdirSync(UPLOADS_DIR, { withFileTypes: true })) {
       if (!entry.isFile()) continue;
+      if (entry.name.startsWith('.')) continue; // ne jamais toucher aux fichiers de contrôle (.htaccess, etc.)
       if (referenced.has(entry.name)) continue;
       const full = path.join(UPLOADS_DIR, entry.name);
       try {

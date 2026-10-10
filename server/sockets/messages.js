@@ -6,6 +6,9 @@ import { dispatchPushNotification } from '../routes/push.js';
 export const wizzLimits = new Map();
 export const messageLimits = new Map();
 
+// Compteur d'ids temporaires pour les messages privés (évite les collisions Date.now() à la même ms)
+let privateMsgSeq = 0;
+
 export const registerMessageHandlers = (io, socket) => {
   /**
    * Envoi d'un message
@@ -85,7 +88,7 @@ export const registerMessageHandlers = (io, socket) => {
     } else {
       messageToDeliver.isPrivate = true;
       messageToDeliver.delivery_status = 'sent';
-      messageToDeliver.id = Date.now(); // ID temporaire (non persisté) pour le frontend
+      messageToDeliver.id = Date.now() * 1000 + (privateMsgSeq++ % 1000); // ID temporaire unique (non persisté)
     }
 
     io.to(getUserRoom(receiverId)).emit('receive_message', messageToDeliver);
@@ -136,6 +139,9 @@ export const registerMessageHandlers = (io, socket) => {
 
     if (!isPrivate) {
       try {
+        // SÉCURITÉ : n'accuser que des messages réellement existants et destinés à ce destinataire
+        const exists = db.prepare('SELECT 1 FROM messages WHERE id = ? AND sender_id = ? AND receiver_id = ?').get(mId, sId, recipientId);
+        if (!exists) return;
         db.prepare(`
           UPDATE messages 
           SET delivery_status = 'delivered' 
@@ -143,6 +149,7 @@ export const registerMessageHandlers = (io, socket) => {
         `).run(mId, sId, recipientId);
       } catch (err) {
         console.error("Erreur mise à jour message_delivered:", err);
+        return;
       }
     }
 

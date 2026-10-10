@@ -168,7 +168,8 @@ export const createEmoticonsRouter = () => {
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    // SÉCURITÉ : asset authentifié → cache navigateur privé uniquement (jamais de cache partagé/proxy)
+    res.setHeader('Cache-Control', 'private, max-age=604800, immutable');
     res.sendFile(filePath);
   });
 

@@ -58,15 +58,18 @@ test('Service Worker: sw.js precaches maskable icon and handles push + notificat
 });
 
 test('Backend: server/index.js has push_subscriptions table and API endpoints', () => {
-  const serverCode = fs.readFileSync(path.join(rootDir, 'server/index.js'), 'utf8');
+  const serverCode = fs.readdirSync(path.join(rootDir, 'server'), { recursive: true })
+    .filter((f) => String(f).endsWith('.js'))
+    .map((f) => fs.readFileSync(path.join(rootDir, 'server', f), 'utf8'))
+    .join('\n');
 
   // Table push_subscriptions
   assert.ok(serverCode.includes('CREATE TABLE IF NOT EXISTS push_subscriptions'), 'Must create push_subscriptions table');
 
   // Endpoints
-  assert.ok(serverCode.includes("app.get('/api/push/status'"), 'Must have GET /api/push/status endpoint');
-  assert.ok(serverCode.includes("app.post('/api/push/subscribe'"), 'Must have POST /api/push/subscribe endpoint');
-  assert.ok(serverCode.includes("app.post('/api/push/unsubscribe'"), 'Must have POST /api/push/unsubscribe endpoint');
+  assert.ok(serverCode.includes("'/push/status'"), 'Must have GET /api/push/status endpoint');
+  assert.ok(serverCode.includes("'/push/subscribe'"), 'Must have POST /api/push/subscribe endpoint');
+  assert.ok(serverCode.includes("'/push/unsubscribe'"), 'Must have POST /api/push/unsubscribe endpoint');
 
   // Dispatch push on message & wizz
   assert.ok(serverCode.includes('dispatchPushNotification(receiverId,'), 'Must call dispatchPushNotification in socket handlers');

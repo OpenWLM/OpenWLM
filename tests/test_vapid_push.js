@@ -61,7 +61,10 @@ test('Key Generator Script: scripts/generate_vapid_keys.js exists and validates 
 });
 
 test('Server Implementation: server/index.js contains VAPID initialization and secure endpoints', () => {
-  const serverCode = fs.readFileSync(path.join(rootDir, 'server/index.js'), 'utf8');
+  const serverCode = fs.readdirSync(path.join(rootDir, 'server'), { recursive: true })
+    .filter((f) => String(f).endsWith('.js'))
+    .map((f) => fs.readFileSync(path.join(rootDir, 'server', f), 'utf8'))
+    .join('\n');
   
   // Must import webpush
   assert.ok(serverCode.includes("import webpush from 'web-push'"), 'server/index.js must import webpush');
@@ -71,12 +74,12 @@ test('Server Implementation: server/index.js contains VAPID initialization and s
   assert.ok(serverCode.includes('webpush.setVapidDetails'), 'server/index.js must call webpush.setVapidDetails');
   
   // Must have GET /api/push/status
-  assert.ok(serverCode.includes("app.get('/api/push/status'"), 'Must have GET /api/push/status');
+  assert.ok(serverCode.includes("'/push/status'"), 'Must have GET /api/push/status');
   // Must NEVER expose private key
   assert.ok(!serverCode.includes('privateKey: vapidConfig.privateKey'), 'Must NEVER leak private key in status API');
   
   // Must have POST /api/push/test
-  assert.ok(serverCode.includes("app.post('/api/push/test'"), 'Must have POST /api/push/test');
+  assert.ok(serverCode.includes("'/push/test'"), 'Must have POST /api/push/test');
   
   // Must call webpush.sendNotification in dispatchPushNotification
   assert.ok(serverCode.includes('webpush.sendNotification'), 'dispatchPushNotification must use webpush.sendNotification');

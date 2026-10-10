@@ -192,7 +192,7 @@ export const registerGameHandlers = (io, socket) => {
   socket.on('game_move', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
-    const { target, index } = data;
+    const { target, index } = data || {};
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);

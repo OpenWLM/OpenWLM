@@ -82,6 +82,7 @@ export const registerMessageHandlers = (io, socket) => {
     } else {
       messageToDeliver.isPrivate = true;
       messageToDeliver.delivery_status = 'sent';
+      messageToDeliver.id = Date.now(); // ID temporaire (non persisté) pour le frontend
     }
 
     io.to(getUserRoom(receiverId)).emit('receive_message', messageToDeliver);
@@ -112,7 +113,7 @@ export const registerMessageHandlers = (io, socket) => {
     });
 
     if (typeof callback === 'function') {
-      callback({ success: true, messageId: messageToDeliver.id, isPrivate: !!finalIsPrivate });
+      callback({ success: true, id: messageToDeliver.id, timestamp: messageToDeliver.timestamp, isPrivate: !!finalIsPrivate });
     }
   });
 
@@ -120,13 +121,14 @@ export const registerMessageHandlers = (io, socket) => {
    * Accusé de réception (message_delivered)
    */
   socket.on('message_delivered', (data) => {
-    const { messageId, senderId, receiverId, isPrivate } = data || {};
+    const { messageId, senderId, isPrivate } = data || {};
     const recipientId = socket.user.id;
-    if (recipientId !== Number(receiverId)) return;
-
     const sId = Number(senderId);
     const mId = Number(messageId);
     if (!mId || !sId) return;
+
+    const check = canInteract(sId, recipientId);
+    if (!check.allowed) return;
 
     if (!isPrivate) {
       try {
@@ -140,19 +142,17 @@ export const registerMessageHandlers = (io, socket) => {
       }
     }
 
-    io.to(getUserRoom(sId)).emit('message_status_update', {
+    io.to(getUserRoom(sId)).emit('message_status_updated', {
+      contactId: recipientId,
       messageId: mId,
-      senderId: sId,
-      receiverId: recipientId,
-      delivery_status: 'delivered',
+      status: 'delivered',
       isPrivate: !!isPrivate
     });
 
-    socket.to(getUserRoom(recipientId)).emit('message_status_update', {
+    socket.to(getUserRoom(recipientId)).emit('message_status_updated', {
+      contactId: sId,
       messageId: mId,
-      senderId: sId,
-      receiverId: recipientId,
-      delivery_status: 'delivered',
+      status: 'delivered',
       isPrivate: !!isPrivate
     });
   });
@@ -183,7 +183,18 @@ export const registerMessageHandlers = (io, socket) => {
 
     const clampedLastId = Math.min(Math.max(0, rawLastId), maxValidId);
 
-    if (!isPrivate && clampedLastId > 0) {
+    if (!isPrivate) {
+      // SÉCURITÉ : aucun message valide dans la conversation → ne rien persister ni diffuser
+      if (maxValidId <= 0) return;
+
+      // Progression strictement monotone : refuser toute régression en arrière
+      let currentReadId = 0;
+      try {
+        const cursorRow = db.prepare('SELECT last_read_message_id FROM conversation_read_cursors WHERE user_id = ? AND contact_id = ?').get(readerId, cId);
+        currentReadId = cursorRow ? Number(cursorRow.last_read_message_id) || 0 : 0;
+      } catch (e) {}
+      if (clampedLastId <= currentReadId) return;
+
       const now = Date.now();
       try {
         db.transaction(() => {

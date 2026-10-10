@@ -156,7 +156,10 @@ test('Captcha i18n: Question, label, and placeholder are fully localized in FR a
   assert.ok(authTsx.includes('params: { lang: language }'), 'Auth.tsx passes lang param to /api/captcha');
 
   // Server support in server/index.js
-  const serverJs = fs.readFileSync(path.join(rootDir, 'server/index.js'), 'utf8');
+  const serverJs = fs.readdirSync(path.join(rootDir, 'server'), { recursive: true })
+    .filter((f) => String(f).endsWith('.js'))
+    .map((f) => fs.readFileSync(path.join(rootDir, 'server', f), 'utf8'))
+    .join('\n');
   assert.ok(serverJs.includes("How much is ${num1} + ${num2}?"), 'server/index.js supports EN captcha question');
   assert.ok(serverJs.includes("Combien font ${num1} + ${num2} ?"), 'server/index.js supports FR captcha question');
 });

@@ -1688,6 +1688,22 @@ const App: React.FC = () => {
     } catch { /* ignore */ }
   }, []);
 
+  // Callbacks STABLES passés aux jeux. Indispensable : les useEffect des composants de jeu
+  // dépendent de ces props ET appellent setState → un prop instable = boucle de rendu (freeze).
+  const handleGameClose = useCallback(() => {
+    setActiveGame(null);
+    setIsGameMinimized(false);
+    refreshResumableGames();
+  }, [refreshResumableGames]);
+
+  const handleGameMinimize = useCallback(() => {
+    setIsGameMinimized(true);
+  }, []);
+
+  const handleGameStateChange = useCallback((summary: { isMyTurn: boolean; myScore: number; opponentScore: number; winner: 'me' | 'opponent' | 'draw' | null }) => {
+    setGameSummary(summary);
+  }, []);
+
   // Reprise automatique d'une partie en cours à l'ouverture de la conversation
   useEffect(() => {
     if (!activeChatId || activeGame) return;
@@ -4677,13 +4693,9 @@ const App: React.FC = () => {
                   myAvatar={myAvatar}
                   myColor={(activeGame.myColor === 'white' || activeGame.myColor === 'black') ? activeGame.myColor : (activeGame.mySymbol === 'W' ? 'white' : 'black')}
                   initialIsMyTurn={activeGame.isMyTurn}
-                  onClose={() => {
-                    setActiveGame(null);
-                    setIsGameMinimized(false);
-                    refreshResumableGames();
-                  }}
-                  onMinimize={() => setIsGameMinimized(true)}
-                  onGameStateChange={(summary) => setGameSummary(summary)}
+                  onClose={handleGameClose}
+                  onMinimize={handleGameMinimize}
+                  onGameStateChange={handleGameStateChange}
                 />
               ) : activeGame.gameType === 'puissance4' ? (
                 <Puissance4Game
@@ -4697,13 +4709,9 @@ const App: React.FC = () => {
                   myAvatar={myAvatar}
                   myColor={activeGame.myColor === 'yellow' ? 'yellow' : 'red'}
                   initialIsMyTurn={activeGame.isMyTurn}
-                  onClose={() => {
-                    setActiveGame(null);
-                    setIsGameMinimized(false);
-                    refreshResumableGames();
-                  }}
-                  onMinimize={() => setIsGameMinimized(true)}
-                  onGameStateChange={(summary) => setGameSummary(summary)}
+                  onClose={handleGameClose}
+                  onMinimize={handleGameMinimize}
+                  onGameStateChange={handleGameStateChange}
                 />
               ) : (
                 <MorpionGame
@@ -4717,13 +4725,9 @@ const App: React.FC = () => {
                   myAvatar={myAvatar}
                   initialSymbol={(activeGame.mySymbol as 'X' | 'O') || 'X'}
                   initialIsMyTurn={activeGame.isMyTurn}
-                  onClose={() => {
-                    setActiveGame(null);
-                    setIsGameMinimized(false);
-                    refreshResumableGames();
-                  }}
-                  onMinimize={() => setIsGameMinimized(true)}
-                  onGameStateChange={(summary) => setGameSummary(summary)}
+                  onClose={handleGameClose}
+                  onMinimize={handleGameMinimize}
+                  onGameStateChange={handleGameStateChange}
                 />
               )}
             </div>

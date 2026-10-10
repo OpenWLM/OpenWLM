@@ -192,8 +192,11 @@ try {
 
     const outWebp = path.join(winksDir, id, `${id}.webp`);
     const delay = Math.max(20, Math.round(1000 / meta.fps));
-    // -loop 1 : lecture UNIQUE (pas de boucle infinie → l'anim ne repart pas avant la fermeture)
-    execFileSync('img2webp', ['-loop', '1', '-lossy', '-q', '80', '-d', String(delay), ...files, '-o', outWebp]);
+    // -loop 1 : pas de boucle infinie. Comme le navigateur rejoue une fois (loop_count = nb de
+    // répétitions), on duplique la DERNIÈRE frame avec une très longue durée (60 s) : après la
+    // vraie fin, l'image reste FIGÉE (au lieu de repartir) le temps que l'overlay se ferme.
+    const last = files[files.length - 1];
+    execFileSync('img2webp', ['-loop', '1', '-lossy', '-q', '80', '-d', String(delay), ...files, '-d', '60000', last, '-o', outWebp]);
     const sizeKb = (fs.statSync(outWebp).size / 1024).toFixed(0);
     const audioKb = captured.audioB64 ? (Buffer.from(captured.audioB64, 'base64').length / 1024).toFixed(0) : '0';
     const totalMs = target * delay;

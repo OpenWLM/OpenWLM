@@ -58,7 +58,7 @@ test('/api/user/keys : JWK RSA + coffre valides acceptés, formes invalides reje
   try {
     const token = tok(UID, 'kv_user');
     const validJwk = { kty: 'RSA', n: 'A'.repeat(342), e: 'AQAB' };
-    const validVault = { encryptedKeyBase64: 'A'.repeat(100), ivBase64: 'A'.repeat(16) };
+    const validVault = { encryptedKeyBase64: 'A'.repeat(512), ivBase64: 'A'.repeat(16) };
 
     const ok = await post('/api/user/keys', token, { publicKey: validJwk, encryptedPrivateKey: validVault });
     assert.equal(ok.status, 200, 'JWK RSA + coffre valides acceptés');
@@ -71,6 +71,14 @@ test('/api/user/keys : JWK RSA + coffre valides acceptés, formes invalides reje
 
     const noVault = await post('/api/user/keys', token, { publicKey: validJwk });
     assert.equal(noVault.status, 400, 'coffre manquant rejeté');
+
+    // Validation stricte : paramètre PRIVÉ interdit dans une clé publique distribuée
+    const privParams = await post('/api/user/keys', token, { publicKey: { kty: 'RSA', n: 'A'.repeat(342), e: 'AQAB', d: 'secret' }, encryptedPrivateKey: validVault });
+    assert.equal(privParams.status, 400, 'paramètre privé (d) rejeté');
+
+    // Validation stricte : IV de mauvaise longueur rejeté
+    const badIv = await post('/api/user/keys', token, { publicKey: validJwk, encryptedPrivateKey: { encryptedKeyBase64: 'A'.repeat(512), ivBase64: 'AA' } });
+    assert.equal(badIv.status, 400, 'IV de mauvaise longueur rejeté');
   } finally {
     cleanup();
   }

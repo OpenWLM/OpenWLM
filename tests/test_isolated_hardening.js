@@ -127,8 +127,8 @@ test('P1 socket : manual_disconnect ferme réellement la socket', async () => {
 });
 
 test('P2 keys : remplacement de clés exige la preuve du mot de passe', async () => {
-  const jwk = (n) => ({ kty: 'RSA', n: 'A'.repeat(200) + n, e: 'AQAB' });
-  const vault = { encryptedKeyBase64: 'A'.repeat(100), ivBase64: 'A'.repeat(16) };
+  const jwk = (n) => ({ kty: 'RSA', n: 'A'.repeat(342) + n, e: 'AQAB' });
+  const vault = { encryptedKeyBase64: 'A'.repeat(512), ivBase64: 'A'.repeat(16) };
   const t = tok(aliceId);
   assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault })).status, 200, 'première installation');
   assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault })).status, 403, 'remplacement sans mot de passe refusé');
@@ -187,4 +187,15 @@ test('P2 messages : ids privés uniques (pas de collision Date.now)', async () =
     assert.ok(ids[0]?.id && ids[1]?.id, 'acks privés avec id');
     assert.notEqual(ids[0].id, ids[1].id, 'les ids privés ne doivent pas entrer en collision');
   } finally { a.disconnect(); }
+});
+
+test('P1 socket : un JWT expiré en cours de connexion est fermé par le balayage', { timeout: 90000 }, async () => {
+  // Token valide au handshake mais qui expire ~2 s plus tard ; le balayage (60 s) doit fermer la socket.
+  const shortToken = jwt.sign({ id: aliceId, tv: 0 }, JWT_SECRET, { expiresIn: '2s' });
+  const s = await connect(shortToken);
+  const disconnected = new Promise((resolve) => {
+    s.once('disconnect', () => resolve(true));
+    setTimeout(() => resolve(false), 75000);
+  });
+  assert.equal(await disconnected, true, 'la socket doit être fermée après expiration du JWT');
 });

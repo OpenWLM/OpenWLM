@@ -38,9 +38,33 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
       }
 
       socket.user = dbUser;
+      socket.tokenExp = payload.exp; // expiration du JWT (secondes)
+      socket.tokenTv = tokenTv;
       next();
     });
   });
+
+  // SÉCURITÉ : balayage périodique — ferme les sockets dont le JWT a EXPIRÉ
+  // ou dont la session a été RÉVOQUÉE (token_version), même sans révocation explicite.
+  const sessionSweep = setInterval(() => {
+    const now = Date.now();
+    for (const socket of io.sockets.sockets.values()) {
+      if (!socket.user || !socket.user.id) continue;
+      if (socket.tokenExp && socket.tokenExp * 1000 < now) {
+        try { socket.emit('session_expired'); } catch { /* ignore */ }
+        socket.disconnect(true);
+        continue;
+      }
+      try {
+        const row = db.prepare('SELECT token_version FROM users WHERE id = ?').get(socket.user.id);
+        const curTv = row ? (row.token_version || 0) : 0;
+        if (!row || (socket.tokenTv || 0) !== curTv) {
+          socket.disconnect(true);
+        }
+      } catch { /* ignore */ }
+    }
+  }, 60000);
+  if (sessionSweep.unref) sessionSweep.unref();
 
   io.on('connection', (socket) => {
     const authUserId = socket.user?.id;

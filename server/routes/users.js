@@ -16,20 +16,29 @@ import {
   verifyPasswordHash 
 } from '../middleware/auth.js';
 
-// SÉCURITÉ : validation de la forme du coffre chiffré (champs + encodage base64)
+// SÉCURITÉ : validation stricte du coffre chiffré — champs, base64, longueurs DÉCODÉES
 const isValidVault = (v) => {
   if (!v || typeof v !== 'object') return false;
   const { encryptedKeyBase64, ivBase64 } = v;
   if (typeof encryptedKeyBase64 !== 'string' || typeof ivBase64 !== 'string') return false;
-  if (encryptedKeyBase64.length === 0 || ivBase64.length === 0) return false;
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encryptedKeyBase64)) return false;
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(ivBase64)) return false;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encryptedKeyBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(ivBase64)) return false;
+  const iv = Buffer.from(ivBase64, 'base64');
+  if (iv.length !== 12) return false; // IV AES-GCM = 12 octets
+  const enc = Buffer.from(encryptedKeyBase64, 'base64');
+  if (enc.length < 256 || enc.length > 4096) return false; // coffre = JWK RSA chiffré
   return true;
 };
 
-// SÉCURITÉ : JWK RSA plausible (kty + modulus n d'une taille minimale + exposant)
-const isValidRsaJwk = (k) => Boolean(k) && typeof k === 'object' && k.kty === 'RSA' &&
-  typeof k.n === 'string' && k.n.length >= 100 && typeof k.e === 'string' && k.e.length > 0;
+// SÉCURITÉ : JWK RSA PUBLIC strict — kty, base64url, modulus décodé, AUCUN paramètre privé
+const isValidRsaJwk = (k) => {
+  if (!k || typeof k !== 'object' || k.kty !== 'RSA') return false;
+  for (const p of ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth']) if (k[p] !== undefined) return false;
+  if (typeof k.n !== 'string' || typeof k.e !== 'string') return false;
+  if (!/^[A-Za-z0-9_-]+$/.test(k.n) || !/^[A-Za-z0-9_-]+$/.test(k.e)) return false;
+  const nBytes = Buffer.from(k.n, 'base64url').length;
+  if (nBytes < 256 || nBytes > 512) return false; // RSA-2048 .. RSA-4096
+  return true;
+};
 
 export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   const router = Router();

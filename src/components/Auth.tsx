@@ -146,10 +146,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
         // Envoi uniquement de authKeyHex (jamais le mot de passe brut)
         const res = await axios.post('/api/login', { username, password: authKeyHex });
 
-        if (res.data && res.data.success && typeof res.data.token === 'string' && res.data.user && res.data.user.id) {
+        // M2 : le JWT n'est plus renvoyé dans le corps (auth par cookie HttpOnly uniquement).
+        // On ne l'exige donc plus pour valider la réponse de login.
+        if (res.data && res.data.success && res.data.user && res.data.user.id) {
           onLogin({ 
             ...res.data.user, 
-            token: res.data.token, 
             status, 
             rememberMe: rememberMe
           }, vaultKey);

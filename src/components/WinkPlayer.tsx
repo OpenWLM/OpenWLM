@@ -1,133 +1,76 @@
-import React, { useEffect, useState } from 'react';
-import SoundManager from '../utils/SoundManager';
-import Synthesis from '../utils/Synthesis';
+import React, { useEffect, useRef } from 'react';
 
 /**
- * Interface pour les propriétés du lecteur de Clins d'œil (Winks)
+ * Lecteur de Clins d'œil (Winks) MSN.
+ * Joue les fichiers .swf ORIGINAUX de WLM 2009 via Ruffle (émulateur Flash WebAssembly,
+ * self-hosted dans /public/ruffle). Chargé à la demande (uniquement quand un wink est joué).
  */
 interface WinkPlayerProps {
-  winkId: string;   // Identifiant unique du clin d'œil
-  onFinish: () => void; // Callback appelé à la fin de l'animation
+  winkId: string;
+  onFinish: () => void;
 }
 
-/**
- * Composant WinkPlayer
- * Gère l'affichage plein écran et la reproduction sonore des "Clins d'œil" MSN.
- * Inclut des animations CSS complexes pour les clins d'œil reconstruits.
- */
+const RUFFLE_SCRIPT = '/ruffle/ruffle.js';
+const swfUrl = (id: string) => `/assets/winks/${id}/${id}.swf`;
+
+const loadRuffle = () => new Promise<void>((resolve, reject) => {
+  const w = window as unknown as { RufflePlayer?: unknown };
+  if (w.RufflePlayer) return resolve();
+  const existing = document.querySelector('script[data-ruffle]');
+  if (existing) {
+    existing.addEventListener('load', () => resolve());
+    existing.addEventListener('error', () => reject(new Error('Ruffle load error')));
+    return;
+  }
+  const s = document.createElement('script');
+  s.src = RUFFLE_SCRIPT;
+  s.async = true;
+  s.setAttribute('data-ruffle', '1');
+  s.onload = () => resolve();
+  s.onerror = () => reject(new Error('Ruffle load error'));
+  document.head.appendChild(s);
+});
+
 const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
-  const [visible, setVisible] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    /**
-     * Logique de reproduction sonore associée aux clins d'œil
-     */
-    let t1: ReturnType<typeof setTimeout> | null = null;
-    let t2: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let playerEl: any = null;
 
-    if (winkId === 'frog') {
-      // Séquence sonore spécifique pour la grenouille
-      t1 = setTimeout(() => Synthesis.playCatch(), 1800); // Capture de la mouche
-      t2 = setTimeout(() => Synthesis.playBurp(), 2500);  // Rot final
-    } else {
-      // Mapping des sons standards
-      const soundMap: Record<string, string> = {
-        'guitar_smash': 'electric_guitar',
-        'bouncy_ball': 'nudge',
-        'kiss': 'Kiss',
-        'knock': 'nudge'
-      };
-      SoundManager.play(soundMap[winkId] || winkId);
-    }
+    (async () => {
+      try {
+        await loadRuffle();
+        if (cancelled || !containerRef.current) return;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const RufflePlayer = (window as any).RufflePlayer;
+        if (!RufflePlayer || typeof RufflePlayer.newest !== 'function') return;
+        const ruffle = RufflePlayer.newest();
+        playerEl = ruffle.createPlayer();
+        playerEl.style.width = '100%';
+        playerEl.style.height = '100%';
+        containerRef.current.innerHTML = '';
+        containerRef.current.appendChild(playerEl);
+        playerEl.ruffle().load(swfUrl(winkId));
+      } catch (e) {
+        console.warn('[Wink] Ruffle indisponible:', e);
+      }
+    })();
 
-    /**
-     * Durée de vie du clin d'œil (5 secondes par défaut)
-     */
-    const timer = setTimeout(() => {
-      setVisible(false);
-      onFinish();
-    }, 5000);
+    // Durée de vie de l'overlay (les winks durent quelques secondes)
+    const timer = setTimeout(() => { if (!cancelled) onFinish(); }, 6000);
 
     return () => {
+      cancelled = true;
       clearTimeout(timer);
-      if (t1) clearTimeout(t1);
-      if (t2) clearTimeout(t2);
+      try { if (playerEl) playerEl.remove(); } catch { /* ignore */ }
     };
   }, [winkId, onFinish]);
 
-  // Si le clin d'œil n'est plus visible, on ne rend rien
-  if (!visible) return null;
-
   return (
-    <div className="wink-overlay">
-      <div className="wink-canvas">
-        {/* Clin d'œil : Bisou (Kiss) */}
-        {winkId === 'kiss' && (
-          <div className="reconstructed-kiss">
-             <div className="lips">💋</div>
-             <div className="heart">❤️</div>
-          </div>
-        )}
-
-        {/* Clin d'œil : Balle bondissante (Bouncy Ball) */}
-        {winkId === 'bouncy_ball' && (
-          <div className="reconstructed-ball">
-             <img src="/assets/icons/smiley_tongue.svg" alt="ball" style={{width: '100%', height: '100%'}} />
-          </div>
-        )}
-
-        {/* Clin d'œil : Guitare cassée (Guitar Smash) */}
-        {winkId === 'guitar_smash' && (
-          <div className="reconstructed-guitar">
-             🎸
-             <div className="explosion">💥</div>
-          </div>
-        )}
-
-        {/* Clin d'œil : Grenouille (Frog) - Version 2 avec langue animée */}
-        {winkId === 'frog' && (
-          <div className="reconstructed-frog-v2">
-             <div className="frog-body">🐸</div>
-             <div className="fly">🪰</div>
-             <div className="tongue-v2"></div>
-             <div className="burp-cloud">💨</div>
-          </div>
-        )}
-
-        {/* Clin d'œil : Lettre d'amour (Love Letter) */}
-        {winkId === 'love_letter' && (
-          <div className="reconstructed-letter">
-             ✉️
-             <div className="hearts-burst">💕✨</div>
-          </div>
-        )}
-
-        {/* Clin d'œil : Gros Cœur (Heart) */}
-        {winkId === 'heart' && (
-          <div className="reconstructed-bigheart">💖</div>
-        )}
-
-        {/* Clin d'œil : Toc Toc (Knock) */}
-        {winkId === 'knock' && (
-          <div className="reconstructed-knock">
-             <div className="fist">✊</div>
-             <div className="impact">💥</div>
-          </div>
-        )}
-
-        {/* Rendu par défaut pour les clins d'œil basés sur des images PNG si non reconstruits */}
-        {!['kiss', 'bouncy_ball', 'guitar_smash', 'frog', 'love_letter', 'heart', 'knock'].includes(winkId) && (
-          <div className="wink-container-png">
-            <img
-              src={`/assets/winks/${winkId}/${winkId}.png`}
-              alt={`Clin d'œil ${winkId}`}
-              className="wink-image-anim"
-              style={{ width: '600px' }}
-              onError={(e) => (e.currentTarget.style.display = 'none')} // Gestion d'erreur si image manquante
-            />
-          </div>
-        )}
-      </div>
+    <div className="wink-overlay" onClick={onFinish}>
+      <div className="wink-canvas" ref={containerRef} />
     </div>
   );
 };

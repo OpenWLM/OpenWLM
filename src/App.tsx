@@ -233,6 +233,14 @@ const WINKS = [
   { id: 'guitar_smash', name: 'Guitar Smash', icon: '🎸' },
   { id: 'heart', name: 'Heart', icon: '❤️' },
   { id: 'knock', name: 'Knock', icon: '🚪' },
+  { id: 'bow', name: 'Bow', icon: '🎀' },
+  { id: 'dancing_pig', name: 'Dancing Pig', icon: '🐷' },
+  { id: 'eyeball', name: 'Eyeball', icon: '👁️' },
+  { id: 'lipstick_girl', name: 'Lipstick Girl', icon: '💄' },
+  { id: 'notes', name: 'Notes', icon: '🎵' },
+  { id: 'silly_face', name: 'Silly Face', icon: '😜' },
+  { id: 'stars', name: 'Stars', icon: '⭐' },
+  { id: 'water_balloon', name: 'Water Balloon', icon: '🎈' },
 ];
 
 const STATUS_OPTIONS = [

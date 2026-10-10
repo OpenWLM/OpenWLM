@@ -8,6 +8,9 @@
     "dev": "concurrently \"vite\" \"node --watch server/index.js\"",
     "server": "node --watch server/index.js",
     "build": "tsc -b && vite build",
+    "prebuild": "node scripts/sync_ruffle.mjs",
+    "postinstall": "node scripts/sync_ruffle.mjs",
+    "ruffle:sync": "node scripts/sync_ruffle.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "electron": "electron .",
@@ -22,6 +25,7 @@
     "e2e:install": "playwright install chromium"
   },
   "dependencies": {
+    "@ruffle-rs/ruffle": "^0.7.1",
     "axios": "^1.17.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",

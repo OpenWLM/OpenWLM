@@ -27,6 +27,15 @@ import { setupSocketHandlers } from './sockets/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// SÉCURITÉ/ROBUSTESSE : filet global — ne jamais laisser une exception non gérée
+// (ex: erreur dans un handler socket) faire tomber tout le serveur.
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException (serveur maintenu en vie):', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] unhandledRejection (serveur maintenu en vie):', reason);
+});
+
 const app = express();
 const httpServer = createServer(app);
 

@@ -4,7 +4,8 @@ import {
   getUserRoom, 
   isUserOnline, 
   addUserSocket, 
-  removeUserSocket 
+  removeUserSocket,
+  socketToUser
 } from '../sessionStore.js';
 import { SECRET, parseCookies } from '../middleware/auth.js';
 import { activeGames, getGamePlayers, pendingGameInvites } from '../routes/games.js';

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { db, toPrivateUserDTO } from '../db.js';
+import { getUserRoom } from '../sessionStore.js';
 import { 
   SECRET, 
   parseCookies, 

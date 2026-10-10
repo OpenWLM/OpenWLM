@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
 const src = path.join(root, 'node_modules', '@ruffle-rs', 'ruffle');
-const dest = path.join(root, 'public', 'ruffle');
+const dest = path.join(root, '.ruffle');
 
 if (!fs.existsSync(src)) {
   console.warn('[ruffle:sync] @ruffle-rs/ruffle introuvable — lancez `npm install`.');
@@ -24,4 +24,4 @@ for (const f of fs.readdirSync(src)) {
   fs.copyFileSync(path.join(src, f), path.join(dest, f));
   n++;
 }
-console.log(`[ruffle:sync] ${n} fichier(s) Ruffle copiés dans public/ruffle/`);
+console.log(`[ruffle:sync] ${n} fichier(s) Ruffle copiés dans .ruffle/`);

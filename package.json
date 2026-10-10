@@ -8,9 +8,8 @@
     "dev": "concurrently \"vite\" \"node --watch server/index.js\"",
     "server": "node --watch server/index.js",
     "build": "tsc -b && vite build",
-    "prebuild": "node scripts/sync_ruffle.mjs",
-    "postinstall": "node scripts/sync_ruffle.mjs",
     "ruffle:sync": "node scripts/sync_ruffle.mjs",
+    "winks:prerender": "node scripts/prerender_winks.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "electron": "electron .",
@@ -25,7 +24,6 @@
     "e2e:install": "playwright install chromium"
   },
   "dependencies": {
-    "@ruffle-rs/ruffle": "^0.7.1",
     "axios": "^1.17.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
@@ -43,6 +41,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.0",
+    "@ruffle-rs/ruffle": "^0.7.1",
     "@types/multer": "^2.3.0",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",

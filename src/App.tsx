@@ -2970,7 +2970,6 @@ const App: React.FC = () => {
     };
     
     setMessages(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), msg] }));
-    if (!received) SoundManager.play('ONLINE');
   };
 
   /**

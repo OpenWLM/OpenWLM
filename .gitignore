@@ -175,3 +175,4 @@ scratch/
 
 # Ruffle (self-hosted, généré depuis node_modules — 28 Mo, non versionné)
 /public/ruffle/
+/.ruffle/

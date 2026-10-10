@@ -1,21 +1,18 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
+import SoundManager from '../utils/SoundManager';
+import Synthesis from '../utils/Synthesis';
 
 /**
- * Lecteur de Clins d'œil (Winks) MSN — joue les .swf ORIGINAUX de WLM 2009 via Ruffle
- * (émulateur Flash WebAssembly, self-hosted dans /public/ruffle, chargé à la demande).
- *
- * WINK_META = taille native (px) + durée (s) de chaque SWF (parsés depuis les fichiers d'origine),
- * pour : dimensionner le player à la taille du clip (pas plein écran) et laisser l'animation
- * se terminer (pas de coupure).
+ * Lecteur de Clins d'œil (Winks) MSN.
+ * Joue les animations pré-rendues depuis les .swf ORIGINAUX de WLM 2009 (WebP animé — léger,
+ * natif, sans émulateur Flash au runtime) + le son côté client (les SWF n'ont pas d'audio).
  */
 interface WinkPlayerProps {
   winkId: string;
   onFinish: () => void;
 }
 
-const RUFFLE_SCRIPT = '/ruffle/ruffle.js';
-const swfUrl = (id: string) => `/assets/winks/${id}/${id}.swf`;
-
+// Taille native + durée (s) de chaque clip (parsées depuis les .swf d'origine)
 const WINK_META: Record<string, { w: number; h: number; d: number }> = {
   bouncy_ball: { w: 640, h: 480, d: 7.3 },
   bow: { w: 640, h: 480, d: 11.3 },
@@ -34,71 +31,43 @@ const WINK_META: Record<string, { w: number; h: number; d: number }> = {
   water_balloon: { w: 640, h: 480, d: 7.7 }
 };
 
-const loadRuffle = () => new Promise<void>((resolve, reject) => {
-  const w = window as unknown as { RufflePlayer?: unknown };
-  if (w.RufflePlayer) return resolve();
-  const existing = document.querySelector('script[data-ruffle]');
-  if (existing) {
-    existing.addEventListener('load', () => resolve());
-    existing.addEventListener('error', () => reject(new Error('Ruffle load error')));
-    return;
-  }
-  const s = document.createElement('script');
-  s.src = RUFFLE_SCRIPT;
-  s.async = true;
-  s.setAttribute('data-ruffle', '1');
-  s.onload = () => resolve();
-  s.onerror = () => reject(new Error('Ruffle load error'));
-  document.head.appendChild(s);
-});
+// Sons MSN par clin d'œil (le son vient du client, comme dans l'original)
+const WINK_SOUND: Record<string, string> = {
+  kiss: 'KISS',
+  guitar_smash: 'GUITAR_SMASH',
+  bouncy_ball: 'BOUNCY_BALL',
+  knock: 'KNOCK'
+};
 
 const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const meta = WINK_META[winkId];
 
   useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let playerEl: any = null;
-    const meta = WINK_META[winkId];
-
-    (async () => {
-      try {
-        await loadRuffle();
-        if (cancelled || !containerRef.current) return;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const RufflePlayer = (window as any).RufflePlayer;
-        if (!RufflePlayer || typeof RufflePlayer.newest !== 'function') return;
-        const ruffle = RufflePlayer.newest();
-        playerEl = ruffle.createPlayer();
-        // Taille native du clip (pas plein écran) + fond transparent
-        if (meta) {
-          playerEl.style.width = `${meta.w}px`;
-          playerEl.style.height = `${meta.h}px`;
-        }
-        playerEl.style.background = 'transparent';
-        try { playerEl.setAttribute('wmode', 'transparent'); } catch { /* ignore */ }
-        containerRef.current.innerHTML = '';
-        containerRef.current.appendChild(playerEl);
-        playerEl.ruffle().load(swfUrl(winkId));
-      } catch (e) {
-        console.warn('[Wink] Ruffle indisponible:', e);
+    // Son
+    try {
+      if (winkId === 'frog') {
+        setTimeout(() => { try { Synthesis.playCatch(); } catch { /* ignore */ } }, 1800);
+        setTimeout(() => { try { Synthesis.playBurp(); } catch { /* ignore */ } }, 2500);
+      } else {
+        SoundManager.play(WINK_SOUND[winkId] || 'ONLINE');
       }
-    })();
+    } catch { /* ignore */ }
 
-    // Laisser l'animation se TERMINER (durée du SWF + marge) ; clic pour fermer avant.
-    const durationMs = (meta ? meta.d : 8) * 1000 + 600;
-    const timer = setTimeout(() => { if (!cancelled) onFinish(); }, durationMs);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      try { if (playerEl) playerEl.remove(); } catch { /* ignore */ }
-    };
-  }, [winkId, onFinish]);
+    // Laisser l'animation se terminer exactement à la durée du clip (clic pour fermer avant)
+    const timer = setTimeout(() => onFinish(), (meta ? meta.d : 8) * 1000 + 400);
+    return () => clearTimeout(timer);
+  }, [winkId, onFinish, meta]);
 
   return (
     <div className="wink-overlay" onClick={onFinish} style={{ pointerEvents: 'auto', cursor: 'pointer' }}>
-      <div className="wink-canvas" ref={containerRef} />
+      <div className="wink-canvas">
+        <img
+          src={`/assets/winks/${winkId}/${winkId}.webp`}
+          alt={`Clin d'œil ${winkId}`}
+          style={{ width: meta?.w ? `${meta.w}px` : undefined, height: meta?.h ? `${meta.h}px` : undefined }}
+          draggable={false}
+        />
+      </div>
     </div>
   );
 };

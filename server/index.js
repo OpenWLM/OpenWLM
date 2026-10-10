@@ -85,10 +85,9 @@ app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self'; " +
-    "script-src 'self' 'wasm-unsafe-eval'; " +
+    "script-src 'self'; " +
     "style-src 'self' 'unsafe-inline'; " +
     "connect-src 'self' wss: stun:; " +
-    "worker-src 'self' blob:; " +
     "img-src 'self' data: blob:; " +
     "media-src 'self' data: blob:; " +
     "font-src 'self' data:; " +

@@ -1,40 +1,18 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Vérifie que Ruffle (self-hosted) charge et joue réellement un .swf d'origine.
- * Le serveur + base temporaire sont lancés par playwright.config.ts.
+ * Vérifie que les winks pré-rendus (WebP animés depuis les .swf d'origine) sont bien servis.
+ * (Le rendu de l'animation elle-même est validé visuellement ; ici on garantit le contrat HTTP.)
  */
-test('winks : Ruffle joue un SWF d’origine', async ({ page }) => {
-  await page.goto('/');
+const WINKS = [
+  'bouncy_ball', 'bow', 'dancing_pig', 'eyeball', 'frog', 'guitar_smash', 'heart', 'kiss',
+  'knock', 'lipstick_girl', 'love_letter', 'notes', 'silly_face', 'stars', 'water_balloon'
+];
 
-  const result = await page.evaluate(async () => {
-    await new Promise<void>((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = '/ruffle/ruffle.js';
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Échec chargement ruffle.js'));
-      document.head.appendChild(s);
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const RP = (window as any).RufflePlayer;
-    if (!RP || typeof RP.newest !== 'function') return { ok: false, reason: 'RufflePlayer absent' };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const player: any = RP.newest().createPlayer();
-    player.style.width = '400px';
-    player.style.height = '300px';
-    document.body.appendChild(player);
-
-    const loaded = await new Promise<boolean>((resolve) => {
-      player.addEventListener('loadedmetadata', () => resolve(true));
-      player.addEventListener('loadeddata', () => resolve(true));
-      setTimeout(() => resolve(false), 25000);
-      try { player.ruffle().load('/assets/winks/heart/heart.swf'); } catch { resolve(false); }
-    });
-
-    return { ok: loaded, version: RP.newest().version || 'n/a' };
-  });
-
-  expect(result.ok, JSON.stringify(result)).toBe(true);
+test('winks : les WebP pré-rendus sont servis (image/webp)', async ({ request }) => {
+  for (const id of WINKS) {
+    const r = await request.get(`/assets/winks/${id}/${id}.webp`);
+    expect(r.status(), `${id} status`).toBe(200);
+    expect(r.headers()['content-type'], `${id} type`).toContain('image/webp');
+  }
 });

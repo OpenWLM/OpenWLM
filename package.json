@@ -16,6 +16,8 @@
     "start": "npm run build && concurrently \"node server/index.js\" \"wait-on http://localhost:3001 && npm run electron\"",
     "db:seed": "node scripts/seed-demo.js",
     "check:secrets": "node scripts/check_secrets.js",
+    "waf:gen": "node scripts/gen_waf_rules.mjs --write",
+    "waf:check": "node scripts/gen_waf_rules.mjs --check",
     "vapid:generate": "node scripts/generate_vapid_keys.js",
     "pretest:security": "node scripts/test_preflight.js",
     "test:security": "node tests/audit_security_enforcement.js",

@@ -24,6 +24,9 @@ jobs:
       - name: Lint (client + serveur, no-undef)
         run: npm run lint
 
+      - name: WAF Cloudflare — les règles sont-elles à jour ? (dérive des routes)
+        run: npm run waf:check
+
       - name: Build
         run: npm run build
 

@@ -1,0 +1,222 @@
+{
+  "note": "Généré par scripts/gen_waf_rules.mjs — NE PAS éditer à la main",
+  "methods": [
+    "DELETE",
+    "GET",
+    "POST"
+  ],
+  "staticGet": [
+    "/",
+    "/apple-touch-icon.png",
+    "/favicon.ico",
+    "/favicon.png",
+    "/favicon.svg",
+    "/icons.svg",
+    "/index.html",
+    "/manifest.json",
+    "/pwa-192x192.png",
+    "/pwa-512x512.png",
+    "/pwa-maskable-192x192.png",
+    "/pwa-maskable-512x512.png",
+    "/sw.js"
+  ],
+  "assetPrefixes": [
+    "/assets/"
+  ],
+  "socketPrefix": "/socket.io",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/accept-invite",
+      "dynamic": false,
+      "matcher": "/api/accept-invite"
+    },
+    {
+      "method": "GET",
+      "path": "/api/captcha",
+      "dynamic": false,
+      "matcher": "/api/captcha"
+    },
+    {
+      "method": "GET",
+      "path": "/api/contacts/:userId",
+      "dynamic": true,
+      "matcher": "^/api/contacts/[0-9]+$"
+    },
+    {
+      "method": "POST",
+      "path": "/api/contacts/block",
+      "dynamic": false,
+      "matcher": "/api/contacts/block"
+    },
+    {
+      "method": "POST",
+      "path": "/api/contacts/delete",
+      "dynamic": false,
+      "matcher": "/api/contacts/delete"
+    },
+    {
+      "method": "POST",
+      "path": "/api/decline-invite",
+      "dynamic": false,
+      "matcher": "/api/decline-invite"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/emoticons/custom/:id",
+      "dynamic": true,
+      "matcher": "^/api/emoticons/custom/[0-9]+$"
+    },
+    {
+      "method": "GET",
+      "path": "/api/emoticons/custom/asset/:assetId",
+      "dynamic": true,
+      "matcher": "^/api/emoticons/custom/asset/emo_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    {
+      "method": "GET",
+      "path": "/api/emoticons/custom/my",
+      "dynamic": false,
+      "matcher": "/api/emoticons/custom/my"
+    },
+    {
+      "method": "POST",
+      "path": "/api/emoticons/custom/upload",
+      "dynamic": false,
+      "matcher": "/api/emoticons/custom/upload"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/download/:fileId",
+      "dynamic": true,
+      "matcher": "^/api/files/download/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/info/:fileId",
+      "dynamic": true,
+      "matcher": "^/api/files/info/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    {
+      "method": "POST",
+      "path": "/api/files/upload",
+      "dynamic": false,
+      "matcher": "/api/files/upload"
+    },
+    {
+      "method": "GET",
+      "path": "/api/games/active",
+      "dynamic": false,
+      "matcher": "/api/games/active"
+    },
+    {
+      "method": "GET",
+      "path": "/api/invitations/:userId",
+      "dynamic": true,
+      "matcher": "^/api/invitations/[0-9]+$"
+    },
+    {
+      "method": "POST",
+      "path": "/api/invite",
+      "dynamic": false,
+      "matcher": "/api/invite"
+    },
+    {
+      "method": "POST",
+      "path": "/api/login",
+      "dynamic": false,
+      "matcher": "/api/login"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logout",
+      "dynamic": false,
+      "matcher": "/api/logout"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages/:userId/:contactId",
+      "dynamic": true,
+      "matcher": "^/api/messages/[0-9]+/[0-9]+$"
+    },
+    {
+      "method": "POST",
+      "path": "/api/messages/clear",
+      "dynamic": false,
+      "matcher": "/api/messages/clear"
+    },
+    {
+      "method": "GET",
+      "path": "/api/push/status",
+      "dynamic": false,
+      "matcher": "/api/push/status"
+    },
+    {
+      "method": "POST",
+      "path": "/api/push/subscribe",
+      "dynamic": false,
+      "matcher": "/api/push/subscribe"
+    },
+    {
+      "method": "POST",
+      "path": "/api/push/test",
+      "dynamic": false,
+      "matcher": "/api/push/test"
+    },
+    {
+      "method": "POST",
+      "path": "/api/push/unsubscribe",
+      "dynamic": false,
+      "matcher": "/api/push/unsubscribe"
+    },
+    {
+      "method": "POST",
+      "path": "/api/signup",
+      "dynamic": false,
+      "matcher": "/api/signup"
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/:userId/public-key",
+      "dynamic": true,
+      "matcher": "^/api/user/[0-9]+/public-key$"
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/change-password",
+      "dynamic": false,
+      "matcher": "/api/user/change-password"
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/global-private",
+      "dynamic": false,
+      "matcher": "/api/user/global-private"
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/keys",
+      "dynamic": false,
+      "matcher": "/api/user/keys"
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/me",
+      "dynamic": false,
+      "matcher": "/api/user/me"
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/reset-e2e-keys",
+      "dynamic": false,
+      "matcher": "/api/user/reset-e2e-keys"
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/update",
+      "dynamic": false,
+      "matcher": "/api/user/update"
+    }
+  ],
+  "expression": "not (\n  ( http.request.method in {\"GET\" \"HEAD\" \"OPTIONS\"} and (\n      http.request.uri.path in { \"/\" \"/apple-touch-icon.png\" \"/favicon.ico\" \"/favicon.png\" \"/favicon.svg\" \"/icons.svg\" \"/index.html\" \"/manifest.json\" \"/pwa-192x192.png\" \"/pwa-512x512.png\" \"/pwa-maskable-192x192.png\" \"/pwa-maskable-512x512.png\" \"/sw.js\" \"/api/captcha\" \"/api/emoticons/custom/my\" \"/api/games/active\" \"/api/push/status\" \"/api/user/me\" }\n      or starts_with(http.request.uri.path, \"/assets/\")\n      or matches(http.request.uri.path, \"^/api/contacts/[0-9]+$\")\n      or matches(http.request.uri.path, \"^/api/emoticons/custom/asset/emo_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$\")\n      or matches(http.request.uri.path, \"^/api/files/download/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$\")\n      or matches(http.request.uri.path, \"^/api/files/info/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$\")\n      or matches(http.request.uri.path, \"^/api/invitations/[0-9]+$\")\n      or matches(http.request.uri.path, \"^/api/messages/[0-9]+/[0-9]+$\")\n      or matches(http.request.uri.path, \"^/api/user/[0-9]+/public-key$\")\n  ) )\n  or ( http.request.method in {\"GET\" \"POST\"} and starts_with(http.request.uri.path, \"/socket.io\") )\n  or ( http.request.method eq \"POST\" and (\n      http.request.uri.path in { \"/api/accept-invite\" \"/api/contacts/block\" \"/api/contacts/delete\" \"/api/decline-invite\" \"/api/emoticons/custom/upload\" \"/api/files/upload\" \"/api/invite\" \"/api/login\" \"/api/logout\" \"/api/messages/clear\" \"/api/push/subscribe\" \"/api/push/test\" \"/api/push/unsubscribe\" \"/api/signup\" \"/api/user/change-password\" \"/api/user/global-private\" \"/api/user/keys\" \"/api/user/reset-e2e-keys\" \"/api/user/update\" }\n  ) )\n  or ( http.request.method eq \"DELETE\" and (\n      matches(http.request.uri.path, \"^/api/emoticons/custom/[0-9]+$\")\n  ) )\n)"
+}

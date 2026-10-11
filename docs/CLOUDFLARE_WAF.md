@@ -6,25 +6,29 @@
 > les Security Events (faux positifs), puis passer en **`Block`**. Les seuils de
 > rate limiting sont des ordres de grandeur à ajuster.
 
+> 🔧 **Sections §1 et §2 auto-générées** par `scripts/gen_waf_rules.mjs`.
+> Régénérer avec `npm run waf:gen` (et vérifier avec `npm run waf:check`).
+> Toute modification des routes serveur **doit** être suivie d'une régénération.
+
 > Défense en périphérie (edge) : l'origine tourne derrière un **Tunnel Cloudflare**
 > (aucun port exposé), le WAF est donc la première — et principale — couche de
-> filtrage. Ce document fige la surface HTTP réelle d'OpenWLM et fournit la
-> **liste blanche**, les règles de **rate limiting** et le plan de déploiement.
+> filtrage.
 
 ---
 
 ## 1. Surface HTTP réelle (à autoriser)
 
+<!-- WAF-GEN:SURFACE:START -->
 | Type | Méthode | Chemin |
 |---|---|---|
-| SPA | GET | `/` (index.html) |
-| PWA / statique | GET | `/sw.js`, `/manifest.json`, `/favicon.{png,svg,ico}`, `/icons.svg`, `/apple-touch-icon.png`, `/pwa-*.png` |
+| SPA | GET | `/` |
+| PWA / statique | GET | `/apple-touch-icon.png`, `/favicon.ico`, `/favicon.png`, `/favicon.svg`, `/icons.svg`, `/index.html`, `/manifest.json`, `/pwa-192x192.png`, `/pwa-512x512.png`, `/pwa-maskable-192x192.png`, `/pwa-maskable-512x512.png`, `/sw.js` |
 | Assets | GET | `/assets/**` |
-| Realtime | GET/POST + WS | `/socket.io/**` (polling + upgrade websocket) |
-| API | GET | `/api/captcha`, `/api/user/me`, `/api/push/status`, `/api/games/active`, `/api/emoticons/custom/my` |
-| API | GET | `/api/user/{id}/public-key`, `/api/contacts/{id}`, `/api/invitations/{id}`, `/api/messages/{id}/{id}`, `/api/files/{download\|info}/{id}`, `/api/emoticons/custom/asset/{id}` |
-| API | POST | `/api/signup`, `/api/login`, `/api/logout`, `/api/invite`, `/api/accept-invite`, `/api/decline-invite`, `/api/contacts/block`, `/api/contacts/delete`, `/api/user/update`, `/api/user/change-password`, `/api/user/keys`, `/api/user/reset-e2e-keys`, `/api/user/global-private`, `/api/messages/clear`, `/api/files/upload`, `/api/emoticons/custom/upload`, `/api/push/subscribe`, `/api/push/unsubscribe`, `/api/push/test` |
-| API | DELETE | `/api/emoticons/custom/{id}` |
+| Realtime | GET/POST + WS | `/socket.io/**` |
+| API | GET | `/api/captcha`, `/api/contacts/:userId`, `/api/emoticons/custom/asset/:assetId`, `/api/emoticons/custom/my`, `/api/files/download/:fileId`, `/api/files/info/:fileId`, `/api/games/active`, `/api/invitations/:userId`, `/api/messages/:userId/:contactId`, `/api/push/status`, `/api/user/:userId/public-key`, `/api/user/me` |
+| API | POST | `/api/accept-invite`, `/api/contacts/block`, `/api/contacts/delete`, `/api/decline-invite`, `/api/emoticons/custom/upload`, `/api/files/upload`, `/api/invite`, `/api/login`, `/api/logout`, `/api/messages/clear`, `/api/push/subscribe`, `/api/push/test`, `/api/push/unsubscribe`, `/api/signup`, `/api/user/change-password`, `/api/user/global-private`, `/api/user/keys`, `/api/user/reset-e2e-keys`, `/api/user/update` |
+| API | DELETE | `/api/emoticons/custom/:id` |
+<!-- WAF-GEN:SURFACE:END -->
 
 **Aucune route `PUT`/`PATCH`.** Le serveur renvoie actuellement le **fallback SPA**
 (200 HTML) pour tout chemin inconnu — donc par exemple `/.env` renvoie l'appli.
@@ -37,49 +41,32 @@ passage le « 200 fallback »).
 ## 2. Règle « liste blanche » (WAF → Custom Rules)
 
 - **Action** : `Block` (d'abord `Log` pour observer)
-- **Expression** = *tout ce qui n'est pas dans l'allowlist* :
+- **Expression** = *tout ce qui n'est pas dans l'allowlist* (auto-générée) :
 
+<!-- WAF-GEN:EXPRESSION:START -->
 ```
 not (
-  http.request.method in {"GET" "HEAD" "OPTIONS" "POST" "DELETE"}
-  and (
-    http.request.uri.path eq "/"
-    or http.request.uri.path eq "/index.html"
-    or http.request.uri.path in {
-      "/sw.js" "/manifest.json" "/favicon.ico" "/favicon.png" "/favicon.svg"
-      "/icons.svg" "/apple-touch-icon.png"
-      "/pwa-192x192.png" "/pwa-512x512.png" "/pwa-maskable-192x192.png" "/pwa-maskable-512x512.png"
-    }
-    or starts_with(http.request.uri.path, "/assets/")
-    or starts_with(http.request.uri.path, "/socket.io")
-    or ( http.request.method in {"GET" "HEAD" "OPTIONS"}
-         and http.request.uri.path in {
-           "/api/captcha" "/api/user/me" "/api/push/status" "/api/games/active"
-           "/api/emoticons/custom/my"
-         } )
-    or ( http.request.method in {"GET" "HEAD" "OPTIONS"}
-         and (
-           matches(http.request.uri.path, "^/api/user/[0-9]+/public-key$")
-           or matches(http.request.uri.path, "^/api/contacts/[0-9]+$")
-           or matches(http.request.uri.path, "^/api/invitations/[0-9]+$")
-           or matches(http.request.uri.path, "^/api/messages/[0-9]+/[0-9]+$")
-           or matches(http.request.uri.path, "^/api/files/(download|info)/[A-Za-z0-9_.-]+$")
-           or matches(http.request.uri.path, "^/api/emoticons/custom/asset/[A-Za-z0-9_.-]+$")
-         ) )
-    or ( http.request.method eq "POST"
-         and http.request.uri.path in {
-           "/api/signup" "/api/login" "/api/logout" "/api/invite" "/api/accept-invite"
-           "/api/decline-invite" "/api/contacts/block" "/api/contacts/delete"
-           "/api/user/update" "/api/user/change-password" "/api/user/keys"
-           "/api/user/reset-e2e-keys" "/api/user/global-private" "/api/messages/clear"
-           "/api/files/upload" "/api/emoticons/custom/upload"
-           "/api/push/subscribe" "/api/push/unsubscribe" "/api/push/test"
-         } )
-    or ( http.request.method eq "DELETE"
-         and matches(http.request.uri.path, "^/api/emoticons/custom/[0-9]+$") )
-  )
+  ( http.request.method in {"GET" "HEAD" "OPTIONS"} and (
+      http.request.uri.path in { "/" "/apple-touch-icon.png" "/favicon.ico" "/favicon.png" "/favicon.svg" "/icons.svg" "/index.html" "/manifest.json" "/pwa-192x192.png" "/pwa-512x512.png" "/pwa-maskable-192x192.png" "/pwa-maskable-512x512.png" "/sw.js" "/api/captcha" "/api/emoticons/custom/my" "/api/games/active" "/api/push/status" "/api/user/me" }
+      or starts_with(http.request.uri.path, "/assets/")
+      or matches(http.request.uri.path, "^/api/contacts/[0-9]+$")
+      or matches(http.request.uri.path, "^/api/emoticons/custom/asset/emo_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+      or matches(http.request.uri.path, "^/api/files/download/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+      or matches(http.request.uri.path, "^/api/files/info/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+      or matches(http.request.uri.path, "^/api/invitations/[0-9]+$")
+      or matches(http.request.uri.path, "^/api/messages/[0-9]+/[0-9]+$")
+      or matches(http.request.uri.path, "^/api/user/[0-9]+/public-key$")
+  ) )
+  or ( http.request.method in {"GET" "POST"} and starts_with(http.request.uri.path, "/socket.io") )
+  or ( http.request.method eq "POST" and (
+      http.request.uri.path in { "/api/accept-invite" "/api/contacts/block" "/api/contacts/delete" "/api/decline-invite" "/api/emoticons/custom/upload" "/api/files/upload" "/api/invite" "/api/login" "/api/logout" "/api/messages/clear" "/api/push/subscribe" "/api/push/test" "/api/push/unsubscribe" "/api/signup" "/api/user/change-password" "/api/user/global-private" "/api/user/keys" "/api/user/reset-e2e-keys" "/api/user/update" }
+  ) )
+  or ( http.request.method eq "DELETE" and (
+      matches(http.request.uri.path, "^/api/emoticons/custom/[0-9]+$")
+  ) )
 )
 ```
+<!-- WAF-GEN:EXPRESSION:END -->
 
 ### 2.b Variante « blocage chemins sensibles » (ceinture + bretelles)
 
@@ -108,6 +95,10 @@ or http.request.uri.path.extension in {"env" "sqlite" "log" "bak" "old"}
 > ⚠️ **`/socket.io/`** fonctionne en **polling** (nombreux GET/POST courts) + un
 > upgrade WebSocket. Un rate limiting agressif **casse le temps réel**. Ne pas
 > employer la même règle que pour `/api/**`.
+>
+> Note : le serveur applique déjà ses propres limiteurs (`authRateLimiter`,
+> `uploadRateLimiter`, `sensitiveRateLimiter`, `inviteRateLimiter`) — le WAF les
+> complète, il ne les remplace pas.
 
 ---
 

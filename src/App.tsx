@@ -1018,7 +1018,6 @@ const App: React.FC = () => {
   const [isReceivingCall, setIsReceivingCall] = useState(false);
   const [callSignal, setCallSignal] = useState<any>(null);
   const [isAudioOnly, setIsAudioOnly] = useState(false);
-  const [iceCandidatesBuffer, setIceCandidatesBuffer] = useState<any[]>([]);
 
   // --- ÉTAT DES JEUX (ACTIVITÉS MSN : MORPION, DAMES & PUISSANCE 4) ---
   const [activeGame, setActiveGame] = useState<{
@@ -2179,14 +2178,7 @@ const App: React.FC = () => {
         setIsAudioOnly(!!data.audioOnly);
       });
 
-      // Bufferisation des signaux WebRTC (ICE candidates) arrivant avant la réponse
-      newSocket.on('webrtc_signal', (data) => {
-        let signal = data.signal;
-        try { signal = JSON.parse(decodeURIComponent(escape(window.atob(data.signal)))); } catch(e) {}
-        if (signal && signal.type === 'ice-candidate') {
-           setIceCandidatesBuffer(prev => [...prev, signal.candidate]);
-        }
-      });
+      // Note : la signalisation WebRTC (webrtc_signal) est gérée dans <VideoCall />.
       // Changement de statut d'un contact
       newSocket.on('user_status_changed', (data) => {
         const contactId = Number(data.userId ?? data.id);
@@ -5573,7 +5565,6 @@ const App: React.FC = () => {
           isReceivingCall={isReceivingCall} 
           incomingSignal={callSignal} 
           audioOnly={isAudioOnly}
-          iceCandidatesBuffer={iceCandidatesBuffer}
           onEndCall={handleEndCall}
         />
       )}

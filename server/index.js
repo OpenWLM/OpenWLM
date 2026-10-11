@@ -21,6 +21,7 @@ import { createFilesRouter, cleanupExpiredFiles, cleanupOrphanUploads } from './
 import { createEmoticonsRouter } from './routes/emoticons.js';
 import { createPushRouter } from './routes/push.js';
 import { createGamesRouter, activeGames, getGamePlayers } from './routes/games.js';
+import createRtcRouter from './routes/rtc.js';
 import { messageLimits, wizzLimits } from './sockets/messages.js';
 import { setupSocketHandlers } from './sockets/index.js';
 
@@ -212,6 +213,7 @@ app.use('/api', createFilesRouter());
 app.use('/api', createEmoticonsRouter());
 app.use('/api', createPushRouter());
 app.use('/api', createGamesRouter());
+app.use('/api', createRtcRouter());
 
 // SPA Fallback pour React Router
 app.use((req, res, next) => {

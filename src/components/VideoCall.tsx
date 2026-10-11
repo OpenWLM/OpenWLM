@@ -25,6 +25,14 @@ const DEFAULT_ICE: RTCConfiguration = { iceServers: [{ urls: 'stun:stun.l.google
 const encodeSignal = (obj: unknown) => window.btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
 const decodeSignal = (str: string) => JSON.parse(decodeURIComponent(escape(window.atob(str))));
 
+// P1 : Opus — force FEC (résilience à la perte) et DTX (silence = pas de paquets)
+const mungeOpus = (sdp: string): string => sdp.replace(/a=fmtp:(\d+) ([^\r\n]*minptime=[^\r\n]*)/g, (_m, pt, params) => {
+  let p = String(params).replace(/useinbandfec=0/, 'useinbandfec=1').replace(/usedtx=0/, 'usedtx=1');
+  if (!/useinbandfec=/.test(p)) p += ';useinbandfec=1';
+  if (!/usedtx=/.test(p)) p += ';usedtx=1';
+  return `a=fmtp:${pt} ${p}`;
+});
+
 const RING_TIMEOUT_MS = 45000;
 const RECONNECT_AFTER_MS = 4000;
 const RECOVERY_GIVE_UP_MS = 15000;
@@ -42,6 +50,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const [duration, setDuration] = useState(0);
   const [quality, setQuality] = useState<Quality>('good');
   const [showDevices, setShowDevices] = useState(false);
+  const [sharingScreen, setSharingScreen] = useState(false);
   const [micList, setMicList] = useState<MediaDeviceInfo[]>([]);
   const [camList, setCamList] = useState<MediaDeviceInfo[]>([]);
   const [spkList, setSpkList] = useState<MediaDeviceInfo[]>([]);
@@ -61,6 +70,15 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusRef = useRef<CallStatus>(callStatus);
   const localStreamRef = useRef<MediaStream | null>(null);
+  // P1 : renégociation (perfect negotiation), partage d'écran, adaptation
+  const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
+  const screenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const politeRef = useRef(isReceivingCall);
+  const makingOfferRef = useRef(false);
+  const ignoreOfferRef = useRef(false);
+  const renegotiationReadyRef = useRef(false);
+  const adaptAppliedRef = useRef<Quality>('good');
+  const adaptCandidateRef = useRef<{ level: Quality; count: number }>({ level: 'good', count: 0 });
 
   useEffect(() => { statusRef.current = callStatus; }, [callStatus]);
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
@@ -76,6 +94,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       try { peerConnectionRef.current.close(); } catch { /* ignore */ }
       peerConnectionRef.current = null;
     }
+    if (screenTrackRef.current) { screenTrackRef.current.stop(); screenTrackRef.current = null; }
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
   }, []);
@@ -115,6 +134,60 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       } catch { /* refusé avant négociation — retenté après */ }
     }
   }, []);
+
+  // P1 : applique une description locale « mungée » (Opus FEC/DTX), avec repli sûr.
+  const applyLocalDescription = useCallback(async (pc: RTCPeerConnection, desc: RTCSessionDescriptionInit) => {
+    const sdp = desc.sdp || '';
+    if (sdp) {
+      try { await pc.setLocalDescription({ type: desc.type, sdp: mungeOpus(sdp) }); return; }
+      catch { /* SDP modifié refusé — on retombe sur l'original */ }
+    }
+    await pc.setLocalDescription(desc);
+  }, []);
+
+  // P1 : adaptation dynamique du débit/résolution vidéo selon la qualité mesurée.
+  const applyAdaptation = useCallback(async (level: Quality) => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+    if (!sender) return;
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+      if (level === 'poor') { params.encodings[0].maxBitrate = 250000; params.encodings[0].scaleResolutionDownBy = 2; }
+      else if (level === 'fair') { params.encodings[0].maxBitrate = 600000; params.encodings[0].scaleResolutionDownBy = 1.5; }
+      else { params.encodings[0].maxBitrate = 1200000; params.encodings[0].scaleResolutionDownBy = 1; }
+      await sender.setParameters(params);
+    } catch { /* ignore */ }
+  }, []);
+
+  const restoreCamera = useCallback(async () => {
+    const pc = peerConnectionRef.current;
+    const sender = pc?.getSenders().find((s) => s.track && s.track.kind === 'video');
+    const cam = cameraTrackRef.current;
+    if (sender && cam) { try { await sender.replaceTrack(cam); } catch { /* ignore */ } }
+    if (screenTrackRef.current) { screenTrackRef.current.stop(); screenTrackRef.current = null; }
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
+    setSharingScreen(false);
+  }, []);
+
+  // P1 : partage d'écran par simple remplacement de piste (pas de renégociation).
+  const toggleShare = useCallback(async () => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+    if (!sender) return; // appel audio seul : pas de piste vidéo à remplacer
+    if (sharingScreen) { await restoreCamera(); return; }
+    try {
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = display.getVideoTracks()[0];
+      screenTrackRef.current = screenTrack;
+      await sender.replaceTrack(screenTrack);
+      if (localVideoRef.current) localVideoRef.current.srcObject = new MediaStream([screenTrack]);
+      setSharingScreen(true);
+      screenTrack.onended = () => { restoreCamera(); }; // arrêt depuis l'UI du navigateur
+    } catch { /* refusé */ }
+  }, [sharingScreen, restoreCamera]);
 
   const tryRestartIce = useCallback(() => {
     const pc = peerConnectionRef.current;
@@ -175,6 +248,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       setMicOn(stream.getAudioTracks()[0]?.enabled ?? true);
       setCamOn(audioOnly ? false : (stream.getVideoTracks()[0]?.enabled ?? true));
+      cameraTrackRef.current = stream.getVideoTracks()[0] || null;
 
       const pc = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = pc;
@@ -198,6 +272,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         const st = pc2.connectionState;
         if (st === 'connected') {
           restartCountRef.current = 0;
+          renegotiationReadyRef.current = true;
           if (recoveryTimerRef.current) { clearTimeout(recoveryTimerRef.current); recoveryTimerRef.current = null; }
           setCallStatus('connected');
         } else if (st === 'disconnected') {
@@ -215,12 +290,22 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       pc.onconnectionstatechange = onConnState;
       pc.oniceconnectionstatechange = onConnState;
 
+      // P1 : renégociation (perfect negotiation) — n'agit qu'après la négociation initiale.
+      pc.onnegotiationneeded = async () => {
+        if (!renegotiationReadyRef.current) return;
+        try {
+          makingOfferRef.current = true;
+          await pc.setLocalDescription();
+          emitSignal(pc.localDescription);
+        } catch { /* ignore */ } finally { makingOfferRef.current = false; }
+      };
+
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       if (isReceivingCall && incomingSignal) {
         await pc.setRemoteDescription(new RTCSessionDescription(incomingSignal as RTCSessionDescriptionInit));
         const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+        await applyLocalDescription(pc, answer);
         emitSignal(pc.localDescription);
         await applySenderCaps(pc);
         for (const candidate of iceCandidatesQueue.current) {
@@ -230,7 +315,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         setCallStatus('connecting');
       } else {
         const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+        await applyLocalDescription(pc, offer);
         if (socket) {
           socket.emit('call_request', { target: activeChatId, caller: myId, callerName, signal: encodeSignal(pc.localDescription), audioOnly });
         }
@@ -244,7 +329,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       alert(t.videoCall.genericError);
       finish();
     }
-  }, [audioOnly, activeChatId, myId, isReceivingCall, incomingSignal, socket, callerName, emitSignal, applySenderCaps, fetchRtcConfig, finish, tryRestartIce, t]);
+  }, [audioOnly, activeChatId, myId, isReceivingCall, incomingSignal, socket, callerName, emitSignal, applySenderCaps, applyLocalDescription, fetchRtcConfig, finish, tryRestartIce, t]);
 
   // Sonnerie d'appel entrant
   useEffect(() => {
@@ -286,13 +371,21 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         let level: Quality = 'good';
         if ((rtt !== null && rtt > 0.3) || loss > 5) level = 'poor';
         else if ((rtt !== null && rtt > 0.15) || loss > 1.5) level = 'fair';
-        if (!stop) setQuality(level);
+        if (stop) return;
+        setQuality(level);
+        // P1 : hystérésis (2 mesures consécutives) avant d'appliquer l'adaptation
+        if (adaptCandidateRef.current.level === level) adaptCandidateRef.current.count += 1;
+        else adaptCandidateRef.current = { level, count: 1 };
+        if (adaptCandidateRef.current.count >= 2 && adaptAppliedRef.current !== level) {
+          adaptAppliedRef.current = level;
+          applyAdaptation(level);
+        }
       } catch { /* ignore */ }
     };
     poll();
     const id = setInterval(poll, 3000);
     return () => { stop = true; clearInterval(id); };
-  }, [callStatus]);
+  }, [callStatus, applyAdaptation]);
 
   // Périphériques (micro / caméra / haut-parleur)
   const refreshDevices = useCallback(async () => {
@@ -392,16 +485,29 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
 
     const handleSignal = async (data: { caller: number; signal: string }) => {
       if (data.caller !== activeChatId) return;
+      const pc = peerConnectionRef.current;
       try {
         const signal = decodeSignal(data.signal);
         if (signal.type === 'answer') {
-          if (peerConnectionRef.current && !peerConnectionRef.current.currentRemoteDescription) {
-            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal));
-            await applySenderCaps(peerConnectionRef.current);
+          if (pc && pc.signalingState === 'have-local-offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal));
+            await applySenderCaps(pc);
+            renegotiationReadyRef.current = true;
+            if (statusRef.current !== 'connected') setCallStatus('connecting');
           }
+        } else if (signal.type === 'offer') {
+          // P1 : renégociation (perfect negotiation)
+          if (!pc) return;
+          const collision = makingOfferRef.current || pc.signalingState !== 'stable';
+          ignoreOfferRef.current = !politeRef.current && collision;
+          if (ignoreOfferRef.current) return;
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          const answer = await pc.createAnswer();
+          await applyLocalDescription(pc, answer);
+          emitSignal(pc.localDescription);
         } else if (signal.type === 'ice-candidate' && signal.candidate) {
-          if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
-            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(() => { /* ignore */ });
+          if (pc && pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(() => { /* ignore */ });
           } else {
             iceCandidatesQueue.current.push(signal.candidate);
           }
@@ -436,7 +542,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       socket.off('call_ended', onEnded);
       socket.off('connect', onSocketReconnect);
     };
-  }, [socket, activeChatId, isReceivingCall, applySenderCaps, finish, tryRestartIce, t]);
+  }, [socket, activeChatId, isReceivingCall, applySenderCaps, applyLocalDescription, emitSignal, finish, tryRestartIce, t]);
 
   useEffect(() => {
     return () => {
@@ -510,6 +616,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
           {!audioOnly && (
             <button className={`wlm-call-btn${camOn ? '' : ' off'}`} onClick={toggleCam} title={camOn ? t.videoCall.cameraOff : t.videoCall.cameraOn} aria-label={camOn ? t.videoCall.cameraOff : t.videoCall.cameraOn}>
               {camOn ? '📷' : '🚫'}
+            </button>
+          )}
+          {!audioOnly && (
+            <button className={`wlm-call-btn${sharingScreen ? ' off' : ''}`} onClick={toggleShare} title={sharingScreen ? t.videoCall.stopShare : t.videoCall.shareScreen} aria-label={sharingScreen ? t.videoCall.stopShare : t.videoCall.shareScreen}>
+              {sharingScreen ? '🛑' : '🖥️'}
             </button>
           )}
           <button className="wlm-call-btn" onClick={() => { setShowDevices((v) => !v); refreshDevices(); }} title={t.videoCall.devices} aria-label={t.videoCall.devices}>⚙️</button>

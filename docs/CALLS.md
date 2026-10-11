@@ -57,7 +57,17 @@ il faudrait de l'UDP et une plage de ports). Options :
 - **Responsive mobile** (modale plein écran, contrôles adaptés) ; vidéo distante en `object-fit: contain`.
 - États d'appel enrichis : Sonnerie / Connexion / Reconnexion / terminaison avec motif.
 
-## 4. P1 — reste à faire
-- **Adaptation dynamique** via `getStats()` : baisser la résolution, voire couper la vidéo si la perte est élevée.
-- ***Perfect negotiation* / renégociation** et **partage d'écran** (`getDisplayMedia`).
-- **Opus** : `useinbandfec=1` / `usedtx=1` (nécessite un ajustement SDP).
+## 4. P1 — implémenté
+- **Adaptation dynamique** : la boucle `getStats()` (RTT + perte) ajuste `maxBitrate` et
+  `scaleResolutionDownBy` de la piste vidéo (good / fair / poor), avec **hystérésis**
+  (2 mesures consécutives) pour éviter le flapping.
+- **Renégociation (*perfect negotiation*)** : `onnegotiationneeded` + traitement des
+  `offer` entrants (avec gestion du *glare* polite/impolite). Actif une fois la
+  négociation initiale terminée.
+- **Partage d'écran** (`getDisplayMedia`) via `RTCRtpSender.replaceTrack` (donc **sans
+  renégociation**) ; retour caméra automatique à l'arrêt ; bouton d'arrêt.
+- **Opus FEC/DTX** : `useinbandfec=1` / `usedtx=1` posés par *SDP munging* sur la ligne
+  `fmtp` d'Opus, avec **repli sûr** si le SDP modifié est refusé.
+
+> ⚠️ Ces fonctions restent à **valider par un appel réel à 2 pairs** (le partage d'écran
+> et la renégociation ne sont pas couverts par les tests automatisés).

@@ -313,6 +313,8 @@
     "unmute": "Activer le micro",
     "cameraOn": "Activer la caméra",
     "cameraOff": "Couper la caméra",
+    "shareScreen": "Partager l'écran",
+    "stopShare": "Arrêter le partage d'écran",
     "devices": "Périphériques",
     "fullscreen": "Plein écran",
     "pip": "Image dans l'image",

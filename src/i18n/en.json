@@ -313,6 +313,8 @@
     "unmute": "Unmute microphone",
     "cameraOn": "Turn camera on",
     "cameraOff": "Turn camera off",
+    "shareScreen": "Share screen",
+    "stopShare": "Stop screen sharing",
     "devices": "Devices",
     "fullscreen": "Fullscreen",
     "pip": "Picture in picture",

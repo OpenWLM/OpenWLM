@@ -109,7 +109,7 @@ try {
         // Offset entre le début d'enregistrement audio et le début de capture des frames :
         // on le « sautera » à la lecture pour aligner exactement son et animation.
         recOff = W.__recStart ? Math.max(0, Math.round(t0 - W.__recStart)) : 0;
-        await new Promise((resolve) => { const tick = () => { out.push(cv.toDataURL('image/png')); if (performance.now() - t0 < capMs) requestAnimationFrame(tick); else resolve(); }; requestAnimationFrame(tick); });
+        await new Promise((resolve) => { const tick = () => { out.push({ du: cv.toDataURL('image/png'), t: performance.now() - t0 }); if (performance.now() - t0 < capMs) requestAnimationFrame(tick); else resolve(); }; requestAnimationFrame(tick); });
       }
       let audioB64 = '';
       try { if (W.__rec) W.__rec.stop(); } catch { /* ignore */ }
@@ -124,7 +124,7 @@ try {
       return { frames: out, audioB64, recOff };
     }, { swfUrl: `/assets/winks/${id}/${id}.swf`, capMs, w: meta.w, h: meta.h });
 
-    const dataUrls = captured.frames;
+    const capturedFrames = captured.frames; // [{ du, t }]
     // Écrire l'audio capturé (synchronisé à l'anim, extrait de Ruffle)
     if (captured.audioB64) {
       fs.writeFileSync(path.join(winksDir, id, `${id}.webm`), Buffer.from(captured.audioB64, 'base64'));
@@ -132,19 +132,28 @@ try {
 
     // Ne garder que les frames réellement peintes (alpha moyen ~255 ; le reste = buffer vidé)
     const kept = [];
-    for (const du of dataUrls) {
-      const buf = Buffer.from(du.split(',')[1], 'base64');
+    for (const fr of capturedFrames) {
+      const buf = Buffer.from(fr.du.split(',')[1], 'base64');
       const { data: px } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
       let sa = 0; for (let i = 3; i < px.length; i += 4) sa += px[i];
-      if (sa / (px.length / 4) > 200) kept.push(buf);
+      if (sa / (px.length / 4) > 200) kept.push({ buf, t: fr.t });
     }
     const painted = kept.length;
     if (!painted) { console.warn(`${id}: aucune frame peinte capturée`); continue; }
 
+    // La capture ajoute une marge (capMs = durée + 400 ms). Comme Ruffle BOUCLE le SWF,
+    // cette marge contient le DÉBUT DU 2e TOUR : si on la ré-échantillonne, l'anim
+    // « repart » à la fin (et la frame figée tombe sur cette reprise). On ne ré-échantillonne
+    // donc que les frames des premières `durée` ms du SWF.
+    const windowMs = meta.duration * 1000;
+    const within = kept.filter((k) => k.t <= windowMs);
+    const pool = within.length >= 4 ? within : kept;
+    const trimmed = kept.length - pool.length;
+
     // Ré-échantillonner au nombre de frames d'origine
     const target = Math.max(1, Math.round(meta.duration * meta.fps));
-    const step = kept.length / target;
-    const picked = Array.from({ length: target }, (_, i) => kept[Math.min(kept.length - 1, Math.round(i * step))]);
+    const step = pool.length / target;
+    const picked = Array.from({ length: target }, (_, i) => pool[Math.min(pool.length - 1, Math.round(i * step))].buf);
 
     const dir = path.join(tmp, id); fs.mkdirSync(dir, { recursive: true });
 
@@ -200,7 +209,7 @@ try {
     const sizeKb = (fs.statSync(outWebp).size / 1024).toFixed(0);
     const audioKb = captured.audioB64 ? (Buffer.from(captured.audioB64, 'base64').length / 1024).toFixed(0) : '0';
     const totalMs = target * delay;
-    console.log(`${id.padEnd(15)} peintes=${String(painted).padStart(3)} -> ${target} frames  ${meta.w}x${meta.h} @${meta.fps}fps  fond=${bgHex}  décal=${captured.recOff}ms  durée=${totalMs}ms  webp ${sizeKb} Ko  audio ${audioKb} Ko`);
+    console.log(`${id.padEnd(15)} peintes=${String(painted).padStart(3)} trim=${String(trimmed).padStart(3)} -> ${target} frames  ${meta.w}x${meta.h} @${meta.fps}fps  fond=${bgHex}  décal=${captured.recOff}ms  durée=${totalMs}ms  webp ${sizeKb} Ko  audio ${audioKb} Ko`);
   }
 } finally {
   await browser.close();

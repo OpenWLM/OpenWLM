@@ -100,7 +100,10 @@ try {
       player.style.height = h + 'px';
       document.body.appendChild(player);
       await new Promise((res) => { player.addEventListener('loadeddata', () => res(), { once: true }); setTimeout(res, 4000); player.ruffle().load(swfUrl); });
-      await new Promise((r) => setTimeout(r, 150));
+      // Capturer dès le début de lecture (pas de délai) pour aligner la 1re frame captée
+      // sur la frame 0 du SWF : sinon la fenêtre est décalée de `s0` et l'anim « repart »
+      // (les dernières frames tombent sur le début du SWF).
+      await new Promise((r) => setTimeout(r, 0));
       const cv = (player.shadowRoot && player.shadowRoot.querySelector('canvas')) || player.querySelector('canvas');
       const out = [];
       let recOff = 0;

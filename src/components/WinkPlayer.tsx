@@ -15,21 +15,21 @@ interface WinkPlayerProps {
 // saute ce silence initial pour que le son tombe pile sur l'animation.
 // `t` = durée exacte du WebP → on ferme l'overlay pile à la fin (pas de redémarrage visible).
 const WINK_META: Record<string, { w: number; h: number; a: number; t: number }> = {
-  bouncy_ball: { w: 640, h: 480, a: 285, t: 7221 },
-  bow: { w: 640, h: 480, a: 182, t: 11288 },
-  dancing_pig: { w: 640, h: 480, a: 173, t: 11205 },
-  eyeball: { w: 550, h: 450, a: 179, t: 5712 },
-  frog: { w: 640, h: 480, a: 176, t: 9711 },
-  guitar_smash: { w: 150, h: 125, a: 172, t: 6723 },
-  heart: { w: 125, h: 118, a: 172, t: 6237 },
-  kiss: { w: 160, h: 120, a: 181, t: 6723 },
-  knock: { w: 325, h: 260, a: 169, t: 2436 },
-  lipstick_girl: { w: 640, h: 480, a: 193, t: 9130 },
-  love_letter: { w: 190, h: 400, a: 167, t: 8000 },
-  notes: { w: 400, h: 350, a: 185, t: 8736 },
-  silly_face: { w: 225, h: 400, a: 187, t: 7784 },
-  stars: { w: 450, h: 425, a: 176, t: 6474 },
-  water_balloon: { w: 640, h: 480, a: 178, t: 7636 }
+  bouncy_ball: { w: 640, h: 480, a: 129, t: 7221 },
+  bow: { w: 640, h: 480, a: 29, t: 11288 },
+  dancing_pig: { w: 640, h: 480, a: 26, t: 11205 },
+  eyeball: { w: 550, h: 450, a: 32, t: 5712 },
+  frog: { w: 640, h: 480, a: 33, t: 9711 },
+  guitar_smash: { w: 150, h: 125, a: 17, t: 6723 },
+  heart: { w: 125, h: 118, a: 36, t: 6237 },
+  kiss: { w: 160, h: 120, a: 25, t: 6723 },
+  knock: { w: 325, h: 260, a: 32, t: 2436 },
+  lipstick_girl: { w: 640, h: 480, a: 19, t: 9130 },
+  love_letter: { w: 190, h: 400, a: 26, t: 8000 },
+  notes: { w: 400, h: 350, a: 27, t: 8736 },
+  silly_face: { w: 225, h: 400, a: 22, t: 7784 },
+  stars: { w: 450, h: 425, a: 24, t: 6474 },
+  water_balloon: { w: 640, h: 480, a: 31, t: 7636 }
 };
 
 // Contexte audio partagé (sert uniquement à mesurer la latence de sortie du device).

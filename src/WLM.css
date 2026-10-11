@@ -467,6 +467,25 @@ body, html {
   font-family: inherit; font-size: 14px;
 }
 
+/* Champ de saisie riche (contentEditable) : les émoticônes sont de vraies
+   <img> inline, elles occupent leur largeur réelle et poussent le texte
+   (même rendu que dans les bulles de messages). */
+.chat-input-rich {
+  border: none; outline: none; width: 100%; height: 50px; overflow-y: auto;
+  padding: 0; background: transparent;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word;
+  font-family: inherit; font-size: 14px; line-height: normal;
+}
+.chat-input-rich:empty::before {
+  content: attr(data-placeholder);
+  color: #9aa7b0;
+  pointer-events: none;
+}
+.chat-input-rich .custom-emoticon-inline {
+  max-width: 32px;
+  max-height: 26px;
+}
+
 .chat-toolbar {
   display: flex; align-items: center; gap: 18px; padding-top: 10px; border-top: 1px solid #f0f0f0;
 }
@@ -1534,7 +1553,8 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
     padding: 10px;
   }
 
-  .chat-textarea {
+  .chat-textarea,
+  .chat-input-rich {
     height: 40px;
   }
 

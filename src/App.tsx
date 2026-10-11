@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import Auth from './components/Auth';
@@ -331,6 +331,180 @@ const EMOTICONS_LIST = (() => {
   });
   return list;
 })();
+
+/* ============================================================================
+ * CHAMP DE SAISIE RICHE (émoticônes rendues en image PENDANT la frappe)
+ *
+ * Le champ est un contentEditable : le texte est la source de vérité, mais un
+ * raccourci complété (`:D`, `:)`, `(L)`, émoticônes perso…) est converti en une
+ * vraie balise <img> inline. Comme dans les messages, l'image occupe donc sa
+ * largeur réelle et pousse le texte (plus de chevauchement), avec le même
+ * `vertical-align` que les bulles (`inline-emoticon`).
+ *
+ * `data-shortcut` sur chaque <img> permet de reconstruire le texte exact pour
+ * l'envoi (sérialisation), et de gérer le curseur en "unités texte".
+ * ========================================================================== */
+
+interface EmoticonShortcut { shortcut: string; src: string; custom: boolean }
+type RichToken = { text: string } | { shortcut: string; src: string; custom: boolean };
+
+const hasShortcutKey = (t: RichToken): t is Extract<RichToken, { shortcut: string }> => 'shortcut' in t;
+
+// Zero-width space : ancre invisible pour le curseur après un saut de ligne
+// final (un `\n` en fin de nœud texte se comporte mal dans un contentEditable).
+// Il est retiré de toute sérialisation, donc jamais envoyé.
+const RICH_ZWSP = '\u200B';
+const stripRichZwsp = (s: string) => s.split(RICH_ZWSP).join('');
+
+function buildRichTokens(text: string, shortcuts: EmoticonShortcut[]): RichToken[] {
+  const tokens: RichToken[] = [];
+  let buffer = '';
+  let i = 0;
+  while (i < text.length) {
+    let matched: EmoticonShortcut | null = null;
+    for (const s of shortcuts) {
+      if (s.shortcut && text.startsWith(s.shortcut, i)) { matched = s; break; }
+    }
+    if (matched) {
+      if (buffer) { tokens.push({ text: buffer }); buffer = ''; }
+      tokens.push({ shortcut: matched.shortcut, src: matched.src, custom: matched.custom });
+      i += matched.shortcut.length;
+    } else {
+      buffer += text[i];
+      i += 1;
+    }
+  }
+  if (buffer) tokens.push({ text: buffer });
+  return tokens;
+}
+
+/** Longueur d'un nœud en "unités texte" (une image vaut son raccourci, un <br> vaut 1). */
+function richNodeLength(node: Node): number {
+  if (node.nodeType === Node.TEXT_NODE) return stripRichZwsp(node.nodeValue || '').length;
+  if (node.nodeName === 'IMG') return (node as HTMLElement).getAttribute('data-shortcut')?.length || 0;
+  if (node.nodeName === 'BR') return 1;
+  let len = 0;
+  node.childNodes.forEach((c) => { len += richNodeLength(c); });
+  return len;
+}
+
+/** Texte brut (raccourcis) correspondant au contenu du champ. */
+function serializeRich(root: Node): string {
+  let out = '';
+  root.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) out += stripRichZwsp(node.nodeValue || '');
+    else if (node.nodeName === 'IMG') out += (node as HTMLElement).getAttribute('data-shortcut') || '';
+    else if (node.nodeName === 'BR') out += '\n';
+    else if (node.nodeName === 'DIV' || node.nodeName === 'P') {
+      const inner = serializeRich(node);
+      if (out && !out.endsWith('\n')) out += '\n';
+      out += inner;
+    } else out += serializeRich(node);
+  });
+  return out;
+}
+
+/** Position du curseur, exprimée en unités texte. */
+function getRichCaretOffset(root: HTMLElement): number {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return serializeRich(root).length;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return serializeRich(root).length;
+  let offset = 0;
+  let found = false;
+  const walk = (node: Node) => {
+    if (found) return;
+    if (node === range.startContainer) {
+      if (node.nodeType === Node.TEXT_NODE) { offset += stripRichZwsp((node.nodeValue || '').slice(0, range.startOffset)).length; }
+      else if (node.nodeName === 'IMG' || node.nodeName === 'BR') { /* reste sur l'offset courant */ }
+      else {
+        let acc = 0;
+        for (let i = 0; i < range.startOffset && i < node.childNodes.length; i++) acc += richNodeLength(node.childNodes[i]);
+        offset += acc;
+      }
+      found = true;
+      return;
+    }
+    if (node.nodeType === Node.TEXT_NODE || node.nodeName === 'IMG' || node.nodeName === 'BR') {
+      offset += richNodeLength(node);
+      return;
+    }
+    node.childNodes.forEach(walk);
+  };
+  root.childNodes.forEach(walk);
+  return offset;
+}
+
+/** Place le curseur à une position exprimée en unités texte. */
+function setRichCaretOffset(root: HTMLElement, offset: number): void {
+  const range = document.createRange();
+  let acc = 0;
+  let placed = false;
+  const walk = (node: Node) => {
+    if (placed) return;
+    if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.nodeValue || '';
+      const len = stripRichZwsp(value).length;
+      if (offset <= acc + len) {
+        const target = offset - acc;
+        let idx = 0;
+        let count = 0;
+        if (target > 0) {
+          while (idx < value.length) {
+            if (value[idx] !== RICH_ZWSP) { count += 1; if (count === target) { idx += 1; break; } }
+            idx += 1;
+          }
+        }
+        range.setStart(node, idx);
+        placed = true;
+        return;
+      }
+      acc += len;
+      return;
+    }
+    if (node.nodeName === 'IMG') {
+      const len = richNodeLength(node);
+      if (offset <= acc + len) { range.setStartAfter(node); placed = true; return; }
+      acc += len;
+      return;
+    }
+    if (node.nodeName === 'BR') { acc += 1; return; }
+    node.childNodes.forEach(walk);
+  };
+  root.childNodes.forEach(walk);
+  if (!placed) { range.selectNodeContents(root); range.collapse(false); }
+  else range.collapse(true);
+  const sel = window.getSelection();
+  if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+}
+
+function createRichEmoticonImg(shortcut: string, src: string, custom: boolean): HTMLImageElement {
+  const img = document.createElement('img');
+  img.src = src;
+  img.setAttribute('data-shortcut', shortcut);
+  img.setAttribute('alt', shortcut);
+  img.setAttribute('title', shortcut);
+  img.className = custom ? 'custom-emoticon custom-emoticon-inline' : 'inline-emoticon';
+  img.draggable = false;
+  return img;
+}
+
+function renderRichTokens(root: HTMLElement, tokens: RichToken[]): void {
+  const frag = document.createDocumentFragment();
+  let endsWithNewline = false;
+  for (const t of tokens) {
+    if (hasShortcutKey(t)) {
+      frag.appendChild(createRichEmoticonImg(t.shortcut, t.src, t.custom));
+      endsWithNewline = false;
+    } else if (t.text) {
+      frag.appendChild(document.createTextNode(t.text));
+      endsWithNewline = t.text.endsWith('\n');
+    }
+  }
+  // Ancre invisible pour le curseur si le texte se termine par un saut de ligne.
+  if (endsWithNewline) frag.appendChild(document.createTextNode(RICH_ZWSP));
+  root.replaceChildren(frag);
+}
 
 const USERTILES = [
   'basketball.png', 'bonsai.png', 'chef.png', 'chess.png', 'daisy.png',
@@ -703,6 +877,9 @@ const App: React.FC = () => {
   const myStatusRef = useRef(myStatus);
   useEffect(() => { myStatusRef.current = myStatus; }, [myStatus]);
   
+  // Champ de saisie riche (contentEditable) : émoticônes rendues pendant la frappe
+  const chatInputRef = useRef<HTMLDivElement>(null);
+
   // Fermer le menu émoticônes lors d'un clic / toucher à l'extérieur
   const emoticonContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -3875,6 +4052,108 @@ const App: React.FC = () => {
   };
 
   /**
+   * CHAMP DE SAISIE RICHE (contentEditable)
+   *
+   * Le texte reste la source de vérité ; à chaque frappe les raccourcis
+   * complétés sont convertis en <img> inline (comme dans les messages). L'image
+   * occupe sa largeur réelle et pousse le texte, avec le même `vertical-align`
+   * que les bulles. On reconstruit `inputText` (sérialisation) et on restaure le
+   * curseur en "unités texte" (une image compte pour la longueur du raccourci).
+   */
+  const emoticonShortcuts = useMemo<EmoticonShortcut[]>(() => {
+    const list: EmoticonShortcut[] = [];
+    Object.keys(customEmoticonsMap).forEach((shortcut) => {
+      const info = customEmoticonsMap[shortcut];
+      if (info?.url) list.push({ shortcut, src: info.url, custom: true });
+    });
+    Object.keys(EMOTICON_MAP).forEach((shortcut) => {
+      list.push({ shortcut, src: `/assets/emoticons/${EMOTICON_MAP[shortcut]}`, custom: false });
+    });
+    return list.sort((a, b) => b.shortcut.length - a.shortcut.length);
+  }, [customEmoticonsMap]);
+
+  const syncRichInput = (force = false) => {
+    const root = chatInputRef.current;
+    if (!root) return;
+    const text = serializeRich(root);
+    const tokens = buildRichTokens(text, emoticonShortcuts);
+    const shortcutCount = tokens.reduce((n, t) => n + (hasShortcutKey(t) ? 1 : 0), 0);
+    const domImgCount = root.querySelectorAll('img').length;
+    const hasForeign = Array.from(root.childNodes).some(n => n.nodeType !== Node.TEXT_NODE && n.nodeName !== 'IMG');
+    // On ne reconstruit QUE si un raccourci vient d'être complété (ou supprimé)
+    // ou en cas de nœuds parasites : la frappe normale garde ainsi l'undo et
+    // l'IME natifs, et le curseur n'est pas retouché inutilement.
+    if (force || hasForeign || shortcutCount !== domImgCount) {
+      const caret = getRichCaretOffset(root);
+      renderRichTokens(root, tokens);
+      setRichCaretOffset(root, caret);
+    }
+    setInputText(text);
+  };
+
+  // Insère du texte au niveau du curseur (sélecteur d'émoticônes, etc.)
+  const insertChatText = (text: string) => {
+    const root = chatInputRef.current;
+    if (!root) return;
+    root.focus();
+    const sel = window.getSelection();
+    let range: Range;
+    if (sel && sel.rangeCount > 0 && root.contains(sel.anchorNode)) {
+      range = sel.getRangeAt(0);
+    } else {
+      range = document.createRange();
+      range.selectNodeContents(root);
+      range.collapse(false);
+    }
+    range.deleteContents();
+    const node = document.createTextNode(text);
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    syncRichInput();
+  };
+
+  const handleRichKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (e.shiftKey) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const node = document.createTextNode('\n');
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      syncRichInput(true);
+    } else {
+      handleSendMessage();
+    }
+  };
+
+  const handleRichPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    const hasImage = items ? Array.from(items).some(it => it.kind === 'file' && it.type.startsWith('image/')) : false;
+    if (hasImage) return; // laissé au listener global (aperçu de pièce jointe)
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    if (text) document.execCommand('insertText', false, text);
+    syncRichInput();
+  };
+
+  // Vide le champ lorsque son contenu a été consommé (envoi) ailleurs
+  useEffect(() => {
+    const root = chatInputRef.current;
+    if (root && inputText === '' && serializeRich(root) !== '') {
+      root.replaceChildren();
+    }
+  }, [inputText]);
+
+  /**
    * RENDU DU COMPOSANT
    */
 
@@ -4560,21 +4839,27 @@ const App: React.FC = () => {
                {/* Pied de page (Saisie du message) */}
                <div className="chat-footer">
                   <div className="chat-input-bubble">
-                     <textarea 
-                        className="chat-textarea" 
-                        style={{ 
-                          fontFamily: fontSettings.family, 
-                          fontWeight: fontSettings.weight, 
-                          fontStyle: fontSettings.style, 
-                          color: fontSettings.color, 
-                          fontSize: `${fontSettings.size}pt`, 
-                          textDecoration: `${fontSettings.underline ? 'underline' : ''} ${fontSettings.strikeout ? 'line-through' : ''}`.trim() 
-                        }} 
-                        value={inputText} 
-                        onChange={e => setInputText(e.target.value)} 
-                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())} 
-                        onPaste={handlePaste}
-                        placeholder={t.chat.typeMessagePlaceholder} 
+                     {/* Champ riche : rend les émoticônes en image pendant la frappe */}
+                     <div
+                        ref={chatInputRef}
+                        className="chat-input-rich"
+                        contentEditable
+                        suppressContentEditableWarning
+                        spellCheck={false}
+                        role="textbox"
+                        aria-multiline="true"
+                        data-placeholder={t.chat.typeMessagePlaceholder}
+                        onInput={() => syncRichInput()}
+                        onKeyDown={handleRichKeyDown}
+                        onPaste={handleRichPaste}
+                        style={{
+                          fontFamily: fontSettings.family,
+                          fontWeight: fontSettings.weight,
+                          fontStyle: fontSettings.style,
+                          color: fontSettings.color,
+                          fontSize: `${fontSettings.size}pt`,
+                          textDecoration: `${fontSettings.underline ? 'underline' : ''} ${fontSettings.strikeout ? 'line-through' : ''}`.trim()
+                        }}
                      />
                      
                      {/* Barre d'outils du chat (Émoticônes, Winks, Wizz, Voice) */}
@@ -4620,7 +4905,7 @@ const App: React.FC = () => {
                                         key={emo.id} 
                                         className="emoticon-item" 
                                         title={emo.shortcut} 
-                                        onClick={() => { setInputText(prev => prev + emo.shortcut); setShowEmoticonMenu(false); }}
+                                        onClick={() => { insertChatText(emo.shortcut); setShowEmoticonMenu(false); }}
                                       >
                                         {emoUrl ? (
                                           <img src={emoUrl} alt={emo.shortcut} className="custom-emoticon" />
@@ -4638,7 +4923,7 @@ const App: React.FC = () => {
                               <div className="emoticon-section-title">{t.chat.standardEmoticons}</div>
                               <div className="emoticon-grid">
                                 {EMOTICONS_LIST.slice(0, 15).map((emo, idx) => (
-                                  <div key={idx} className="emoticon-item" title={emo.shortcut} onClick={() => { setInputText(prev => prev + emo.shortcut); setShowEmoticonMenu(false); }}>
+                                  <div key={idx} className="emoticon-item" title={emo.shortcut} onClick={() => { insertChatText(emo.shortcut); setShowEmoticonMenu(false); }}>
                                     <img src={`/assets/emoticons/${emo.file}`} alt={emo.shortcut} width={19} height={19} draggable={false} />
                                   </div>
                                 ))}
@@ -4935,7 +5220,7 @@ const App: React.FC = () => {
                           key={emo.id} 
                           className="emoticon-item-large" 
                           title={emo.shortcut} 
-                          onClick={() => { setInputText(prev => prev + emo.shortcut); setShowAllEmoticonsModal(false); }}
+                          onClick={() => { insertChatText(emo.shortcut); setShowAllEmoticonsModal(false); }}
                           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px', border: '1px solid #e0eaf2', borderRadius: '4px' }}
                         >
                           {emoUrl ? (
@@ -4958,7 +5243,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="emoticon-all-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '10px' }}>
                   {EMOTICONS_LIST.map((emo, idx) => (
-                    <div key={idx} className="emoticon-item-large" title={emo.shortcut} onClick={() => { setInputText(prev => prev + emo.shortcut); setShowAllEmoticonsModal(false); }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+                    <div key={idx} className="emoticon-item-large" title={emo.shortcut} onClick={() => { insertChatText(emo.shortcut); setShowAllEmoticonsModal(false); }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
                       <img src={`/assets/emoticons/${emo.file}`} alt={emo.shortcut} width={19} height={19} draggable={false} />
                       <span style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>{emo.shortcut}</span>
                     </div>
@@ -4981,7 +5266,7 @@ const App: React.FC = () => {
         userToken={user?.token}
         onEmoticonsChange={handleCustomEmoticonsChange}
         onSelectEmoticon={(shortcut) => {
-          setInputText(prev => prev + shortcut);
+          insertChatText(shortcut);
           setShowCustomEmoticonsModal(false);
         }}
       />

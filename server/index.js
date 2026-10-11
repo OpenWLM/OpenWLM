@@ -28,6 +28,13 @@ import { setupSocketHandlers } from './sockets/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Charge le fichier .env local s'il existe (secrets TURN/VAPID/JWT…), sans dépendance
+// externe. Les variables déjà présentes dans l'environnement restent prioritaires.
+const envFilePath = path.join(__dirname, '..', '.env');
+if (typeof process.loadEnvFile === 'function' && fs.existsSync(envFilePath)) {
+  try { process.loadEnvFile(envFilePath); } catch { /* fichier invalide : on l'ignore */ }
+}
+
 // SÉCURITÉ/ROBUSTESSE : filet global — ne jamais laisser une exception non gérée
 // (ex: erreur dans un handler socket) faire tomber tout le serveur.
 process.on('uncaughtException', (err) => {

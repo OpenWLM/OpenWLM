@@ -14,7 +14,8 @@ Côté serveur (`server/routes/rtc.js`), tout est piloté par variables d'enviro
 |---|---|---|
 | `STUN_URLS` | `stun:stun.l.google.com:19302` | Liste d'URLs STUN (séparées par des virgules) |
 | `TURN_URLS` | *(vide)* | Liste d'URLs TURN (`turn:host:3478?transport=udp,turns:host:5349`) |
-| `TURN_SECRET` | *(vide)* | Secret partagé (TURN REST API / coturn) → identifiants **éphémères** |
+| `TURN_USERNAME` / `TURN_PASSWORD` | *(vide)* | Identifiants **statiques** (ex : Metered.ca, Twilio « standard ») |
+| `TURN_SECRET` | *(vide)* | Secret partagé → identifiants **éphémères** (TURN REST API / coturn). Ignoré si USERNAME/PASSWORD fournis |
 | `TURN_TTL` | `3600` | Durée de vie des identifiants TURN (s) |
 | `ICE_TRANSPORT_POLICY` | `all` | `all` ou `relay` (forcer le passage par TURN) |
 
@@ -36,6 +37,19 @@ il faudrait de l'UDP et une plage de ports). Options :
 
 > Recommandation : sans TURN, ~10–20 % des appels échouent (NAT symétrique, CGNAT,
 > 4G/5G, réseaux d'entreprise). C'est la priorité #1 pour la stabilité.
+
+### 🔒 Où mettre les secrets
+Les identifiants TURN (et éventuels secrets) vont dans le fichier **`.env`** à la racine
+du projet — **non versionné** (`.gitignore`), chargé automatiquement par le serveur au
+démarrage (`process.loadEnvFile`). Ne **jamais** commiter `.env`.
+
+Exemple (Metered.ca, identifiants statiques) :
+```
+STUN_URLS=stun:stun.relay.metered.ca:80,stun:stun.l.google.com:19302
+TURN_URLS=turn:standard.relay.metered.ca:80,turn:standard.relay.metered.ca:80?transport=tcp,turn:standard.relay.metered.ca:443,turns:standard.relay.metered.ca:443?transport=tcp
+TURN_USERNAME=<username>
+TURN_PASSWORD=<credential>
+```
 
 ## 2. P0 — implémenté
 - **Config ICE configurable** (`/api/rtc-config`, STUN + TURN optionnel, creds éphémères).

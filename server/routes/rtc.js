@@ -8,9 +8,13 @@ import { authenticateToken } from '../middleware/auth.js';
  * Entièrement pilotable par variables d'environnement — voir `.env.example` :
  *   STUN_URLS              liste séparée par des virgules (défaut : STUN Google)
  *   TURN_URLS              liste séparée par des virgules (ex : turn:host:3478?transport=udp)
- *   TURN_SECRET            secret partagé (TURN REST API / coturn)
+ *   TURN_USERNAME/TURN_PASSWORD   identifiants STATIQUES (ex : Metered/Twilio « standard »)
+ *   TURN_SECRET            secret partagé pour identifiants ÉPHÉMÈRES (TURN REST API / coturn)
  *   TURN_TTL               durée de vie des identifiants éphémères, en secondes (défaut 3600)
  *   ICE_TRANSPORT_POLICY   'all' (défaut) ou 'relay'
+ *
+ * Priorité : si TURN_USERNAME + TURN_PASSWORD sont fournis → identifiants statiques ;
+ * sinon si TURN_SECRET est fourni → identifiants éphémères (HMAC).
  *
  * ⚠️ Un serveur TURN n'est PAS joignable via le Tunnel Cloudflare (HTTP uniquement) :
  * il faut une IP publique avec les ports 3478/5349 (UDP/TCP, + plage relay), ou un
@@ -34,8 +38,14 @@ export default function createRtcRouter() {
     iceServers.push({ urls: stun.length ? stun : DEFAULT_STUN });
 
     const turnUrls = parseList(process.env.TURN_URLS);
+    const turnUser = process.env.TURN_USERNAME;
+    const turnPass = process.env.TURN_PASSWORD;
     const turnSecret = process.env.TURN_SECRET;
-    if (turnUrls.length > 0 && turnSecret) {
+
+    if (turnUrls.length > 0 && turnUser && turnPass) {
+      // Identifiants STATIQUES (ex : Metered, Twilio « standard »)
+      iceServers.push({ urls: turnUrls, username: turnUser, credential: turnPass });
+    } else if (turnUrls.length > 0 && turnSecret) {
       // Identifiants éphémères type « TURN REST API » (mécanisme coturn) :
       //   username  = <expiration unix>:<userId>
       //   credential = base64(HMAC-SHA1(TURN_SECRET, username))

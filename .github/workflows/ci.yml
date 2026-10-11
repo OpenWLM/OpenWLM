@@ -29,7 +29,11 @@ jobs:
 
       - name: Tests unitaires + sécurité (serveur isolé, base de workspace éphémère)
         run: |
-          JWT_SECRET=$(openssl rand -hex 32) PORT=3001 NODE_ENV=test node server/index.js &
+          # Les tests lisent le secret JWT dans le fichier .jwt_secret pour signer leurs tokens :
+          # on écrit donc le même secret d'env dans le fichier, sinon les tokens seraient invalides.
+          JWT_SECRET=$(openssl rand -hex 32)
+          printf '%s' "$JWT_SECRET" > .jwt_secret
+          JWT_SECRET="$JWT_SECRET" PORT=3001 NODE_ENV=test node server/index.js &
           SRV=$!
           npx wait-on -t 30000 http://localhost:3001/api/push/status
           npm run test:unit

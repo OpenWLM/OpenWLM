@@ -91,9 +91,19 @@ test('Server Implementation: server/index.js contains VAPID initialization and s
 test('Database: push_subscriptions table operates correctly with CRUD operations', () => {
   const db = new Database(path.join(rootDir, 'messenger.db'));
   
-  // Obtenir un utilisateur existant pour respecter la contrainte FOREIGN KEY (user_id) REFERENCES users(id)
-  const existingUser = db.prepare('SELECT id FROM users LIMIT 1').get();
-  const testUserId = existingUser ? existingUser.id : 1;
+  // Obtenir un utilisateur existant pour respecter la contrainte FOREIGN KEY (user_id) REFERENCES users(id).
+  // Sur une base neuve (ex. CI) il n'y en a aucun → on en crée un, sinon l'INSERT échoue.
+  let existingUser = db.prepare('SELECT id FROM users LIMIT 1').get();
+  let createdUserId = null;
+  if (!existingUser) {
+    createdUserId = 9901;
+    db.prepare(`
+      INSERT INTO users (id, username, password_hash, salt, nickname, psm, avatar, scene, status, token_version, global_private)
+      VALUES (?, 'vapid_unit_user', 'hash', 'salt', 'VAPID Unit', 'PSM', '/assets/usertiles/chess.png', '/assets/scenes/0006.png', 'offline', 0, 0)
+    `).run(createdUserId);
+    existingUser = { id: createdUserId };
+  }
+  const testUserId = existingUser.id;
   const testEndpoint = 'https://updates.push.services.mozilla.com/wpush/v2/gAAAAABtesting-unit-test';
   const testP256dh = 'BMTestP256dhKeyBase64urlSampleValueForTestingOnly1234567890';
   const testAuth = 'TestAuthSecretBase64';
@@ -128,6 +138,7 @@ test('Database: push_subscriptions table operates correctly with CRUD operations
   } finally {
     // Cleanup in case of error
     db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(testEndpoint);
+    if (createdUserId !== null) { try { db.prepare('DELETE FROM users WHERE id = ?').run(createdUserId); } catch { /* ignore */ } }
     db.close();
   }
 });

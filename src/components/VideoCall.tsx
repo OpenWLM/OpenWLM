@@ -18,28 +18,41 @@ interface VideoCallProps {
 }
 
 type CallStatus = 'calling' | 'remoteRinging' | 'ringing' | 'connecting' | 'connected' | 'reconnecting' | 'ended';
+type Quality = 'good' | 'fair' | 'poor';
 
 const DEFAULT_ICE: RTCConfiguration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-// Encodage base64 JSON (compatible avec le relais serveur et les autres clients)
 const encodeSignal = (obj: unknown) => window.btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
 const decodeSignal = (str: string) => JSON.parse(decodeURIComponent(escape(window.atob(str))));
 
-const RING_TIMEOUT_MS = 45000;   // appelant : pas de réponse
-const RECONNECT_AFTER_MS = 4000; // ICE "disconnected" -> tentative de reprise
+const RING_TIMEOUT_MS = 45000;
+const RECONNECT_AFTER_MS = 4000;
 const RECOVERY_GIVE_UP_MS = 15000;
 const MAX_ICE_RESTARTS = 3;
+
+const fmtDuration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, contactName, callerName, isReceivingCall, incomingSignal, audioOnly, onEndCall }) => {
   const { t } = useI18n();
   const [callStatus, setCallStatus] = useState<CallStatus>(isReceivingCall ? 'ringing' : 'calling');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(!audioOnly);
+  const [duration, setDuration] = useState(0);
+  const [quality, setQuality] = useState<Quality>('good');
+  const [showDevices, setShowDevices] = useState(false);
+  const [micList, setMicList] = useState<MediaDeviceInfo[]>([]);
+  const [camList, setCamList] = useState<MediaDeviceInfo[]>([]);
+  const [spkList, setSpkList] = useState<MediaDeviceInfo[]>([]);
+  const [micId, setMicId] = useState('');
+  const [camId, setCamId] = useState('');
+  const [spkId, setSpkId] = useState('');
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const rtcConfigRef = useRef<RTCConfiguration>(DEFAULT_ICE);
   const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
   const hasInitialized = useRef(false);
   const endedRef = useRef(false);
@@ -47,8 +60,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusRef = useRef<CallStatus>(callStatus);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => { statusRef.current = callStatus; }, [callStatus]);
+  useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
 
   const clearTimers = () => {
     if (ringTimerRef.current) { clearTimeout(ringTimerRef.current); ringTimerRef.current = null; }
@@ -65,22 +80,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
   }, []);
 
-  // Termine l'appel : message optionnel (clé i18n) puis fermeture de l'overlay.
   const finish = useCallback((noticeText?: string) => {
     if (endedRef.current) return;
     endedRef.current = true;
     if (socket) socket.emit('end_call', { target: activeChatId, caller: myId });
-    if (localStream) localStream.getTracks().forEach((track) => track.stop());
+    const stream = localStreamRef.current;
+    if (stream) stream.getTracks().forEach((track) => track.stop());
     setLocalStream(null);
     teardown();
     setCallStatus('ended');
-    if (noticeText) {
-      setNotice(noticeText);
-      setTimeout(() => onEndCall(), 1800);
-    } else {
-      onEndCall();
-    }
-  }, [socket, activeChatId, myId, localStream, teardown, onEndCall]);
+    if (noticeText) { setNotice(noticeText); setTimeout(() => onEndCall(), 1800); }
+    else onEndCall();
+  }, [socket, activeChatId, myId, teardown, onEndCall]);
 
   const handleEndCall = useCallback(() => finish(), [finish]);
 
@@ -89,38 +100,32 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     socket.emit('webrtc_signal', { target: activeChatId, caller: myId, signal: encodeSignal(signal) });
   }, [socket, activeChatId, myId]);
 
-  // Plafonne le débit (réseaux faibles) : audio ~32 kb/s, vidéo ~1,2 Mb/s dégradation équilibrée.
   const applySenderCaps = useCallback(async (pc: RTCPeerConnection) => {
     for (const sender of pc.getSenders()) {
       if (!sender.track) continue;
       try {
         const params = sender.getParameters();
         if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-        if (sender.track.kind === 'audio') {
-          params.encodings[0].maxBitrate = 32000;
-        } else {
+        if (sender.track.kind === 'audio') params.encodings[0].maxBitrate = 32000;
+        else {
           params.encodings[0].maxBitrate = 1200000;
           (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = 'balanced';
         }
         await sender.setParameters(params);
-      } catch { /* certains navigateurs refusent avant négociation — on réessaiera */ }
+      } catch { /* refusé avant négociation — retenté après */ }
     }
   }, []);
 
   const tryRestartIce = useCallback(() => {
     const pc = peerConnectionRef.current;
     if (!pc || endedRef.current) return;
-    if (restartCountRef.current >= MAX_ICE_RESTARTS) {
-      finish(t.videoCall.failed);
-      return;
-    }
+    if (restartCountRef.current >= MAX_ICE_RESTARTS) { finish(t.videoCall.failed); return; }
     restartCountRef.current += 1;
     setCallStatus('reconnecting');
     try { pc.restartIce(); } catch { /* ignore */ }
     if (recoveryTimerRef.current) clearTimeout(recoveryTimerRef.current);
     recoveryTimerRef.current = setTimeout(() => {
-      const st = peerConnectionRef.current?.connectionState;
-      if (st !== 'connected') finish(t.videoCall.failed);
+      if (peerConnectionRef.current?.connectionState !== 'connected') finish(t.videoCall.failed);
     }, RECOVERY_GIVE_UP_MS);
   }, [finish, t]);
 
@@ -131,7 +136,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
         return { iceServers: data.iceServers, iceTransportPolicy: data.iceTransportPolicy || 'all' };
       }
-    } catch { /* repli sur STUN par défaut */ }
+    } catch { /* repli STUN */ }
     return DEFAULT_ICE;
   }, []);
 
@@ -146,7 +151,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         return;
       }
 
-      rtcConfigRef.current = await fetchRtcConfig();
+      const rtcConfig = await fetchRtcConfig();
 
       const constraints: MediaStreamConstraints = {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -168,13 +173,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
 
       setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      setMicOn(stream.getAudioTracks()[0]?.enabled ?? true);
+      setCamOn(audioOnly ? false : (stream.getVideoTracks()[0]?.enabled ?? true));
 
-      const pc = new RTCPeerConnection(rtcConfigRef.current);
+      const pc = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = pc;
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate) emitSignal({ type: 'ice-candidate', candidate: event.candidate });
-      };
+      pc.onicecandidate = (event) => { if (event.candidate) emitSignal({ type: 'ice-candidate', candidate: event.candidate }); };
 
       pc.ontrack = (event) => {
         if (remoteVideoRef.current && event.streams[0]) {
@@ -218,7 +223,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         await pc.setLocalDescription(answer);
         emitSignal(pc.localDescription);
         await applySenderCaps(pc);
-        // Candidats ICE reçus avant la réponse
         for (const candidate of iceCandidatesQueue.current) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { /* ignore */ });
         }
@@ -228,16 +232,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         if (socket) {
-          socket.emit('call_request', {
-            target: activeChatId,
-            caller: myId,
-            callerName,
-            signal: encodeSignal(pc.localDescription),
-            audioOnly,
-          });
+          socket.emit('call_request', { target: activeChatId, caller: myId, callerName, signal: encodeSignal(pc.localDescription), audioOnly });
         }
         await applySenderCaps(pc);
-        // Timeout « pas de réponse »
         ringTimerRef.current = setTimeout(() => {
           if (statusRef.current !== 'connected') finish(t.videoCall.noAnswer);
         }, RING_TIMEOUT_MS);
@@ -252,18 +249,131 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   // Sonnerie d'appel entrant
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
-    if (callStatus === 'ringing') {
-      SoundManager.play('phone');
-      interval = setInterval(() => SoundManager.play('phone'), 3500);
-    }
+    if (callStatus === 'ringing') { SoundManager.play('phone'); interval = setInterval(() => SoundManager.play('phone'), 3500); }
     return () => { if (interval) clearInterval(interval); };
   }, [callStatus]);
 
   useEffect(() => {
-    if (!isReceivingCall && callStatus === 'calling' && !hasInitialized.current) {
-      initCall();
-    }
+    if (!isReceivingCall && callStatus === 'calling' && !hasInitialized.current) initCall();
   }, [isReceivingCall, callStatus, initCall]);
+
+  // Minuteur d'appel
+  useEffect(() => {
+    if (callStatus !== 'connected') return;
+    const id = setInterval(() => setDuration((d) => d + 1), 1000);
+    return () => clearInterval(id);
+  }, [callStatus]);
+
+  // Indicateur de qualité (lecture seule via getStats)
+  useEffect(() => {
+    if (callStatus !== 'connected') return;
+    let stop = false;
+    const poll = async () => {
+      const pc = peerConnectionRef.current;
+      if (!pc) return;
+      try {
+        const stats = await pc.getStats();
+        let rtt: number | null = null;
+        let lost = 0; let recv = 0;
+        stats.forEach((r: Record<string, unknown>) => {
+          if (r.type === 'candidate-pair' && (r.nominated === true) && typeof r.currentRoundTripTime === 'number') rtt = r.currentRoundTripTime as number;
+          if (r.type === 'inbound-rtp' && r.isRemote !== true) {
+            lost += (r.packetsLost as number) || 0;
+            recv += (r.packetsReceived as number) || 0;
+          }
+        });
+        const loss = (lost + recv) > 0 ? (lost / (lost + recv)) * 100 : 0;
+        let level: Quality = 'good';
+        if ((rtt !== null && rtt > 0.3) || loss > 5) level = 'poor';
+        else if ((rtt !== null && rtt > 0.15) || loss > 1.5) level = 'fair';
+        if (!stop) setQuality(level);
+      } catch { /* ignore */ }
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => { stop = true; clearInterval(id); };
+  }, [callStatus]);
+
+  // Périphériques (micro / caméra / haut-parleur)
+  const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      setMicList(list.filter((d) => d.kind === 'audioinput'));
+      setCamList(list.filter((d) => d.kind === 'videoinput'));
+      setSpkList(list.filter((d) => d.kind === 'audiooutput'));
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (callStatus !== 'connected' && callStatus !== 'connecting') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial de la liste des périphériques
+    refreshDevices();
+    const md = navigator.mediaDevices;
+    if (!md?.addEventListener) return;
+    md.addEventListener('devicechange', refreshDevices);
+    return () => md.removeEventListener('devicechange', refreshDevices);
+  }, [callStatus, refreshDevices]);
+
+  const toggleMic = () => {
+    const track = localStreamRef.current?.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    setMicOn(track.enabled);
+  };
+
+  const toggleCam = () => {
+    const track = localStreamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    setCamOn(track.enabled);
+  };
+
+  const applyLocalTrack = (kind: 'audio' | 'video', newTrack: MediaStreamTrack) => {
+    const prev = localStreamRef.current;
+    const others = prev ? prev.getTracks().filter((tr) => tr.kind !== kind) : [];
+    if (prev) prev.getTracks().filter((tr) => tr.kind === kind).forEach((tr) => tr.stop());
+    const ns = new MediaStream([...others, newTrack]);
+    setLocalStream(ns);
+    if (kind === 'video' && localVideoRef.current) localVideoRef.current.srcObject = ns;
+  };
+
+  const switchDevice = async (kind: 'audio' | 'video', deviceId: string) => {
+    const pc = peerConnectionRef.current;
+    try {
+      const cs: MediaStreamConstraints = kind === 'audio'
+        ? { audio: { deviceId: { exact: deviceId } } }
+        : { video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24 } } };
+      const s = await navigator.mediaDevices.getUserMedia(cs);
+      const newTrack = s.getTracks()[0];
+      const sender = pc?.getSenders().find((sd) => sd.track && sd.track.kind === kind);
+      if (sender) await sender.replaceTrack(newTrack);
+      applyLocalTrack(kind, newTrack);
+      if (kind === 'audio') setMicId(deviceId); else setCamId(deviceId);
+    } catch { /* ignore */ }
+  };
+
+  const switchSpeaker = async (deviceId: string) => {
+    setSpkId(deviceId);
+    const el = remoteVideoRef.current as (HTMLVideoElement & { setSinkId?: (id: string) => Promise<void> }) | null;
+    if (el?.setSinkId) { try { await el.setSinkId(deviceId); } catch { /* ignore */ } }
+  };
+
+  const toggleFullscreen = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else el.requestFullscreen?.().catch(() => {});
+  };
+
+  const togglePip = async () => {
+    const v = remoteVideoRef.current as (HTMLVideoElement & { requestPictureInPicture?: () => Promise<unknown> }) | null;
+    if (!v?.requestPictureInPicture) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await v.requestPictureInPicture();
+    } catch { /* ignore */ }
+  };
 
   const handleAcceptCall = () => {
     setCallStatus('connecting');
@@ -296,9 +406,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
             iceCandidatesQueue.current.push(signal.candidate);
           }
         }
-      } catch (e) {
-        console.error('[WebRTC] Erreur traitement signal:', e);
-      }
+      } catch (e) { console.error('[WebRTC] Erreur traitement signal:', e); }
     };
 
     const onRinging = (d: { target: number }) => { if (d.target === activeChatId && !isReceivingCall) setCallStatus('remoteRinging'); };
@@ -307,9 +415,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     const onBusy = (d: { target: number }) => { if (d.target === activeChatId) finish(t.videoCall.busy); };
     const onUnavailable = (d: { target: number }) => { if (d.target === activeChatId) finish(t.videoCall.unavailable); };
     const onEnded = (d: { caller: number }) => { if (d.caller === activeChatId) finish(); };
-    const onSocketReconnect = () => {
-      if (peerConnectionRef.current && statusRef.current === 'connected') tryRestartIce();
-    };
+    const onSocketReconnect = () => { if (peerConnectionRef.current && statusRef.current === 'connected') tryRestartIce(); };
 
     socket.on('webrtc_signal', handleSignal);
     socket.on('call_ringing', onRinging);
@@ -332,16 +438,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     };
   }, [socket, activeChatId, isReceivingCall, applySenderCaps, finish, tryRestartIce, t]);
 
-  // Nettoyage au démontage
   useEffect(() => {
     return () => {
       endedRef.current = true;
       hasInitialized.current = false;
       clearTimers();
-      if (peerConnectionRef.current) {
-        try { peerConnectionRef.current.close(); } catch { /* ignore */ }
-        peerConnectionRef.current = null;
-      }
+      const stream = localStreamRef.current;
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (peerConnectionRef.current) { try { peerConnectionRef.current.close(); } catch { /* ignore */ } peerConnectionRef.current = null; }
     };
   }, []);
 
@@ -358,24 +462,23 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   };
 
   const showOverlay = callStatus !== 'connected' || audioOnly;
+  const qualityLabel = quality === 'good' ? t.videoCall.qualityGood : quality === 'fair' ? t.videoCall.qualityFair : t.videoCall.qualityPoor;
 
   return (
-    <div className="wlm-video-modal" style={styles.overlay}>
-      <div className="wlm-video-box" style={styles.modal}>
+    <div className="wlm-video-modal">
+      <div className="wlm-video-box">
         <div className="win-modal-header" style={styles.header}>
           <span>{formatNickname(t.videoCall.conversationWith.replace('{type}', audioOnly ? t.videoCall.audio : t.videoCall.video).replace('{name}', contactName))}</span>
           <button className="win-close-btn" onClick={handleEndCall}>✕</button>
         </div>
 
-        <div style={styles.videoContainer}>
-          <video ref={remoteVideoRef} autoPlay playsInline style={{ ...styles.remoteVideo, ...(audioOnly ? styles.remoteAudioOnly : null) }} />
-          <video ref={localVideoRef} autoPlay playsInline muted style={{ ...styles.localVideo, display: audioOnly ? 'none' : 'block' }} />
+        <div ref={containerRef} className="wlm-video-stage">
+          <video ref={remoteVideoRef} autoPlay playsInline className={`wlm-video-remote${audioOnly ? ' wlm-video-remote-audio' : ''}`} />
+          <video ref={localVideoRef} autoPlay playsInline muted className="wlm-video-local" style={{ display: audioOnly ? 'none' : 'block' }} />
 
           {showOverlay && (
-            <div style={styles.statusOverlay}>
-              {audioOnly && callStatus === 'connected' ? (
-                t.videoCall.audioInProgress
-              ) : callStatus === 'ringing' ? (
+            <div className="wlm-video-status">
+              {audioOnly && callStatus === 'connected' ? t.videoCall.audioInProgress : callStatus === 'ringing' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
                   <div>{formatNickname(t.videoCall.ringing.replace('{name}', contactName))}</div>
                   <div style={{ display: 'flex', gap: '30px' }}>
@@ -387,38 +490,72 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
                     </button>
                   </div>
                 </div>
-              ) : (
-                overlayText()
-              )}
+              ) : overlayText()}
+            </div>
+          )}
+
+          {callStatus === 'connected' && (
+            <div className="wlm-call-meta">
+              <span className="wlm-call-timer">{fmtDuration(duration)}</span>
+              <span className={`wlm-quality wlm-quality-${quality}`} title={qualityLabel} aria-label={qualityLabel} />
             </div>
           )}
         </div>
 
-        <div style={styles.footer}>
-          {callStatus !== 'ringing' && (
-            <button onClick={handleEndCall} style={styles.hangupBtn} aria-label={t.videoCall.hangup}>
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" style={{ transform: 'rotate(135deg)' }}><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+        {callStatus !== 'ringing' && (
+        <div className="wlm-call-controls">
+          <button className={`wlm-call-btn${micOn ? '' : ' off'}`} onClick={toggleMic} title={micOn ? t.videoCall.mute : t.videoCall.unmute} aria-label={micOn ? t.videoCall.mute : t.videoCall.unmute}>
+            {micOn ? '🎤' : '🔇'}
+          </button>
+          {!audioOnly && (
+            <button className={`wlm-call-btn${camOn ? '' : ' off'}`} onClick={toggleCam} title={camOn ? t.videoCall.cameraOff : t.videoCall.cameraOn} aria-label={camOn ? t.videoCall.cameraOff : t.videoCall.cameraOn}>
+              {camOn ? '📷' : '🚫'}
             </button>
           )}
+          <button className="wlm-call-btn" onClick={() => { setShowDevices((v) => !v); refreshDevices(); }} title={t.videoCall.devices} aria-label={t.videoCall.devices}>⚙️</button>
+          <button className="wlm-call-btn" onClick={toggleFullscreen} title={t.videoCall.fullscreen} aria-label={t.videoCall.fullscreen}>⛶</button>
+          <button className="wlm-call-btn" onClick={togglePip} title={t.videoCall.pip} aria-label={t.videoCall.pip}>◱</button>
+          <button onClick={handleEndCall} style={styles.hangupBtn} title={t.videoCall.hangup} aria-label={t.videoCall.hangup}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style={{ transform: 'rotate(135deg)' }}><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+          </button>
+
+          {showDevices && (
+            <div className="wlm-devices-pop">
+              <label>{t.videoCall.microphone}
+                <select value={micId} onChange={(e) => switchDevice('audio', e.target.value)}>
+                  <option value="">{t.videoCall.defaultDevice}</option>
+                  {micList.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || `${t.videoCall.microphone} ${d.deviceId.slice(0, 4)}`}</option>)}
+                </select>
+              </label>
+              {!audioOnly && (
+                <label>{t.videoCall.camera}
+                  <select value={camId} onChange={(e) => switchDevice('video', e.target.value)}>
+                    <option value="">{t.videoCall.defaultDevice}</option>
+                    {camList.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || `${t.videoCall.camera} ${d.deviceId.slice(0, 4)}`}</option>)}
+                  </select>
+                </label>
+              )}
+              {spkList.length > 0 && (
+                <label>{t.videoCall.speaker}
+                  <select value={spkId} onChange={(e) => switchSpeaker(e.target.value)}>
+                    <option value="">{t.videoCall.defaultDevice}</option>
+                    {spkList.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || `${t.videoCall.speaker} ${d.deviceId.slice(0, 4)}`}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
         </div>
+        )}
       </div>
     </div>
   );
 };
 
 const styles = {
-  overlay: { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000 },
-  modal: { backgroundColor: 'white', border: '1px solid #99b4d1', borderRadius: '5px', width: '600px', overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' as const },
   header: { padding: '8px 15px', background: 'linear-gradient(to bottom, #fcfdfe, #e1eff7)', borderBottom: '1px solid #b8d9eb', fontWeight: 'bold', fontSize: '13px', color: '#004b8d' },
-  videoContainer: { position: 'relative' as const, width: '100%', height: '400px', backgroundColor: 'black' },
-  remoteVideo: { width: '100%', height: '100%', objectFit: 'contain' as const },
-  // Audio seul : élément présent (lecture audio garantie) mais invisible.
-  remoteAudioOnly: { position: 'absolute' as const, bottom: 0, right: 0, width: '1px', height: '1px', opacity: 0 },
-  localVideo: { position: 'absolute' as const, bottom: '15px', right: '15px', width: '120px', height: '90px', objectFit: 'cover' as const, border: '2px solid white', borderRadius: '4px', boxShadow: '0 2px 10px rgba(0,0,0,0.5)', zIndex: 2 },
-  statusOverlay: { position: 'absolute' as const, top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white', fontSize: '18px', fontWeight: 'bold', textShadow: '0 2px 5px black', zIndex: 1 },
-  footer: { padding: '10px 15px', backgroundColor: '#f0f0f0', borderTop: '1px solid #ccc', display: 'flex', justifyContent: 'center' },
   acceptBtn: { background: '#25D366', color: 'white', border: 'none', borderRadius: '50%', width: '60px', height: '60px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  hangupBtn: { background: '#FF3B30', color: 'white', border: 'none', borderRadius: '50%', width: '60px', height: '60px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+  hangupBtn: { background: '#FF3B30', color: 'white', border: 'none', borderRadius: '50%', width: '52px', height: '52px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
 };
 
 export default VideoCall;

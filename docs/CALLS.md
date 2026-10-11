@@ -49,7 +49,15 @@ il faudrait de l'UDP et une plage de ports). Options :
 - **Signalisation WebRTC centralisée** dans `<VideoCall/>` (fin du buffer ICE global fuyant).
 - **État « connecté » affiché seulement à la connexion réelle** (plus de faux « connecté »).
 
-## 3. P1 / P2 — à faire ensuite
-- **P1** : adaptation dynamique via `getStats()` (baisser la résolution / couper la vidéo si perte élevée) ; *perfect negotiation* / renégociation ; partage d'écran (`getDisplayMedia`).
-- **P2 (UI)** : boutons micro on/off, caméra on/off, minuteur d'appel, indicateur de qualité, plein écran / PiP, sélecteur de périphériques (`enumerateDevices`, `setSinkId`), responsive mobile.
+## 3. P2 — implémenté (interface)
+- Boutons **micro on/off** et **caméra on/off** (bascule `track.enabled`).
+- **Minuteur d'appel** et **indicateur de qualité** (RTT/perte lus via `getStats`, en lecture seule).
+- **Sélecteur de périphériques** : micro / caméra / haut-parleur (`enumerateDevices`, `RTCRtpSender.replaceTrack`, `setSinkId`).
+- **Plein écran** et **image dans l'image (PiP)**.
+- **Responsive mobile** (modale plein écran, contrôles adaptés) ; vidéo distante en `object-fit: contain`.
+- États d'appel enrichis : Sonnerie / Connexion / Reconnexion / terminaison avec motif.
+
+## 4. P1 — reste à faire
+- **Adaptation dynamique** via `getStats()` : baisser la résolution, voire couper la vidéo si la perte est élevée.
+- ***Perfect negotiation* / renégociation** et **partage d'écran** (`getDisplayMedia`).
 - **Opus** : `useinbandfec=1` / `usedtx=1` (nécessite un ajustement SDP).

@@ -4383,6 +4383,68 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   to { opacity: 1; transform: none; }
 }
 
+/* ==========================================================================
+   Appels audio/vidéo (WebRTC) — interface
+   ========================================================================== */
+.wlm-video-modal {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 4000;
+}
+.wlm-video-box {
+  background: #fff; border: 1px solid #99b4d1; border-radius: 5px;
+  width: 600px; max-width: 100%; overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column;
+}
+.wlm-video-stage { position: relative; width: 100%; height: 400px; background: #000; }
+.wlm-video-remote { width: 100%; height: 100%; object-fit: contain; }
+.wlm-video-remote-audio { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; }
+.wlm-video-local {
+  position: absolute; right: 15px; bottom: 15px; width: 120px; height: 90px;
+  object-fit: cover; border: 2px solid #fff; border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); z-index: 2;
+}
+.wlm-video-status {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  color: #fff; font-size: 18px; font-weight: bold; text-shadow: 0 2px 5px #000;
+  z-index: 1; text-align: center; width: 90%;
+}
+.wlm-call-meta {
+  position: absolute; top: 8px; left: 8px; z-index: 3;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(0, 0, 0, 0.45); color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px;
+}
+.wlm-quality { width: 10px; height: 10px; border-radius: 50%; background: #25D366; display: inline-block; }
+.wlm-quality-fair { background: #FFB300; }
+.wlm-quality-poor { background: #FF3B30; }
+.wlm-call-controls {
+  position: relative; padding: 10px 15px; background: #f0f0f0; border-top: 1px solid #ccc;
+  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+}
+.wlm-call-btn {
+  background: #fff; border: 1px solid #b8c9d6; border-radius: 50%;
+  width: 46px; height: 46px; cursor: pointer; font-size: 20px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.wlm-call-btn:hover { background: #eef4f9; }
+.wlm-call-btn.off { background: #ffe5e5; border-color: #ff9b9b; }
+.wlm-devices-pop {
+  position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+  background: #fff; border: 1px solid #b8d9eb; border-radius: 6px; padding: 10px 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); display: flex; flex-direction: column; gap: 8px;
+  min-width: 260px; z-index: 5;
+}
+.wlm-devices-pop label { display: flex; flex-direction: column; font-size: 12px; color: #004b8d; gap: 3px; }
+.wlm-devices-pop select { font-size: 12px; padding: 3px; max-width: 100%; }
+
+@media (max-width: 600px) {
+  .wlm-video-box { width: 100%; height: 100%; max-width: none; border-radius: 0; }
+  .wlm-video-stage { height: auto; flex: 1 1 auto; min-height: 0; }
+  .wlm-video-local { width: 90px; height: 68px; right: 8px; bottom: 8px; }
+  .wlm-call-controls { padding: 8px; }
+  .wlm-call-btn { width: 42px; height: 42px; }
+  .wlm-devices-pop { min-width: 220px; max-width: 90vw; }
+}
+
 
 
 

@@ -126,11 +126,12 @@ test('P1 socket : manual_disconnect ferme réellement la socket', async () => {
   assert.equal(await disconnected, true, 'la socket doit être coupée par le serveur');
 });
 
-test('P2 keys : remplacement de clés exige la preuve du mot de passe', async () => {
+test('P2 keys : installation ET remplacement de clés exigent la preuve du mot de passe', async () => {
   const jwk = (n) => ({ kty: 'RSA', n: 'A'.repeat(342) + n, e: 'AQAB' });
   const vault = { encryptedKeyBase64: 'A'.repeat(512), ivBase64: 'A'.repeat(16) };
   const t = tok(aliceId);
-  assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault })).status, 200, 'première installation');
+  assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault })).status, 403, 'première installation sans mot de passe refusée');
+  assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault, authKeyHex: PWD })).status, 200, 'première installation avec mot de passe');
   assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault })).status, 403, 'remplacement sans mot de passe refusé');
   assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault, authKeyHex: PWD })).status, 200, 'remplacement avec mot de passe accepté');
 });

@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 /**
  * Durcissement — /api/user/keys valide la forme de la clé publique (JWK RSA)
@@ -19,6 +20,9 @@ const JWT_SECRET = fs.existsSync(jwtSecretPath) ? fs.readFileSync(jwtSecretPath,
 const db = new Database(path.join(PROJECT_ROOT, 'messenger.db'));
 
 const UID = 9701;
+const AUTH_HEX = crypto.randomBytes(32).toString('hex');
+const SALT = crypto.randomBytes(16).toString('hex');
+const AUTH_HASH = crypto.pbkdf2Sync(AUTH_HEX, SALT, 210000, 64, 'sha512').toString('hex');
 
 const post = (apiPath, token, body) => new Promise((resolve) => {
   const postData = JSON.stringify(body);
@@ -49,8 +53,8 @@ function seed() {
   cleanup();
   db.prepare(`
     INSERT INTO users (id, username, password_hash, salt, nickname, psm, avatar, scene, status, token_version, global_private)
-    VALUES (?, 'kv_user', 'hash', 'salt', 'KV', 'PSM', '/assets/usertiles/chess.png', '/assets/scenes/0006.png', 'online', 0, 0)
-  `).run(UID);
+    VALUES (?, 'kv_user', ?, ?, 'KV', 'PSM', '/assets/usertiles/chess.png', '/assets/scenes/0006.png', 'online', 0, 0)
+  `).run(UID, AUTH_HASH, SALT);
 }
 
 test('/api/user/keys : JWK RSA + coffre valides acceptés, formes invalides rejetées (400)', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
@@ -60,7 +64,13 @@ test('/api/user/keys : JWK RSA + coffre valides acceptés, formes invalides reje
     const validJwk = { kty: 'RSA', n: 'A'.repeat(342), e: 'AQAB' };
     const validVault = { encryptedKeyBase64: 'A'.repeat(512), ivBase64: 'A'.repeat(16) };
 
-    const ok = await post('/api/user/keys', token, { publicKey: validJwk, encryptedPrivateKey: validVault });
+    // Première installation : la preuve du mot de passe est exigée
+    const noProof = await post('/api/user/keys', token, { publicKey: validJwk, encryptedPrivateKey: validVault });
+    assert.equal(noProof.status, 403, 'première installation sans authKeyHex refusée');
+    const wrongProof = await post('/api/user/keys', token, { publicKey: validJwk, encryptedPrivateKey: validVault, authKeyHex: 'b'.repeat(64) });
+    assert.equal(wrongProof.status, 403, 'première installation avec mauvais authKeyHex refusée');
+
+    const ok = await post('/api/user/keys', token, { publicKey: validJwk, encryptedPrivateKey: validVault, authKeyHex: AUTH_HEX });
     assert.equal(ok.status, 200, 'JWK RSA + coffre valides acceptés');
 
     const badKty = await post('/api/user/keys', token, { publicKey: { kty: 'EC', n: 'a', e: 'b' }, encryptedPrivateKey: {} });

@@ -23,7 +23,8 @@ interface AuthProps {
       public_key?: string;
       encrypted_private_key?: string;
     },
-    vaultKey: CryptoKey
+    vaultKey: CryptoKey,
+    authKeyHex: string
   ) => void;
   initialUsername?: string;
 }
@@ -155,7 +156,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
             ...res.data.user, 
             status, 
             rememberMe: rememberMe
-          }, vaultKey);
+          }, vaultKey, authKeyHex);
         } else {
           setError(t.auth.invalidServerResponse);
         }

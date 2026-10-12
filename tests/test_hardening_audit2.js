@@ -12,7 +12,7 @@ import { io as ClientIO } from 'socket.io-client';
 /**
  * Durcissements suite à l'audit #2 :
  *  #1 checkers_move : coordonnées non entières rejetées (pas de crash)
- *  #2 /user/keys : remplacement de clés exige la preuve du mot de passe
+ *  #2 /user/keys : installation et remplacement de clés exigent la preuve du mot de passe
  *  #3 change-password : nouveau coffre requis si un coffre existe
  *  #4 accept-invite : invitation déjà traitée non rejouable
  *  #5 push/subscribe : endpoint non-HTTPS/privé rejeté
@@ -85,15 +85,16 @@ function seedUser(id, username, { vault = null } = {}) {
 }
 
 // ── #2 /user/keys ──
-test('#2 /user/keys : remplacement exige la preuve du mot de passe', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
+test('#2 /user/keys : installation et remplacement exigent la preuve du mot de passe', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
   cleanup();
   seedUser(10001, 'hk_user');
   try {
     const t = tok(10001, 'hk_user');
     const jwk = (n) => ({ kty: 'RSA', n: 'A'.repeat(342) + n, e: 'AQAB' });
     const vault = { encryptedKeyBase64: 'A'.repeat(512), ivBase64: 'A'.repeat(16) };
-    // Première installation (aucune clé) → autorisée sans mot de passe
-    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault })).status, 200);
+    // Première installation (aucune clé) → la preuve du mot de passe est AUSSI exigée
+    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault })).status, 403);
+    assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('a'), encryptedPrivateKey: vault, authKeyHex: PWD })).status, 200);
     // Remplacement sans mot de passe → refusé
     assert.equal((await reqJson('/api/user/keys', 'POST', t, { publicKey: jwk('b'), encryptedPrivateKey: vault })).status, 403);
     // Remplacement avec mauvais mot de passe → refusé

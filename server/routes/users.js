@@ -240,14 +240,16 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
       return res.status(400).json({ error: "Coffre de clés invalide (encryptedKeyBase64/ivBase64 requis)." });
     }
 
-    // SÉCURITÉ : remplacer des clés EXISTANTES exige la preuve du mot de passe
-    // (sinon une session volée pourrait rotater l'identité cryptographique sans le mot de passe).
-    const existing = db.prepare('SELECT public_key, password_hash, salt FROM users WHERE id = ?').get(userId);
-    if (existing && existing.public_key) {
-      if (!authKeyHex || typeof authKeyHex !== 'string' ||
-          !(await verifyPasswordHash(authKeyHex, existing.salt, existing.password_hash))) {
-        return res.status(403).json({ error: "Clé d'authentification requise pour remplacer les clés existantes." });
-      }
+    // SÉCURITÉ : toute écriture de l'identité cryptographique (première installation
+    // comprise) exige la preuve du mot de passe. Sans cela, une session volée sur un
+    // compte qui n'a pas encore de clés (inscrit mais jamais connecté) pourrait y
+    // installer la paire de clés de l'attaquant.
+    if (!authKeyHex || typeof authKeyHex !== 'string' || !/^[a-fA-F0-9]{64}$/.test(authKeyHex)) {
+      return res.status(403).json({ error: "Clé d'authentification requise pour enregistrer des clés." });
+    }
+    const existing = db.prepare('SELECT password_hash, salt FROM users WHERE id = ?').get(userId);
+    if (!existing || !(await verifyPasswordHash(authKeyHex, existing.salt, existing.password_hash))) {
+      return res.status(403).json({ error: "Clé d'authentification invalide." });
     }
 
     try {

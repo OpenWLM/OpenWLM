@@ -1327,7 +1327,7 @@ const App: React.FC = () => {
    * 4. Si rememberMe est coché : tente la persistance sécurisée dans IndexedDB.
    *    EXIGENCE ABSOLUE : Si la persistance échoue, la connexion RÉUSSIT quand même sans blocage.
    */
-  const handleUserLogin = async (loggedInUser: any, vaultKey: CryptoKey) => {
+  const handleUserLogin = async (loggedInUser: any, vaultKey: CryptoKey, authKeyHex: string) => {
     if (loggedInUser.token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${loggedInUser.token}`;
     }
@@ -1358,10 +1358,12 @@ const App: React.FC = () => {
         privJwk = keyPair.privateKeyJwk;
 
         const vault = await encryptPrivateKeyVault(privJwk, vaultKey);
+        // Preuve du mot de passe exigée par le serveur, même pour la première installation
         await axios.post('/api/user/keys', {
           userId: loggedInUser.id,
           publicKey: pubJwk,
-          encryptedPrivateKey: vault
+          encryptedPrivateKey: vault,
+          authKeyHex
         });
         loggedInUser.public_key = pubJwk;
         loggedInUser.encrypted_private_key = vault;

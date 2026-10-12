@@ -186,6 +186,51 @@ export const decryptMessagePayload = async <T = Record<string, unknown>>(
   }
 };
 
+/* ----------------------------------------------------------------------------
+ * Signature / vérification (RSA-PSS) réutilisant le MÊME matériel de clé RSA
+ * que l'E2EE (aucune clé supplémentaire, aucun changement serveur).
+ * On retire `alg`/`key_ops`/`use`/`ext` du JWK pour le réimporter en RSA-PSS.
+ * -------------------------------------------------------------------------- */
+
+const stripJwkMeta = (jwk: JsonWebKey): JsonWebKey => {
+  const rest: Record<string, unknown> = { ...(jwk as Record<string, unknown>) };
+  delete rest.alg; delete rest.key_ops; delete rest.use; delete rest.ext;
+  return rest as JsonWebKey;
+};
+
+export const importPrivateKeyForSigning = async (privateKeyJwk: JsonWebKey): Promise<CryptoKey | null> => {
+  try {
+    return await window.crypto.subtle.importKey('jwk', stripJwkMeta(privateKeyJwk), { name: 'RSA-PSS', hash: 'SHA-256' }, false, ['sign']);
+  } catch { return null; }
+};
+
+export const importPublicKeyForVerifying = async (publicKeyJwk: JsonWebKey): Promise<CryptoKey | null> => {
+  try {
+    return await window.crypto.subtle.importKey('jwk', stripJwkMeta(publicKeyJwk), { name: 'RSA-PSS', hash: 'SHA-256' }, false, ['verify']);
+  } catch { return null; }
+};
+
+export const signString = async (key: CryptoKey, data: string): Promise<string> => {
+  const sig = await window.crypto.subtle.sign({ name: 'RSA-PSS', saltLength: 32 }, key, new TextEncoder().encode(data));
+  return arrayBufferToBase64(sig);
+};
+
+export const verifyString = async (key: CryptoKey, data: string, signatureB64: string): Promise<boolean> => {
+  try {
+    return await window.crypto.subtle.verify(
+      { name: 'RSA-PSS', saltLength: 32 }, key, base64ToArrayBuffer(signatureB64), new TextEncoder().encode(data),
+    );
+  } catch { return false; }
+};
+
+/** Extrait les empreintes DTLS (a=fingerprint:) d'un SDP, normalisées et triées. */
+export const extractFingerprints = (sdp: string): string => sdp
+  .split(/\r\n|\n/)
+  .filter((l) => l.startsWith('a=fingerprint:'))
+  .map((l) => l.trim())
+  .sort()
+  .join('\n');
+
 /**
  * Sanitisation simple contre les injections HTML/XSS
  */

@@ -17,6 +17,9 @@ export interface DeviceKeyRecord {
   username: string;
   publicKeyJwk: JsonWebKey;
   privateCryptoKey: CryptoKey;
+  // Clé de signature (RSA-PSS) dérivée du MÊME matériel RSA, non extractible.
+  // Optionnelle (anciens enregistrements) : sert à authentifier la signalisation d'appel.
+  signingCryptoKey?: CryptoKey;
   createdAt: number;
   updatedAt: number;
   version: number;
@@ -101,7 +104,8 @@ class E2EEKeyStorage {
     userId: number,
     username: string,
     publicKeyJwk: JsonWebKey,
-    privateCryptoKey: CryptoKey
+    privateCryptoKey: CryptoKey,
+    signingCryptoKey?: CryptoKey
   ): Promise<KeyStorageResult> {
     try {
       if (!this.isSupported()) {
@@ -119,6 +123,7 @@ class E2EEKeyStorage {
         username,
         publicKeyJwk,
         privateCryptoKey,
+        signingCryptoKey,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         version: 1
@@ -161,7 +166,7 @@ class E2EEKeyStorage {
    */
   public async getKeys(
     userId: number
-  ): Promise<KeyStorageResult<{ publicKeyJwk: JsonWebKey; privateCryptoKey: CryptoKey }>> {
+  ): Promise<KeyStorageResult<{ publicKeyJwk: JsonWebKey; privateCryptoKey: CryptoKey; signingCryptoKey?: CryptoKey }>> {
     try {
       if (!this.isSupported()) {
         return { success: false, error: "Web Crypto / IndexedDB non disponible" };
@@ -198,7 +203,8 @@ class E2EEKeyStorage {
               success: true,
               data: {
                 publicKeyJwk: result.publicKeyJwk,
-                privateCryptoKey: result.privateCryptoKey
+                privateCryptoKey: result.privateCryptoKey,
+                signingCryptoKey: result.signingCryptoKey
               }
             });
           };

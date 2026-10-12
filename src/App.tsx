@@ -16,6 +16,7 @@ import {
   encryptFileBinary,
   decryptCustomEmoticon,
   importPrivateCryptoKey,
+  importPrivateKeyForSigning,
   calculatePublicKeyFingerprint,
   formatSafetyNumber
 } from './utils/Security';
@@ -1110,8 +1111,8 @@ const App: React.FC = () => {
 
   // --- ÉTAT DE LA SÉCURITÉ (E2E) ---
   const [publicKeysCache, setPublicKeysCache] = useState<Record<number, any>>({});
-  const [myKeys, setMyKeys] = useState<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey } | null>(null);
-  const myKeysRef = useRef<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey } | null>(null);
+  const [myKeys, setMyKeys] = useState<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey; signingKey?: CryptoKey | null } | null>(null);
+  const myKeysRef = useRef<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey; signingKey?: CryptoKey | null } | null>(null);
   useEffect(() => { myKeysRef.current = myKeys; }, [myKeys]);
 
   // Calcul automatique de ma propre empreinte locale de sécurité dès chargement des clés
@@ -1268,7 +1269,8 @@ const App: React.FC = () => {
               setMyKeys({
                 publicKeyJwk,
                 privateKey: privateCryptoKey,
-                privateKeyJwk: privateCryptoKey as any
+                privateKeyJwk: privateCryptoKey as any,
+                signingKey: keyRes.data.signingCryptoKey ?? null
               });
               setUser({ ...serverUser, token: sessionToken, rememberMe: true });
               setIsDeviceRemembered(true);
@@ -1367,11 +1369,15 @@ const App: React.FC = () => {
 
       // Importation de la clé privée en CryptoKey native NON EXTRACTIBLE (protection anti-XSS)
       const privateCryptoKey = await importPrivateCryptoKey(privJwk, false);
+      // Clé de signature (RSA-PSS) dérivée du MÊME matériel RSA — également non extractible.
+      // Sert à authentifier la signalisation des appels (anti-MITM). Peut être null si non supporté.
+      const signingKey = await importPrivateKeyForSigning(privJwk);
 
       const keys = {
         publicKeyJwk: pubJwk,
         privateKey: privateCryptoKey,
-        privateKeyJwk: privateCryptoKey as any
+        privateKeyJwk: privateCryptoKey as any,
+        signingKey
       };
 
       // 1. Initialisation de la session en mémoire vive
@@ -1385,7 +1391,8 @@ const App: React.FC = () => {
             loggedInUser.id,
             loggedInUser.username,
             pubJwk,
-            privateCryptoKey
+            privateCryptoKey,
+            signingKey ?? undefined
           );
 
           if (saveRes.success) {
@@ -2172,7 +2179,8 @@ const App: React.FC = () => {
       newSocket.on('incoming_call', (data) => {
         console.log("Appel entrant de :", data.callerName);
         
-        try { setCallSignal(JSON.parse(decodeURIComponent(escape(window.atob(data.signal))))); } catch(e) { setCallSignal(data.signal); }
+        // La signalisation est chiffrée E2EE : on la transmet BRUTE à <VideoCall/> qui la déchiffre.
+        setCallSignal(data.signal);
         setActiveCallId(data.caller);
         setIsReceivingCall(true);
         setIsAudioOnly(!!data.audioOnly);
@@ -5565,6 +5573,8 @@ const App: React.FC = () => {
           isReceivingCall={isReceivingCall} 
           incomingSignal={callSignal} 
           audioOnly={isAudioOnly}
+          myKeys={myKeys}
+          getContactPublicKey={getPublicKey}
           onEndCall={handleEndCall}
         />
       )}

@@ -4,6 +4,14 @@ import { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
+import {
+  encryptMessagePayload,
+  decryptMessagePayload,
+  importPublicKeyForVerifying,
+  signString,
+  verifyString,
+  extractFingerprints,
+} from '../utils/Security';
 
 interface VideoCallProps {
   socket: Socket | null;
@@ -14,16 +22,23 @@ interface VideoCallProps {
   isReceivingCall: boolean;
   incomingSignal?: unknown;
   audioOnly?: boolean;
+  myKeys?: { publicKeyJwk?: JsonWebKey; privateKey?: CryptoKey; signingKey?: CryptoKey | null } | null;
+  getContactPublicKey?: (contactId: number, forceRefresh?: boolean) => Promise<JsonWebKey | null>;
   onEndCall: () => void;
+}
+
+// Payload de signalisation (chiffré E2EE avant transport)
+interface SignalPayload {
+  type: string;
+  sdp?: string;
+  candidate?: RTCIceCandidateInit;
+  fpSig?: string;
 }
 
 type CallStatus = 'calling' | 'remoteRinging' | 'ringing' | 'connecting' | 'connected' | 'reconnecting' | 'ended';
 type Quality = 'good' | 'fair' | 'poor';
 
 const DEFAULT_ICE: RTCConfiguration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-
-const encodeSignal = (obj: unknown) => window.btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
-const decodeSignal = (str: string) => JSON.parse(decodeURIComponent(escape(window.atob(str))));
 
 // P1 : Opus — force FEC (résilience à la perte) et DTX (silence = pas de paquets)
 const mungeOpus = (sdp: string): string => sdp.replace(/a=fmtp:(\d+) ([^\r\n]*minptime=[^\r\n]*)/g, (_m, pt, params) => {
@@ -40,7 +55,7 @@ const MAX_ICE_RESTARTS = 3;
 
 const fmtDuration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, contactName, callerName, isReceivingCall, incomingSignal, audioOnly, onEndCall }) => {
+const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, contactName, callerName, isReceivingCall, incomingSignal, audioOnly, myKeys, getContactPublicKey, onEndCall }) => {
   const { t } = useI18n();
   const [callStatus, setCallStatus] = useState<CallStatus>(isReceivingCall ? 'ringing' : 'calling');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -114,10 +129,63 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
 
   const handleEndCall = useCallback(() => finish(), [finish]);
 
-  const emitSignal = useCallback((signal: unknown) => {
+  const myKeysRef = useRef(myKeys);
+  useEffect(() => { myKeysRef.current = myKeys; }, [myKeys]);
+  const getContactKeyRef = useRef(getContactPublicKey);
+  useEffect(() => { getContactKeyRef.current = getContactPublicKey; }, [getContactPublicKey]);
+  const contactKeyRef = useRef<JsonWebKey | null>(null);
+
+  const resolveContactKey = useCallback(async (): Promise<JsonWebKey | null> => {
+    if (contactKeyRef.current) return contactKeyRef.current;
+    try {
+      const k = await getContactKeyRef.current?.(activeChatId);
+      if (k) contactKeyRef.current = k;
+      return k ?? null;
+    } catch { return null; }
+  }, [activeChatId]);
+
+  // Chiffre (E2EE) + signe l'empreinte DTLS, puis renvoie la chaîne à transmettre.
+  const buildSignal = useCallback(async (signal: SignalPayload): Promise<string | null> => {
+    const keys = myKeysRef.current;
+    const contactPub = await resolveContactKey();
+    if (!keys?.publicKeyJwk || !contactPub) {
+      console.warn('[WebRTC] Signal non chiffré : clés E2EE indisponibles');
+      return null;
+    }
+    const payload: SignalPayload = { ...signal };
+    if ((payload.type === 'offer' || payload.type === 'answer') && payload.sdp && keys.signingKey) {
+      try { payload.fpSig = await signString(keys.signingKey, extractFingerprints(payload.sdp)); } catch { /* ignore */ }
+    }
+    try {
+      const e2ee = await encryptMessagePayload(payload, contactPub, keys.publicKeyJwk);
+      return JSON.stringify(e2ee);
+    } catch (e) { console.error('[WebRTC] Échec chiffrement signal:', e); return null; }
+  }, [resolveContactKey]);
+
+  const emitSignal = useCallback(async (signal: SignalPayload) => {
     if (!socket) return;
-    socket.emit('webrtc_signal', { target: activeChatId, caller: myId, signal: encodeSignal(signal) });
-  }, [socket, activeChatId, myId]);
+    const encoded = await buildSignal(signal);
+    if (encoded) socket.emit('webrtc_signal', { target: activeChatId, caller: myId, signal: encoded });
+  }, [socket, activeChatId, myId, buildSignal]);
+
+  const decryptSignal = useCallback(async (raw: unknown): Promise<SignalPayload | null> => {
+    const keys = myKeysRef.current;
+    if (!keys?.privateKey) return null;
+    try {
+      const e2ee = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return await decryptMessagePayload<SignalPayload>(e2ee, keys.privateKey, false);
+    } catch (e) { console.error('[WebRTC] Échec déchiffrement signal:', e); return null; }
+  }, []);
+
+  // Vérifie la signature de l'empreinte DTLS (anti-MITM). Tolérant si indisponible.
+  const verifyFingerprint = useCallback(async (payload: SignalPayload): Promise<boolean> => {
+    if (!payload.fpSig || !payload.sdp) return true;
+    const contactPub = await resolveContactKey();
+    if (!contactPub) return true;
+    const vk = await importPublicKeyForVerifying(contactPub);
+    if (!vk) return true;
+    return await verifyString(vk, extractFingerprints(payload.sdp), payload.fpSig);
+  }, [resolveContactKey]);
 
   const applySenderCaps = useCallback(async (pc: RTCPeerConnection) => {
     for (const sender of pc.getSenders()) {
@@ -296,17 +364,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         try {
           makingOfferRef.current = true;
           await pc.setLocalDescription();
-          emitSignal(pc.localDescription);
+          await emitSignal({ type: 'offer', sdp: pc.localDescription?.sdp });
         } catch { /* ignore */ } finally { makingOfferRef.current = false; }
       };
 
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       if (isReceivingCall && incomingSignal) {
-        await pc.setRemoteDescription(new RTCSessionDescription(incomingSignal as RTCSessionDescriptionInit));
+        const offer = await decryptSignal(incomingSignal);
+        if (!offer?.sdp) { console.error('[WebRTC] Offre entrante illisible'); finish(t.videoCall.genericError); return; }
+        if (!(await verifyFingerprint(offer))) { console.error('[WebRTC] Empreinte DTLS invalide (offre)'); finish(t.videoCall.failed); return; }
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: offer.type as RTCSdpType, sdp: offer.sdp }));
         const answer = await pc.createAnswer();
         await applyLocalDescription(pc, answer);
-        emitSignal(pc.localDescription);
+        await emitSignal({ type: 'answer', sdp: pc.localDescription?.sdp });
         await applySenderCaps(pc);
         for (const candidate of iceCandidatesQueue.current) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { /* ignore */ });
@@ -316,8 +387,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       } else {
         const offer = await pc.createOffer();
         await applyLocalDescription(pc, offer);
+        const encodedOffer = await buildSignal({ type: 'offer', sdp: pc.localDescription?.sdp });
+        if (!encodedOffer) {
+          console.error('[WebRTC] Offre non chiffrée : appel annulé');
+          finish(t.videoCall.genericError);
+          return;
+        }
         if (socket) {
-          socket.emit('call_request', { target: activeChatId, caller: myId, callerName, signal: encodeSignal(pc.localDescription), audioOnly });
+          socket.emit('call_request', { target: activeChatId, caller: myId, callerName, signal: encodedOffer, audioOnly });
         }
         await applySenderCaps(pc);
         ringTimerRef.current = setTimeout(() => {
@@ -329,7 +406,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       alert(t.videoCall.genericError);
       finish();
     }
-  }, [audioOnly, activeChatId, myId, isReceivingCall, incomingSignal, socket, callerName, emitSignal, applySenderCaps, applyLocalDescription, fetchRtcConfig, finish, tryRestartIce, t]);
+  }, [audioOnly, activeChatId, myId, isReceivingCall, incomingSignal, socket, callerName, emitSignal, decryptSignal, verifyFingerprint, buildSignal, applySenderCaps, applyLocalDescription, fetchRtcConfig, finish, tryRestartIce, t]);
 
   // Sonnerie d'appel entrant
   useEffect(() => {
@@ -487,29 +564,36 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       if (data.caller !== activeChatId) return;
       const pc = peerConnectionRef.current;
       try {
-        const signal = decodeSignal(data.signal);
-        if (signal.type === 'answer') {
+        const payload = await decryptSignal(data.signal);
+        if (!payload) return;
+        // Anti-MITM : la signalisation (offer/answer) doit être signée par la clé E2EE du pair.
+        if ((payload.type === 'offer' || payload.type === 'answer') && !(await verifyFingerprint(payload))) {
+          console.error('[WebRTC] Signature d\'empreinte DTLS invalide (signal)');
+          finish(t.videoCall.failed);
+          return;
+        }
+        if (payload.type === 'answer') {
           if (pc && pc.signalingState === 'have-local-offer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(signal));
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: payload.sdp }));
             await applySenderCaps(pc);
             renegotiationReadyRef.current = true;
             if (statusRef.current !== 'connected') setCallStatus('connecting');
           }
-        } else if (signal.type === 'offer') {
+        } else if (payload.type === 'offer') {
           // P1 : renégociation (perfect negotiation)
           if (!pc) return;
           const collision = makingOfferRef.current || pc.signalingState !== 'stable';
           ignoreOfferRef.current = !politeRef.current && collision;
           if (ignoreOfferRef.current) return;
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: payload.sdp }));
           const answer = await pc.createAnswer();
           await applyLocalDescription(pc, answer);
-          emitSignal(pc.localDescription);
-        } else if (signal.type === 'ice-candidate' && signal.candidate) {
+          void emitSignal({ type: 'answer', sdp: pc.localDescription?.sdp });
+        } else if (payload.type === 'ice-candidate' && payload.candidate) {
           if (pc && pc.remoteDescription) {
-            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(() => { /* ignore */ });
+            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => { /* ignore */ });
           } else {
-            iceCandidatesQueue.current.push(signal.candidate);
+            iceCandidatesQueue.current.push(payload.candidate);
           }
         }
       } catch (e) { console.error('[WebRTC] Erreur traitement signal:', e); }
@@ -542,7 +626,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       socket.off('call_ended', onEnded);
       socket.off('connect', onSocketReconnect);
     };
-  }, [socket, activeChatId, isReceivingCall, applySenderCaps, applyLocalDescription, emitSignal, finish, tryRestartIce, t]);
+  }, [socket, activeChatId, isReceivingCall, applySenderCaps, applyLocalDescription, emitSignal, decryptSignal, verifyFingerprint, finish, tryRestartIce, t]);
 
   useEffect(() => {
     return () => {

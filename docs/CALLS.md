@@ -85,3 +85,21 @@ TURN_PASSWORD=<credential>
 
 > ⚠️ Ces fonctions restent à **valider par un appel réel à 2 pairs** (le partage d'écran
 > et la renégociation ne sont pas couverts par les tests automatisés).
+
+## 5. Sécurité des appels (E2E)
+- **Média** : chiffré de bout en bout par **DTLS-SRTP** (natif WebRTC). Le TURN et le Tunnel
+  ne voient que du chiffré.
+- **Signalisation (SDP/ICE)** : **chiffrée E2EE** avant transport, avec le **même schéma
+  que les messages** (`encryptMessagePayload` : AES-GCM + clé AES emballée RSA-OAEP pour les
+  deux pairs). Le serveur devient un **relais aveugle** — il ne peut plus lire les SDP/ICE.
+- **Anti-MITM** : l'empreinte **DTLS** (`a=fingerprint:`) de chaque offer/answer est
+  **signée (RSA-PSS)** par la clé du pair (même matériel RSA que l'E2EE, réimporté en PSS)
+  et **vérifiée** à la réception. Une offre forgée par un serveur compromis est **rejetée**.
+  Vérifié en isolation : signature valide OK, altération rejetée, MITM rejeté.
+- **Confiance des clés publiques** : TOFU + vérification de contact (déjà en place) ; une
+  fois l'identité du contact vérifiée, le binding média↔identité est authentifié.
+- **Dégradation tolérante** : si le navigateur ne supporte pas RSA-PSS ou la clé de signature
+  est absente, l'appel continue **sans** vérification d'empreinte (signature ignorée).
+- ⚠️ **Format de signalisation changé** : les **deux pairs doivent recharger** l'app
+  (Ctrl+F5). Un client ancien (signalisation non chiffrée) ne peut pas établir d'appel avec
+  un client récent.

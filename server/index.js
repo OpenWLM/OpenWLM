@@ -22,7 +22,8 @@ import { createEmoticonsRouter } from './routes/emoticons.js';
 import { createPushRouter } from './routes/push.js';
 import { createGamesRouter, activeGames, getGamePlayers } from './routes/games.js';
 import createRtcRouter from './routes/rtc.js';
-import { messageLimits, wizzLimits } from './sockets/messages.js';
+import { messageLimits, wizzLimits, winkLimits } from './sockets/messages.js';
+import { cleanupWindow } from './utils/rateWindow.js';
 import { setupSocketHandlers } from './sockets/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -193,13 +194,11 @@ const cleanupMemoryMaps = () => {
     limiter.cleanup();
   }
 
-  for (const map of [messageLimits, wizzLimits]) {
-    for (const [uid, timestamps] of map.entries()) {
-      const active = timestamps.filter(ts => now - ts < 10000);
-      if (active.length === 0) map.delete(uid);
-      else map.set(uid, active);
-    }
-  }
+  // Le nettoyage utilise la MÊME fenêtre que chaque limiteur (sinon des événements
+  // encore pertinents seraient purgés → limite plus permissive que ce qui est annoncé).
+  cleanupWindow(messageLimits, 10000, now);
+  cleanupWindow(wizzLimits, 60000, now);
+  cleanupWindow(winkLimits, 60000, now);
 
   for (const [key, game] of activeGames.entries()) {
     const players = getGamePlayers(game);

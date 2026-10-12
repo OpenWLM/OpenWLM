@@ -2,9 +2,13 @@ import { db } from '../db.js';
 import { getUserRoom, isUserOnline } from '../sessionStore.js';
 import { canInteract } from '../middleware/auth.js';
 import { dispatchPushNotification } from '../routes/push.js';
+import { isAllowed } from '../utils/rateWindow.js';
 
-export const wizzLimits = new Map();
-export const messageLimits = new Map();
+// Compteurs SÉPARÉS (fenêtre 60 s) : les Wizz et les Winks ne doivent pas se voler
+// mutuellement leur quota (3 Wizz/min ET 7 Winks/min, indépendants).
+export const wizzLimits = new Map();   // Wizz uniquement — 3 / 60 s
+export const winkLimits = new Map();   // Winks uniquement — 7 / 60 s
+export const messageLimits = new Map(); // Messages — 20 / 10 s
 
 // Compteur d'ids temporaires pour les messages privés (évite les collisions Date.now() à la même ms)
 let privateMsgSeq = 0;
@@ -28,16 +32,11 @@ export const registerMessageHandlers = (io, socket) => {
       return;
     }
 
-    const now = Date.now();
-    const timestamps = messageLimits.get(senderId) || [];
-    const recentMessages = timestamps.filter(ts => now - ts < 10000);
-    if (recentMessages.length >= 20) {
+    // 20 messages / 10 s
+    if (!isAllowed(messageLimits, senderId, 20, 10000)) {
       if (typeof callback === 'function') callback({ success: false, error: "Trop de messages envoyés." });
-      return; 
+      return;
     }
-    
-    recentMessages.push(now);
-    messageLimits.set(senderId, recentMessages);
 
     const sender = db.prepare('SELECT id, username, nickname, global_private FROM users WHERE id = ?').get(senderId);
     const receiver = db.prepare('SELECT global_private FROM users WHERE id = ?').get(receiverId);
@@ -258,13 +257,8 @@ export const registerMessageHandlers = (io, socket) => {
       return;
     }
 
-    const now = Date.now();
-    const timestamps = wizzLimits.get(senderId) || [];
-    const recentWizz = timestamps.filter(ts => now - ts < 60000);
-    if (recentWizz.length >= 3) return;
-    
-    recentWizz.push(now);
-    wizzLimits.set(senderId, recentWizz);
+    // 3 Wizz / minute (compteur dédié)
+    if (!isAllowed(wizzLimits, senderId, 3, 60000)) return;
 
     io.to(getUserRoom(receiverId)).emit('receive_wizz', { senderId, receiverId });
 
@@ -295,13 +289,8 @@ export const registerMessageHandlers = (io, socket) => {
 
     if (!winkId || typeof winkId !== 'string' || !/^[\w-]+$/.test(winkId)) return;
 
-    const now = Date.now();
-    const timestamps = wizzLimits.get(senderId) || [];
-    const recentWinks = timestamps.filter(ts => now - ts < 60000);
-    if (recentWinks.length >= 7) return;
-    
-    recentWinks.push(now);
-    wizzLimits.set(senderId, recentWinks);
+    // 7 Winks / minute (compteur dédié, indépendant des Wizz)
+    if (!isAllowed(winkLimits, senderId, 7, 60000)) return;
 
     io.to(getUserRoom(receiverId)).emit('receive_wink', { senderId, receiverId, winkId });
   });

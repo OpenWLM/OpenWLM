@@ -2,7 +2,7 @@
 
 > ⚠️ Ce document décrit **exactement** ce qui est implémenté, ce qui **n'est pas**
 > fait, et les **limites**. Aucun « chiffrement de bout en bout partout » n'est
-> revendiqué au-delà de ce qui suit. Dernière mise à jour : 2026-10-12.
+> revendiqué au-delà de ce qui suit. Dernière mise à jour : 2026-10-12 (signatures des messages, vérification stricte des appels).
 
 ---
 
@@ -10,12 +10,12 @@
 
 | Contenu | Chiffrement | Où c'est fait |
 |---|---|---|
-| **Messages texte** | AES‑GCM 256 + clé AES emballée **RSA‑OAEP 2048/SHA‑256** pour le destinataire **et** l'expéditeur | Client (`src/utils/Security.ts`) — le serveur ne stocke que `{iv,payload,keyReceiver,keySender}` |
+| **Messages texte** | AES‑GCM 256 + clé AES emballée **RSA‑OAEP 2048/SHA‑256** pour le destinataire **et** l'expéditeur, puis enveloppe **signée RSA‑PSS** par l'expéditeur (cf. §2 bis) | Client (`src/utils/MessageEnvelope.ts`) — le serveur ne stocke que l'enveloppe `{v,from,to,mid,ts,iv,payload,keyReceiver,keySender,sig}` |
 | **Clips vocaux** | inclus dans le **payload chiffré** du message | Client |
 | **Fichiers / pièces jointes** | **chiffrés côté client avant upload** (AES‑GCM 256 + clé RSA‑OAEP), serveur = coffre opaque | `encryptFileBinary` (client) |
 | **Émoticônes personnalisées** | **chiffrées côté client avant upload** ; la clé AES voyage dans le message E2EE | `encryptCustomEmoticon` (client) |
 | **Appels — média** | **DTLS‑SRTP** (imposé par WebRTC) : chiffré **pair‑à‑pair** ; TURN et Tunnel ne voient que du chiffré | Navigateur (WebRTC) |
-| **Appels — signalisation (SDP/ICE)** | **chiffrée E2EE** (même schéma que les messages) + **empreinte DTLS signée RSA‑PSS** et vérifiée (anti‑MITM) | `src/components/VideoCall.tsx` |
+| **Appels — signalisation (SDP/ICE)** | **chiffrée E2EE** + **empreinte DTLS signée RSA‑PSS**, vérification **obligatoire** : une offre/réponse non signée ou invérifiable est refusée (anti‑MITM) | `src/components/VideoCall.tsx` |
 
 **Primitives utilisées** : AES‑GCM 256, RSA‑OAEP 2048 (SHA‑256), RSA‑PSS (SHA‑256, salt 32), PBKDF2‑HMAC‑SHA256 **600 000** itérations, HKDF‑SHA256, DTLS‑SRTP.
 
@@ -23,6 +23,54 @@
 `PBKDF2(600k)` → *MasterKey* → `HKDF` → `authKey` (transport) + `vaultKey` (AES‑GCM) qui
 **chiffre la clé privée RSA** avant son stockage serveur. Le serveur détient le **coffre
 chiffré**, jamais la clé en clair.
+
+---
+
+## 2 bis. Authentification des messages (signatures)
+
+Depuis l'enveloppe v2, chaque message (texte, vocal, fichier, wink) est **chiffré puis
+signé** par l'expéditeur. Avant, les messages étaient chiffrés mais **pas authentifiés** :
+le serveur, qui connaît toutes les clés publiques, pouvait fabriquer un message chiffré
+valide « de la part de » n'importe quel contact, et le client affichait aussi le texte non
+chiffré tel quel.
+
+**Ce que vérifie le client à la réception** (`openMessage`) :
+
+- la **signature RSA‑PSS** de l'expéditeur sur l'enveloppe complète (préfixe de domaine
+  `openwlm-msg-v2`, distinct des signatures d'appel) ;
+- que l'**émetteur et le destinataire signés** correspondent à ceux annoncés par le serveur
+  (pas de réacheminement) ;
+- que `from`/`to`/`mid`, **répétés dans le contenu chiffré**, correspondent à l'enveloppe
+  (un tiers ne peut pas retirer la signature et re‑signer avec sa propre clé) ;
+- l'**unicité du `mid`** (128 bits aléatoires) : un message rejoué est ignoré.
+
+**Ce que voit l'utilisateur :**
+
+| Verdict | Affichage |
+|---|---|
+| Signé et valide | normal |
+| Ancien format non signé (antérieur aux signatures) | contenu affiché avec **⚠ « non vérifié »** |
+| Clé publique de l'expéditeur indisponible | contenu affiché avec **⚠ « non vérifié »** |
+| Signature invalide / incohérente | **contenu masqué**, bandeau « Message rejeté » |
+| Message non chiffré | **contenu masqué**, bandeau « Message rejeté » |
+
+**Anti‑rétrogradation** : dès qu'un contact a envoyé un message signé valide, un message
+**non signé** reçu en direct de sa part est rejeté (son client signe toujours). Les anciens
+messages de l'historique restent lisibles, avec l'avertissement.
+
+**Limites :**
+
+- **TOFU** : la signature prouve que le message vient du **détenteur de la clé publique
+  distribuée par le serveur**. Sans vérification manuelle du code de sécurité, un serveur
+  compromis peut toujours substituer la clé d'un contact **avant** le premier échange (ou
+  après une réinitialisation, ce qui déclenche l'alerte de changement d'empreinte).
+- La **même paire RSA** sert au chiffrement (OAEP) et à la signature (PSS). Aucune attaque
+  pratique connue sur cette combinaison, et le code de sécurité couvre ainsi les deux usages ;
+  des clés séparées restent la pratique recommandée (évolution future, nécessite un
+  changement de schéma serveur).
+- L'**anti‑rejeu** porte sur la session (et sur chaque chargement d'historique) ; `ts` est
+  signé mais pas contrôlé par rapport à l'horloge locale.
+- Les **métadonnées** (cf. §2) restent visibles du serveur.
 
 ---
 
@@ -91,6 +139,7 @@ limite habituelle de ce type d'application.
 ## 6. Références code
 
 - `src/utils/Security.ts` — primitives E2EE (AES‑GCM, RSA‑OAEP, RSA‑PSS, PBKDF2/HKDF).
+- `src/utils/MessageEnvelope.ts` — enveloppe de message signée v2 (scellement, vérification, verdicts) ; tests : `tests/test_message_envelope.js`, `tests/test_signed_messages_server.js`.
 - `src/utils/E2EEKeyStorage.ts` — stockage local des clés (non extractibles).
 - `src/components/VideoCall.tsx` — signalisation E2EE + signature/vérif de l'empreinte DTLS.
 - `src/components/CustomEmoticonsModal.tsx` — chiffrement des émoticônes avant upload.

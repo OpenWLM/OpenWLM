@@ -40,6 +40,9 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgi
 
 OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement de bout en bout :
 
+> 📌 **État réel (sans marketing) — ce qui est E2E, ce qui ne l'est PAS, et les limites :**
+> voir **[docs/SECURITY_E2E.md](docs/SECURITY_E2E.md)**.
+
 1. **Chiffrement de bout en bout (E2EE Zero-Knowledge)** :
    - Chiffrement asymétrique RSA-OAEP 2048 bits pour l'échange de clés de session.
    - Chiffrement symétrique AES-256-GCM pour les messages, fichiers et émoticônes.

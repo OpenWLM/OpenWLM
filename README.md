@@ -40,6 +40,9 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 
 OpenWLM has undergone an extensive security audit and rigorous end-to-end hardening:
 
+> 📌 **Ground truth (no marketing) — what is really E2E, what is NOT, and the limits:**
+> see **[docs/SECURITY_E2E.md](docs/SECURITY_E2E.md)**.
+
 1. **End-to-End Encryption (E2EE Zero-Knowledge)**:
    - Asymmetric RSA-OAEP 2048-bit encryption for session key exchange.
    - Symmetric AES-256-GCM encryption for messages, file transfers, and custom emoticons.

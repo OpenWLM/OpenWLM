@@ -70,6 +70,8 @@ TURN_PASSWORD=<credential>
 - **Plein écran** et **image dans l'image (PiP)**.
 - **Responsive mobile** (modale plein écran, contrôles adaptés) ; vidéo distante en `object-fit: contain`.
 - États d'appel enrichis : Sonnerie / Connexion / Reconnexion / terminaison avec motif.
+- **Sonnerie en boucle** (élément audio, non affecté par le throttling des minuteries
+  en arrière-plan) + **notification système** sur appel entrant (alerte même onglet caché).
 
 ## 4. P1 — implémenté
 - **Adaptation dynamique** : la boucle `getStats()` (RTT + perte) ajuste `maxBitrate` et

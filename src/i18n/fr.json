@@ -293,6 +293,8 @@
     "ringing": "Appel entrant de {name}...",
     "audioInProgress": "Appel vocal en cours...",
     "remoteRinging": "{name} est en train de sonner...",
+    "audioIncoming": "Appel audio entrant…",
+    "videoIncoming": "Appel vidéo entrant…",
     "connecting": "Connexion...",
     "reconnecting": "Reconnexion en cours...",
     "ended": "Appel terminé",

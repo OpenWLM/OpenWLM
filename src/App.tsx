@@ -2184,6 +2184,19 @@ const App: React.FC = () => {
         setActiveCallId(data.caller);
         setIsReceivingCall(true);
         setIsAudioOnly(!!data.audioOnly);
+
+        // Alerte système : utile quand l'onglet est en arrière-plan (la sonnerie peut y être limitée).
+        try {
+          if (getSystemNotificationPermission() === 'granted') {
+            showSystemNotification({
+              title: `${data.callerName || 'Contact'} — OpenWLM`,
+              body: data.audioOnly ? t.videoCall.audioIncoming : t.videoCall.videoIncoming,
+              icon: '/assets/openwlm_logo.png',
+              tag: `openwlm-call-${data.caller}`,
+              onClick: () => { try { window.focus(); } catch { /* ignore */ } }
+            });
+          }
+        } catch { /* ignore */ }
       });
 
       // Note : la signalisation WebRTC (webrtc_signal) est gérée dans <VideoCall />.

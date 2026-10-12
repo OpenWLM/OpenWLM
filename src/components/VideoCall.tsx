@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { Socket } from 'socket.io-client';
-import SoundManager from '../utils/SoundManager';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
 import {
@@ -94,6 +93,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const renegotiationReadyRef = useRef(false);
   const adaptAppliedRef = useRef<Quality>('good');
   const adaptCandidateRef = useRef<{ level: Quality; count: number }>({ level: 'good', count: 0 });
+  const ringAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { statusRef.current = callStatus; }, [callStatus]);
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
@@ -408,11 +408,19 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     }
   }, [audioOnly, activeChatId, myId, isReceivingCall, incomingSignal, socket, callerName, emitSignal, decryptSignal, verifyFingerprint, buildSignal, applySenderCaps, applyLocalDescription, fetchRtcConfig, finish, tryRestartIce, t]);
 
-  // Sonnerie d'appel entrant
+  // Sonnerie d'appel entrant : élément audio EN BOUCLE (les minuteries sont
+  // fortement throttlées dans un onglet en arrière-plan, pas la lecture média).
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-    if (callStatus === 'ringing') { SoundManager.play('phone'); interval = setInterval(() => SoundManager.play('phone'), 3500); }
-    return () => { if (interval) clearInterval(interval); };
+    if (callStatus !== 'ringing') {
+      if (ringAudioRef.current) { ringAudioRef.current.pause(); ringAudioRef.current.currentTime = 0; ringAudioRef.current = null; }
+      return;
+    }
+    const audio = new Audio('/assets/sounds/phone.mp3');
+    audio.loop = true;
+    audio.volume = 1.0;
+    ringAudioRef.current = audio;
+    audio.play().catch((e) => { console.warn('[WebRTC] Sonnerie bloquée par la politique autoplay:', e); });
+    return () => { audio.pause(); audio.currentTime = 0; if (ringAudioRef.current === audio) ringAudioRef.current = null; };
   }, [callStatus]);
 
   useEffect(() => {

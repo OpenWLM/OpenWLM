@@ -3,6 +3,7 @@ import axios from 'axios';
 import { deriveZeroKnowledgeKeys } from '../utils/Security';
 import { useI18n } from '../i18n';
 import { evaluatePassword, type PasswordStrengthLevel } from '../utils/PasswordStrength';
+import { solveProofOfWork, type PowChallenge } from '../utils/ProofOfWork';
 
 /**
  * Interface pour les propriétés du composant Auth
@@ -43,7 +44,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isDeriving, setIsDeriving] = useState(false);
-  const [captchaData, setCaptchaData] = useState<{ id: string; text: string; num1?: number; num2?: number } | null>(null);
+  const [captchaData, setCaptchaData] = useState<{ id: string; text: string; num1?: number; num2?: number; pow?: PowChallenge } | null>(null);
+  const [isSolvingPow, setIsSolvingPow] = useState(false);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
 
   // Évaluation dynamique de la robustesse et de la conformité du mot de passe
@@ -164,12 +166,22 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
           return;
         }
 
+        // Preuve de travail anti-inscription de masse (défi fourni avec le captcha)
+        setIsSolvingPow(true);
+        let powNonce: string;
+        try {
+          powNonce = await solveProofOfWork(captchaData.pow);
+        } finally {
+          setIsSolvingPow(false);
+        }
+
         await axios.post('/api/signup', { 
           username, 
           password: authKeyHex, 
           nickname, 
           captchaId: captchaData.id, 
-          captchaAnswer 
+          captchaAnswer,
+          powNonce
         });
         
         setIsLogin(true);
@@ -371,7 +383,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
               className="wlm-btn-auth" 
               disabled={isDeriving || (!isLogin && !captchaData)}
             >
-              {isDeriving ? t.auth.encrypting : (isLogin ? t.auth.signInBtn : t.auth.signUpBtn)}
+              {isSolvingPow ? t.auth.antiBotChecking : isDeriving ? t.auth.encrypting : (isLogin ? t.auth.signInBtn : t.auth.signUpBtn)}
             </button>
             <span className="auth-toggle" onClick={toggleMode}>
               {isLogin ? t.auth.noAccount : t.auth.hasAccount}

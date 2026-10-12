@@ -15,8 +15,21 @@ import {
   verifyPasswordHash,
   burnPasswordCheck
 } from '../middleware/auth.js';
+import { getClientIp } from '../clientIdentity.js';
+import {
+  createPowChallenge,
+  verifyPow,
+  createSuccessCounter,
+  getSignupIpDailyLimit
+} from '../utils/signupGuard.js';
 
 export const captchas = new Map();
+
+// SÉCURITÉ : plafond d'inscriptions RÉUSSIES par IP (fenêtre glissante 24 h)
+export const signupIpCounter = createSuccessCounter({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: getSignupIpDailyLimit()
+});
 
 export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   const router = Router();
@@ -79,16 +92,25 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     const id = crypto.randomUUID();
     const lang = (req.query.lang || '').toString().toLowerCase();
 
-    captchas.set(id, { answer: num1 + num2, expires: Date.now() + 5 * 60 * 1000 });
+    // Défi de preuve de travail lié à ce captcha (usage unique, même durée de vie)
+    const pow = createPowChallenge();
+    captchas.set(id, { answer: num1 + num2, pow, expires: Date.now() + 5 * 60 * 1000 });
     const text = lang === 'en' ? `How much is ${num1} + ${num2}?` : `Combien font ${num1} + ${num2} ?`;
-    res.json({ id, num1, num2, question: `${num1} + ${num2} = ?`, text });
+    // NB : num1/num2 restent exposés pour l'UX. Le captcha mathématique n'est PAS une
+    // protection anti-robot ; ce sont la PoW et le plafond par IP qui le sont.
+    res.json({ id, num1, num2, question: `${num1} + ${num2} = ?`, text, pow });
   });
 
   /**
    * Inscription d'un nouvel utilisateur
    */
   router.post('/signup', authRateLimiter, async (req, res) => {
-    const { username, password, nickname, captchaId, captchaAnswer } = req.body;
+    const { username, password, nickname, captchaId, captchaAnswer, powNonce } = req.body;
+
+    const clientIp = getClientIp(req);
+    if (!signupIpCounter.check(clientIp).allowed) {
+      return res.status(429).json({ error: "Trop de comptes créés depuis cette adresse. Veuillez réessayer plus tard." });
+    }
 
     const signupLimit = signupAccountLimiter.attempt(username);
     if (!signupLimit.allowed) {
@@ -106,6 +128,10 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     if (parseInt(captchaAnswer) !== storedCaptcha.answer) {
       captchas.delete(captchaId);
       return res.status(400).json({ error: 'Réponse au Captcha incorrecte.' });
+    }
+    if (!verifyPow(storedCaptcha.pow, powNonce)) {
+      captchas.delete(captchaId);
+      return res.status(400).json({ error: 'Vérification anti-robot (preuve de travail) invalide.' });
     }
     captchas.delete(captchaId);
 
@@ -128,6 +154,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
       const hashedPassword = await hashPassword(password, salt);
       const stmt = db.prepare('INSERT INTO users (username, password_hash, salt, nickname, status, token_version) VALUES (?, ?, ?, ?, ?, 0)');
       const info = stmt.run(username.toLowerCase(), hashedPassword, salt, nickname || username.split('@')[0], 'offline');
+      signupIpCounter.record(clientIp);
       res.json({ success: true, userId: info.lastInsertRowid });
     } catch (err) {
       if (err.message.includes('UNIQUE constraint failed')) {

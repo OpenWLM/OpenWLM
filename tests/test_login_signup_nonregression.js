@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
+import { solvePow } from './helpers/pow.js';
 
 /**
  * E2 — Non-régression : inscription et connexion toujours fonctionnelles,
@@ -74,7 +75,8 @@ test(
       password: authKeyHex,
       nickname: 'NonRegression',
       captchaId: captcha.id,
-      captchaAnswer: captcha.num1 + captcha.num2
+      captchaAnswer: captcha.num1 + captcha.num2,
+      powNonce: solvePow(captcha.pow)
     });
     assert.equal(signupRes.status, 200, 'POST /api/signup doit répondre 200');
     assert.equal(signupRes.data.success, true);

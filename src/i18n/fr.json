@@ -44,6 +44,7 @@
     "autoLogin": "Connexion automatique",
     "signingIn": "Connexion en cours...",
     "encrypting": "Chiffrement sécurisé...",
+    "antiBotChecking": "Vérification anti-robot...",
     "signInBtn": "Se connecter",
     "signUpBtn": "S'inscrire",
     "noAccount": "Pas de compte ? Créer-en un",

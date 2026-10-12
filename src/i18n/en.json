@@ -44,6 +44,7 @@
     "autoLogin": "Sign me in automatically",
     "signingIn": "Signing in...",
     "encrypting": "Secure encryption...",
+    "antiBotChecking": "Anti-robot check...",
     "signInBtn": "Sign in",
     "signUpBtn": "Sign up",
     "noAccount": "Don't have an account? Sign up",

@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import jwt from 'jsonwebtoken';
+import { solvePow } from './helpers/pow.js';
 
 /**
  * F2 — Non-régression : bornes de taille du surnom (nickname ≤ 50) et du
@@ -75,7 +76,8 @@ test('signup : surnom > 50 caractères rejeté (400)', { skip: serverUp ? false 
       password: crypto.randomBytes(32).toString('hex'),
       nickname: 'x'.repeat(51),
       captchaId: cap.data.id,
-      captchaAnswer: cap.data.num1 + cap.data.num2
+      captchaAnswer: cap.data.num1 + cap.data.num2,
+      powNonce: solvePow(cap.data.pow)
     });
     assert.equal(res.status, 400, 'signup avec surnom trop long doit être refusé');
   } finally {

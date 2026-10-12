@@ -30,6 +30,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Champ de saisie riche** : les émoticônes tapées (`:)`, `:D`, `(L)`, perso) s'affichent en image **pendant la frappe** et poussent le texte (fin du chevauchement).
 - **Rate limiting** : compteurs **Wizz** et **Winks** désormais **séparés** (3/min et 7/min indépendants) ; fenêtre de nettoyage alignée sur celle des handlers.
 
+### 🔐 Signature des messages (E2EE authentifié)
+- Les messages sont désormais **signés (RSA‑PSS)** en plus d'être chiffrés : le serveur ne peut plus fabriquer un message « de la part de » un contact. Nouvelle **enveloppe v2** (chiffrer‑puis‑signer) : signature sur une chaîne canonique à domaine dédié (`openwlm-msg-v2`), `from`/`to`/`mid` redondés **dans** le chiffré (anti‑*stripping*), vérification **avant** déchiffrement, liste blanche des champs de contenu.
+- **Affichage** : signé valide = normal ; ancien format / clé de l'émetteur indisponible = **⚠ non vérifié** ; signature invalide ou texte en clair = **⛔ rejeté**. **Anti‑rejeu** par identifiant de message, **anti‑rétrogradation**.
+- **Appels** : la signature de l'empreinte DTLS devient **obligatoire** (les cas « tolérants » refusent désormais la signalisation).
+
 ### 😉 Winks
 - **Pré-rendu** : la boucle de fin (redémarrage du SWF) est supprimée ; audio ré-aligné (offsets recalculés) ; vignette manquante de `bow` ajoutée.
 

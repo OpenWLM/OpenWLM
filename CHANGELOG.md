@@ -30,6 +30,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Rich input**: typed emoticons (`:)`, `:D`, `(L)`, custom) render as inline images **while typing** and push the text (no more overlap).
 - **Rate limiting**: **Wizz** and **Winks** counters are now **separate** (independent 3/min and 7/min); cleanup window aligned with the handlers.
 
+### 🔐 Message signatures (authenticated E2EE)
+- Messages are now **signed (RSA-PSS)** in addition to being encrypted: the server can no longer forge a message "from" a contact. New **v2 envelope** (encrypt-then-sign): signature over a domain-separated canonical string (`openwlm-msg-v2`), `from`/`to`/`mid` duplicated **inside** the ciphertext (anti-stripping), verification **before** decryption, content-field allowlist.
+- **Display**: valid signature = normal; legacy format / sender key unavailable = **⚠ unverified**; invalid signature or plaintext = **⛔ rejected**. **Replay protection** by message id, **anti-downgrade**.
+- **Calls**: the DTLS fingerprint signature is now **mandatory** (the previous "tolerant" cases now reject the signaling).
+
 ### 😉 Winks
 - **Pre-render**: the trailing SWF loop (restart) is removed; audio re-aligned (recomputed offsets); added the missing `bow` thumbnail.
 

@@ -4431,10 +4431,13 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
   background: #fff; border: 1px solid #b8d9eb; border-radius: 6px; padding: 10px 12px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); display: flex; flex-direction: column; gap: 8px;
-  min-width: 260px; z-index: 5;
+  /* Largeur bornée : les libellés de périphériques (souvent très longs sur PC)
+     ne doivent pas élargir les <select> au-delà de la modale. */
+  width: min(360px, calc(100% - 20px)); max-width: calc(100vw - 20px);
+  box-sizing: border-box; z-index: 5;
 }
-.wlm-devices-pop label { display: flex; flex-direction: column; font-size: 12px; color: #004b8d; gap: 3px; }
-.wlm-devices-pop select { font-size: 12px; padding: 3px; max-width: 100%; }
+.wlm-devices-pop label { display: flex; flex-direction: column; font-size: 12px; color: #004b8d; gap: 3px; min-width: 0; }
+.wlm-devices-pop select { font-size: 12px; padding: 3px; width: 100%; max-width: 100%; box-sizing: border-box; }
 
 @media (max-width: 600px) {
   .wlm-video-box { width: 100%; height: 100%; max-width: none; border-radius: 0; }
@@ -4442,7 +4445,7 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   .wlm-video-local { width: 90px; height: 68px; right: 8px; bottom: 8px; }
   .wlm-call-controls { padding: 8px; }
   .wlm-call-btn { width: 42px; height: 42px; }
-  .wlm-devices-pop { min-width: 220px; max-width: 90vw; }
+  .wlm-devices-pop { width: calc(100% - 16px); }
 }
 
 

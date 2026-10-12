@@ -39,7 +39,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Pre-render**: the trailing SWF loop (restart) is removed; audio re-aligned (recomputed offsets); added the missing `bow` thumbnail.
 
 ### 📚 Documentation
-- New docs: `docs/SECURITY_E2E.md` (ground-truth E2E status, no marketing), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
+- New docs: `docs/SECURITY_E2E.md` (real E2E scope and limits), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
 - **WAF rule generator** (`npm run waf:gen` / `waf:check`) driven by route auditing, with a "don't open wide" self-check and a CI guard.
 
 ## [Unreleased] - 2026-10-08

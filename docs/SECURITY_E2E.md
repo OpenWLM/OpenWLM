@@ -1,8 +1,7 @@
-# Sécurité & chiffrement — état **réel** (sans marketing)
+# Sécurité & chiffrement — état réel
 
-> ⚠️ Ce document décrit **exactement** ce qui est implémenté, ce qui **n'est pas**
-> fait, et les **limites**. Aucun « chiffrement de bout en bout partout » n'est
-> revendiqué au-delà de ce qui suit. Dernière mise à jour : 2026-10-12 (signatures des messages, vérification stricte des appels).
+> ⚠️ Ce document décrit précisément ce qui est implémenté, ce qui ne l'est pas, et les limites.
+> Dernière mise à jour : 2026-10-12 (signatures des messages, vérification stricte des appels).
 
 ---
 

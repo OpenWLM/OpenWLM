@@ -40,7 +40,7 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 
 OpenWLM has undergone an extensive security audit and rigorous end-to-end hardening:
 
-> 📌 **Ground truth (no marketing) — what is really E2E, what is NOT, and the limits:**
+> 📌 **E2E scope — what is really end-to-end, what is not, and the limits:**
 > see **[docs/SECURITY_E2E.md](docs/SECURITY_E2E.md)**.
 
 1. **End-to-End Encryption (E2EE Zero-Knowledge)**:

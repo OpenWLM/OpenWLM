@@ -39,7 +39,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Pré-rendu** : la boucle de fin (redémarrage du SWF) est supprimée ; audio ré-aligné (offsets recalculés) ; vignette manquante de `bow` ajoutée.
 
 ### 📚 Documentation
-- Nouveaux documents : `docs/SECURITY_E2E.md` (état E2E réel, sans marketing), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
+- Nouveaux documents : `docs/SECURITY_E2E.md` (périmètre E2E réel et limites), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
 - **Générateur de règles WAF** (`npm run waf:gen` / `waf:check`) piloté par l'audit des routes, avec auto-contrôle anti-« ouverture en grand » et vérification en CI.
 
 ## [Non publié] - 2026-10-08

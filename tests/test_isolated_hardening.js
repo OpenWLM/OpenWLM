@@ -179,6 +179,9 @@ test('P2 messages : message_delivered n’accuse pas un message inexistant', asy
 
 test('P2 messages : ids privés uniques (pas de collision Date.now)', async () => {
   const a = await connect(tok(aliceId));
+  // Le destinataire doit être connecté : un message privé vers un contact hors ligne est
+  // désormais refusé (RECIPIENT_OFFLINE_PRIVATE), cf. tests/test_private_mode_delivery.js.
+  const b = await connect(tok(bobId));
   try {
     await new Promise((r) => setTimeout(r, 150));
     const ids = await Promise.all([
@@ -187,7 +190,7 @@ test('P2 messages : ids privés uniques (pas de collision Date.now)', async () =
     ]);
     assert.ok(ids[0]?.id && ids[1]?.id, 'acks privés avec id');
     assert.notEqual(ids[0].id, ids[1].id, 'les ids privés ne doivent pas entrer en collision');
-  } finally { a.disconnect(); }
+  } finally { a.disconnect(); b.disconnect(); }
 });
 
 test('P1 socket : un JWT expiré en cours de connexion est fermé par le balayage', { timeout: 90000 }, async () => {

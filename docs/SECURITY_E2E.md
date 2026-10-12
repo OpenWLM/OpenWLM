@@ -122,6 +122,24 @@ limite habituelle de ce type d'application.
 - **Dépendance au JS servi** (cf. §3) — inhérent au modèle web.
 - **Sauvegardes serveur** : contiennent le **chiffré** (OK) mais aussi la base de
   **métadonnées en clair**.
+- **Mode privé — fenêtre de perte résiduelle** : voir ci‑dessous.
+
+### Mode privé : sémantique de remise (et fenêtre de perte résiduelle)
+
+Le **mode privé** (par conversation ou global) ne **stocke rien** côté serveur : le message
+est seulement relayé aux **sessions connectées** du destinataire. Conséquence assumée :
+
+- **Destinataire hors ligne** → le serveur **refuse** le message
+  (`code: RECIPIENT_OFFLINE_PRIVATE`) ; l'expéditeur le voit « **Non envoyé** » avec un bouton
+  **Renvoyer** (le contenu en clair n'est gardé qu'en mémoire, non persisté). Il n'est
+  **pas** perdu silencieusement comme avant.
+- **Fenêtre résiduelle** : la présence est vérifiée **à l'instant de l'envoi**. Si le
+  destinataire se déconnecte **juste après** la vérification, le message peut encore être
+  perdu (aucune file d'attente). C'est **inhérent** à un mode éphémère ; pour une remise
+  garantie, utiliser le **mode normal** (stocké, remis à la reconnexion).
+- **Mode normal** : le message est **stocké** puis remis via l'historique (`GET /api/messages`)
+  quand le destinataire recharge/ouvre la conversation ; il n'y a **pas** de *replay* serveur
+  des messages en attente au moment de la reconnexion socket.
 
 ---
 

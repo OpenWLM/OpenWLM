@@ -4468,3 +4468,30 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   border: 1px solid #f3b8b0;
   border-radius: 3px;
 }
+
+/* Messages non envoyés (refus serveur, mode privé hors ligne, délai dépassé) */
+.msg-send-failed {
+  margin-left: 6px;
+  font-size: 11px;
+  color: #b3261e;
+  white-space: nowrap;
+}
+.msg-send-failed > span { cursor: help; }
+.msg-resend-btn {
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  color: #0b57d0;
+  background: #fff;
+  border: 1px solid #9fb6d3;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.msg-resend-btn:hover { background: #eaf2fd; }
+.msg-send-failed-detail {
+  margin: 0 0 2px 12px;
+  font-size: 11px;
+  font-style: italic;
+  color: #8a5a00;
+}

@@ -187,7 +187,16 @@
     "authUnverifiable": "Message non vérifié : la clé publique de l'expéditeur est indisponible.",
     "authRejectedInvalid": "Message rejeté : sa signature est invalide. Il ne provient peut-être pas de ce contact.",
     "authRejectedPlaintext": "Message rejeté : il n'était pas chiffré. Il ne provient peut-être pas de ce contact.",
-    "signingKeyMissing": "Clé de signature indisponible. Déconnectez-vous puis reconnectez-vous pour envoyer des messages signés."
+    "signingKeyMissing": "Clé de signature indisponible. Déconnectez-vous puis reconnectez-vous pour envoyer des messages signés.",
+    "notSent": "Non envoyé",
+    "resend": "Renvoyer",
+    "sendFailedOfflinePrivate": "Mode privé : le contact est hors ligne. Les messages privés ne sont pas conservés, ils ne sont remis qu'à un contact connecté. Renvoyez-le quand il sera en ligne.",
+    "sendFailedTooLarge": "Message trop volumineux pour être envoyé (clip vocal trop long ?).",
+    "sendFailedNetwork": "Connexion au serveur perdue pendant l'envoi.",
+    "sendFailedGeneric": "Le serveur n'a pas accepté le message.",
+    "voiceClipMaxReached": "Durée maximale atteinte : le clip vocal est envoyé.",
+    "winkNotSentNetwork": "Clin d'œil non envoyé : connexion au serveur perdue pendant l'envoi.",
+    "winkNotSentOffline": "Clin d'œil non envoyé : le contact est hors ligne en mode privé, et les clins d'œil privés ne sont pas conservés."
   },
   "bot": {
     "name": "OpenWLM",

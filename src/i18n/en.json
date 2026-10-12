@@ -187,7 +187,16 @@
     "authUnverifiable": "Unverified message: the sender's public key is unavailable.",
     "authRejectedInvalid": "Message rejected: invalid signature. It may not come from this contact.",
     "authRejectedPlaintext": "Message rejected: it was not encrypted. It may not come from this contact.",
-    "signingKeyMissing": "Signing key unavailable. Sign out and sign back in to send signed messages."
+    "signingKeyMissing": "Signing key unavailable. Sign out and sign back in to send signed messages.",
+    "notSent": "Not sent",
+    "resend": "Resend",
+    "sendFailedOfflinePrivate": "Private mode: the contact is offline. Private messages are not stored and are only delivered to a connected contact. Resend it when they are online.",
+    "sendFailedTooLarge": "Message too large to be sent (voice clip too long?).",
+    "sendFailedNetwork": "Connection to the server was lost while sending.",
+    "sendFailedGeneric": "The server did not accept the message.",
+    "voiceClipMaxReached": "Maximum duration reached: the voice clip is being sent.",
+    "winkNotSentNetwork": "Wink not sent: the connection to the server was lost while sending.",
+    "winkNotSentOffline": "Wink not sent: the contact is offline in private mode, and private winks are not stored."
   },
   "bot": {
     "name": "OpenWLM",

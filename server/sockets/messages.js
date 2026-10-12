@@ -44,6 +44,20 @@ export const registerMessageHandlers = (io, socket) => {
     const finalIsPrivate = isPrivate || isForcedPrivate;
     const senderDisplayName = sender ? (sender.nickname || sender.username) : null;
 
+    // MODE PRIVÉ : rien n'est conservé côté serveur. Si le destinataire n'a aucune session
+    // connectée, le message serait perdu : on le REFUSE explicitement (au lieu de répondre
+    // « succès ») pour que le client affiche « Non envoyé » et propose de renvoyer.
+    if (finalIsPrivate && !isUserOnline(receiverId)) {
+      if (typeof callback === 'function') {
+        callback({
+          success: false,
+          code: 'RECIPIENT_OFFLINE_PRIVATE',
+          error: "Mode privé : le contact est hors ligne et les messages privés ne sont pas conservés."
+        });
+      }
+      return;
+    }
+
     if (text && text.length > 5000000) {
       if (typeof callback === 'function') callback({ success: false, error: "Message trop volumineux." });
       return;

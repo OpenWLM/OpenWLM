@@ -164,7 +164,19 @@ interface Message {
   _auth?: EnvelopeStatus;
   /** Identifiant aléatoire signé par l'émetteur (détection des rejeux). */
   mid?: string;
+  /** Échec d'envoi : le message n'a pas été accepté par le serveur. */
+  _failed?: 'offline_private' | 'too_large' | 'error';
+  /** Détail renvoyé par le serveur, le cas échéant. */
+  _failReason?: string;
 }
+
+/** Taille max. d'un message sur la socket (le serveur borne les trames à 1 Mo). */
+const MAX_SOCKET_MESSAGE_CHARS = 900_000;
+/** Délai d'attente de l'accusé du serveur avant de considérer l'envoi comme échoué. */
+const SEND_ACK_TIMEOUT_MS = 15_000;
+/** Clips vocaux : débit d'encodage et durée maximale (≈ 650 Ko une fois chiffrés). */
+const VOICE_CLIP_BITRATE = 32_000;
+const VOICE_CLIP_MAX_MS = 90_000;
 
 /** Verdicts pour lesquels un contenu est affiché (les deux derniers avec avertissement). */
 const DISPLAYABLE_AUTH: ReadonlySet<EnvelopeStatus> = new Set<EnvelopeStatus>(['verified', 'unsigned-legacy', 'unverifiable']);
@@ -2562,6 +2574,95 @@ const App: React.FC = () => {
     });
   };
 
+  // ---- ENVOI AVEC ACCUSÉ, ÉCHEC VISIBLE ET RENVOI ------------------------------------
+  // Payload en clair des messages non envoyés (mémoire uniquement) pour pouvoir les renvoyer.
+  const resendInfoRef = useRef<Map<string, { contactId: number; payload: unknown; type: string }>>(new Map());
+
+  const markSendFailed = (chatId: number, clientMsgId: string, failed: NonNullable<Message['_failed']>, reason?: string) => {
+    setMessages(prev => ({
+      ...prev,
+      [chatId]: (prev[chatId] || []).map(m => m.clientMsgId === clientMsgId
+        ? { ...m, _isPending: false, _failed: failed, _failReason: reason }
+        : m)
+    }));
+  };
+
+  /**
+   * Envoie un message déjà scellé et suit l'accusé du serveur. En cas de refus (mode
+   * privé + contact hors ligne, limite de débit…), de délai dépassé ou de socket
+   * déconnectée, le message est marqué « Non envoyé » au lieu de rester en attente.
+   */
+  const deliverSealedMessage = (
+    chatId: number,
+    clientMsgId: string,
+    msgData: Record<string, unknown>,
+    localMsg: Message,
+    plainPayload: unknown,
+    type: string
+  ) => {
+    resendInfoRef.current.set(clientMsgId, { contactId: chatId, payload: plainPayload, type });
+
+    if (JSON.stringify(msgData).length > MAX_SOCKET_MESSAGE_CHARS) {
+      resendInfoRef.current.delete(clientMsgId); // renvoyer ne servirait à rien
+      markSendFailed(chatId, clientMsgId, 'too_large');
+      return;
+    }
+    if (!socket || !socket.connected) {
+      markSendFailed(chatId, clientMsgId, 'error', t.chat.sendFailedNetwork);
+      return;
+    }
+
+    socket.timeout(SEND_ACK_TIMEOUT_MS).emit('send_message', msgData, (err: Error | null, ack?: { success?: boolean; id?: number | string; timestamp?: string; code?: string; error?: string }) => {
+      if (err || !ack?.success || ack.id === undefined || ack.id === null) {
+        const failed = ack?.code === 'RECIPIENT_OFFLINE_PRIVATE' ? 'offline_private' : 'error';
+        markSendFailed(chatId, clientMsgId, failed, err ? t.chat.sendFailedNetwork : ack?.error);
+        return;
+      }
+      resendInfoRef.current.delete(clientMsgId);
+      const confirmed: Message = { ...localMsg, id: ack.id, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || localMsg.timestamp };
+      setMessages(prev => ({
+        ...prev,
+        [chatId]: (prev[chatId] || []).map(m => m.clientMsgId === clientMsgId
+          ? { ...m, id: ack.id, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || m.timestamp }
+          : m)
+      }));
+      if (myKeysRef.current) {
+        LocalDB.saveMessage(`${user?.id}_${chatId}`, confirmed, myKeysRef.current.publicKeyJwk).catch(console.error);
+      }
+    });
+  };
+
+  /** Renvoie un message « Non envoyé » : re-scellé (nouvelle signature, nouveau mid). */
+  const handleResendMessage = async (chatId: number, clientMsgId: string) => {
+    const info = resendInfoRef.current.get(clientMsgId);
+    const localMsg = (messages[chatId] || []).find(m => m.clientMsgId === clientMsgId);
+    if (!info || !localMsg) return;
+    try {
+      const contactPubKey = await getPublicKey(info.contactId);
+      if (!contactPubKey) throw new Error('Clé publique du contact indisponible');
+      const envelope = await sealForContact(info.payload, info.contactId, contactPubKey);
+      seenMidsRef.current.add(envelope.mid);
+      const msgData = {
+        senderId: user?.id,
+        receiverId: info.contactId,
+        text: JSON.stringify(envelope),
+        style: null,
+        audio: null,
+        type: info.type,
+        isPrivate: globalPrivateMode || !!isPrivateMode[info.contactId]
+      };
+      const retried: Message = { ...localMsg, mid: envelope.mid, _isPending: true, _failed: undefined, _failReason: undefined, timestamp: new Date().toISOString() };
+      setMessages(prev => ({
+        ...prev,
+        [chatId]: (prev[chatId] || []).map(m => m.clientMsgId === clientMsgId ? retried : m)
+      }));
+      deliverSealedMessage(chatId, clientMsgId, msgData, retried, info.payload, info.type);
+    } catch (e) {
+      console.error('Échec du renvoi:', e);
+      markSendFailed(chatId, clientMsgId, 'error', e instanceof Error ? e.message : undefined);
+    }
+  };
+
   /**
    * Action utilisateur : basculer le statut vérifié localement
    */
@@ -2869,25 +2970,7 @@ const App: React.FC = () => {
 
       setInputText('');
 
-      socket.emit('send_message', msgData, (ack?: { success?: boolean, id?: number | string, timestamp?: string }) => {
-        if (ack?.id) {
-          myLocalMsg.id = ack.id;
-          myLocalMsg._isPending = false;
-          if (ack.timestamp) myLocalMsg.timestamp = ack.timestamp;
-
-          setMessages(prev => {
-            const currentMsgs = prev[activeChatId] || [];
-            return {
-              ...prev,
-              [activeChatId]: currentMsgs.map(m => m.clientMsgId === clientMsgId ? { ...m, id: ack.id, _isPending: false, timestamp: ack.timestamp || m.timestamp } : m)
-            };
-          });
-
-          if (myKeysRef.current) {
-            LocalDB.saveMessage(`${user?.id}_${activeChatId}`, myLocalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
-          }
-        }
-      });
+      deliverSealedMessage(activeChatId, clientMsgId, msgData, myLocalMsg, unencryptedPayload, 'text');
 
     } catch (e) {
       console.error("Échec du chiffrement:", e);
@@ -3025,25 +3108,7 @@ const App: React.FC = () => {
         [activeChatId]: [...(prev[activeChatId] || []), myLocalMsg]
       }));
 
-      socket.emit('send_message', msgData, (ack?: { success?: boolean, id?: number | string, timestamp?: string }) => {
-        if (ack?.id) {
-          myLocalMsg.id = ack.id;
-          myLocalMsg._isPending = false;
-          if (ack.timestamp) myLocalMsg.timestamp = ack.timestamp;
-
-          setMessages(prev => {
-            const currentMsgs = prev[activeChatId] || [];
-            return {
-              ...prev,
-              [activeChatId]: currentMsgs.map(m => m.clientMsgId === clientMsgId ? { ...m, id: ack.id, _isPending: false, timestamp: ack.timestamp || m.timestamp } : m)
-            };
-          });
-
-          if (myKeysRef.current) {
-            LocalDB.saveMessage(`${user?.id}_${activeChatId}`, myLocalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
-          }
-        }
-      });
+      deliverSealedMessage(activeChatId, clientMsgId, msgData, myLocalMsg, filePayload, 'file');
     } catch (err: unknown) {
       console.error("Erreur lors de l'envoi du fichier:", err);
       const axiosErr = err as { response?: { status?: number; data?: { error?: string } }; message?: string };
@@ -3234,49 +3299,70 @@ const App: React.FC = () => {
    */
   const handleSendWink = async (winkId: string, received: boolean = false, fromId: number = 0) => {
     const targetId = received ? fromId : activeChatId;
-
-    if (!received) {
-      if (!socket || !myKeys) return;
-      const contactPubKey = await getPublicKey(activeChatId);
-      if (!contactPubKey) {
-        alert("Ce contact doit être en ligne pour recevoir un clin d'œil.");
-        return;
-      }
-
-      const wink = WINKS.find(w => w.id === winkId);
-      const unencryptedPayload = {
-        text: `--- Clin d'œil: ${wink?.name || winkId} ---`,
-        sender: myNickname,
-        winkId: winkId,
-        type: 'wink'
-      };
-
-      try {
-        const e2eData = await sealForContact(unencryptedPayload, activeChatId, contactPubKey);
-        socket.emit('send_message', {
-          senderId: user?.id,
-          receiverId: activeChatId,
-          text: JSON.stringify(e2eData),
-          type: 'wink',
-          isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
-        });
-      } catch (err) { console.error("Echec envoi Wink chiffré:", err); return; }
-    }
+    const wink = WINKS.find(w => w.id === winkId);
+    const winkName = wink?.name || winkId;
+    const winkTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     setShowWinksModal(false);
     setActiveWink(winkId);
     setWinkCounter(prev => prev + 1);
-    
-    const wink = WINKS.find(w => w.id === winkId);
-    const msg: Message = { 
-      text: received ? `Vous avez reçu un clin d'œil (${wink?.name || winkId}).` : `Vous venez d'envoyer un clin d'œil (${wink?.name || winkId}).`, 
-      sender: 'Système', 
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
-      isWink: true, 
-      style: null 
+
+    // Réception : simple ligne système (le clin d'œil reçu a déjà été remis par le serveur).
+    if (received) {
+      setMessages(prev => ({
+        ...prev,
+        [targetId]: [...(prev[targetId] || []), {
+          text: `Vous avez reçu un clin d'œil (${winkName}).`,
+          sender: 'Système', time: winkTime(), isWink: true, style: null
+        }]
+      }));
+      return;
+    }
+
+    if (!socket || !myKeys) return;
+    const contactPubKey = await getPublicKey(activeChatId);
+    if (!contactPubKey) {
+      alert("Ce contact doit être en ligne pour recevoir un clin d'œil.");
+      return;
+    }
+
+    const unencryptedPayload = {
+      text: `--- Clin d'œil: ${winkName} ---`,
+      sender: myNickname,
+      winkId: winkId,
+      type: 'wink'
     };
-    
-    setMessages(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), msg] }));
+
+    let e2eData: unknown;
+    try {
+      e2eData = await sealForContact(unencryptedPayload, activeChatId, contactPubKey);
+    } catch (err) { console.error("Echec envoi Wink chiffré:", err); return; }
+
+    const pushWinkLine = (text: string) => setMessages(prev => ({
+      ...prev,
+      [targetId]: [...(prev[targetId] || []), { text, sender: 'Système', time: winkTime(), isWink: true, style: null }]
+    }));
+
+    // ACCUSÉ : on n'affiche « envoyé » qu'après acceptation du serveur. En mode privé vers un
+    // contact hors ligne, le serveur refuse (rien n'est conservé) — même garantie que les
+    // messages texte/fichier/vocal (cf. deliverSealedMessage).
+    if (!socket.connected) {
+      pushWinkLine(t.chat.winkNotSentNetwork);
+      return;
+    }
+    socket.timeout(SEND_ACK_TIMEOUT_MS).emit('send_message', {
+      senderId: user?.id,
+      receiverId: activeChatId,
+      text: JSON.stringify(e2eData),
+      type: 'wink',
+      isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
+    }, (err: Error | null, ack?: { success?: boolean; code?: string }) => {
+      if (err || !ack?.success) {
+        pushWinkLine(ack?.code === 'RECIPIENT_OFFLINE_PRIVATE' ? t.chat.winkNotSentOffline : t.chat.winkNotSentNetwork);
+      } else {
+        pushWinkLine(`Vous venez d'envoyer un clin d'œil (${winkName}).`);
+      }
+    });
   };
 
   /**
@@ -3373,7 +3459,14 @@ const App: React.FC = () => {
           return;
         }
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
+        // 32 kbit/s : largement suffisant pour la voix (Opus), et garde un clip de
+        // VOICE_CLIP_MAX_MS sous la limite de 1 Mo des trames socket (double base64 inclus).
+        let recorder: MediaRecorder;
+        try {
+          recorder = new MediaRecorder(stream, { audioBitsPerSecond: VOICE_CLIP_BITRATE });
+        } catch {
+          recorder = new MediaRecorder(stream);
+        }
         const chunks: Blob[] = [];
         
         recorder.ondataavailable = (e) => chunks.push(e.data);
@@ -3438,27 +3531,8 @@ const App: React.FC = () => {
                 [activeChatId]: [...(prev[activeChatId] || []), myLocalMsg]
               }));
 
-              if (socket) {
-                socket.emit('send_message', msgData, (ack?: { success?: boolean, id?: number | string, timestamp?: string }) => {
-                  if (ack?.id) {
-                    myLocalMsg.id = ack.id;
-                    myLocalMsg._isPending = false;
-                    if (ack.timestamp) myLocalMsg.timestamp = ack.timestamp;
-
-                    setMessages(prev => {
-                      const currentMsgs = prev[activeChatId] || [];
-                      return {
-                        ...prev,
-                        [activeChatId]: currentMsgs.map(m => m.clientMsgId === clientMsgId ? { ...m, id: ack.id, _isPending: false, timestamp: ack.timestamp || m.timestamp } : m)
-                      };
-                    });
-
-                    if (myKeysRef.current) {
-                      LocalDB.saveMessage(`${user?.id}_${activeChatId}`, myLocalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
-                    }
-                  }
-                });
-              }
+              // Sans socket, deliverSealedMessage marque le message « Non envoyé » (renvoyable)
+              deliverSealedMessage(activeChatId, clientMsgId, msgData, myLocalMsg, unencryptedPayload, 'audio');
             } catch (err) {
               console.error("Échec chiffrement clip vocal:", err);
             }
@@ -3468,6 +3542,25 @@ const App: React.FC = () => {
         recorder.start();
         setMediaRecorder(recorder);
         setIsRecording(true);
+
+        // Arrêt automatique à la durée maximale : le clip est envoyé normalement.
+        const recordingChatId = activeChatId;
+        const autoStopTimer = setTimeout(() => {
+          if (recorder.state !== 'recording') return;
+          stream.getTracks().forEach(tr => tr.stop());
+          recorder.stop();
+          setIsRecording(false);
+          setMediaRecorder(null);
+          setMessages(prev => ({
+            ...prev,
+            [recordingChatId]: [...(prev[recordingChatId] || []), {
+              sender: 'Système',
+              text: t.chat.voiceClipMaxReached,
+              timestamp: new Date().toISOString()
+            }]
+          }));
+        }, VOICE_CLIP_MAX_MS);
+        recorder.addEventListener('stop', () => clearTimeout(autoStopTimer));
       } catch { 
         alert("Impossible d'accéder au microphone."); 
       }
@@ -4920,7 +5013,29 @@ const App: React.FC = () => {
                                  ⚠
                                </span>
                              )}
-                             {isSender && activeChatId !== SYSTEM_BOT_ID && (
+                             {isSender && activeChatId !== SYSTEM_BOT_ID && m._failed && (
+                               <span className="msg-send-failed" role="alert">
+                                 <span
+                                   title={
+                                     m._failed === 'offline_private' ? t.chat.sendFailedOfflinePrivate :
+                                     m._failed === 'too_large' ? t.chat.sendFailedTooLarge :
+                                     (m._failReason || t.chat.sendFailedGeneric)
+                                   }
+                                 >
+                                   ⚠ {t.chat.notSent}
+                                 </span>
+                                 {m._failed !== 'too_large' && m.clientMsgId && (
+                                   <button
+                                     type="button"
+                                     className="msg-resend-btn"
+                                     onClick={() => handleResendMessage(activeChatId, m.clientMsgId as string)}
+                                   >
+                                     {t.chat.resend}
+                                   </button>
+                                 )}
+                               </span>
+                             )}
+                             {isSender && activeChatId !== SYSTEM_BOT_ID && !m._failed && (
                                <span 
                                  className={`msg-status-badge status-${m.delivery_status || (m._isPending ? 'pending' : 'sent')}`}
                                  title={
@@ -4933,6 +5048,11 @@ const App: React.FC = () => {
                                </span>
                              )}
                            </div>
+                           {isSender && (m._failed === 'offline_private' || m._failed === 'too_large') && (
+                             <div className="msg-send-failed-detail">
+                               {m._failed === 'offline_private' ? t.chat.sendFailedOfflinePrivate : t.chat.sendFailedTooLarge}
+                             </div>
+                           )}
                            {(m._auth === 'invalid' || m._auth === 'plaintext') ? (
                              <div className="msg-rejected" role="alert">
                                ⛔ {m._auth === 'plaintext' ? t.chat.authRejectedPlaintext : t.chat.authRejectedInvalid}

@@ -12,7 +12,8 @@ import {
   signupAccountLimiter, 
   captchaRateLimiter, 
   hashPassword, 
-  verifyPasswordHash 
+  verifyPasswordHash,
+  burnPasswordCheck
 } from '../middleware/auth.js';
 
 export const captchas = new Map();
@@ -86,7 +87,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   /**
    * Inscription d'un nouvel utilisateur
    */
-  router.post('/signup', authRateLimiter, (req, res) => {
+  router.post('/signup', authRateLimiter, async (req, res) => {
     const { username, password, nickname, captchaId, captchaAnswer } = req.body;
 
     const signupLimit = signupAccountLimiter.attempt(username);
@@ -122,9 +123,9 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     }
 
     const salt = crypto.randomBytes(16).toString('hex');
-    const hashedPassword = hashPassword(password, salt);
 
     try {
+      const hashedPassword = await hashPassword(password, salt);
       const stmt = db.prepare('INSERT INTO users (username, password_hash, salt, nickname, status, token_version) VALUES (?, ?, ?, ?, ?, 0)');
       const info = stmt.run(username.toLowerCase(), hashedPassword, salt, nickname || username.split('@')[0], 'offline');
       res.json({ success: true, userId: info.lastInsertRowid });
@@ -139,7 +140,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   /**
    * Connexion utilisateur
    */
-  router.post('/login', authRateLimiter, (req, res) => {
+  router.post('/login', authRateLimiter, async (req, res) => {
     const { username, password } = req.body;
     
     if (!username || !password) return res.status(400).json({ error: 'Identifiants requis.' });
@@ -154,9 +155,20 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     }
 
     const normalizedUsername = String(username).trim().toLowerCase();
-    const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(normalizedUsername);
-    
-    if (user && verifyPasswordHash(password, user.salt, user.password_hash)) {
+    let user;
+    let passwordOk;
+    try {
+      user = db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(normalizedUsername);
+      // Toujours un calcul PBKDF2 complet, que le compte existe ou non (anti-énumération temporelle)
+      passwordOk = user
+        ? await verifyPasswordHash(password, user.salt, user.password_hash)
+        : await burnPasswordCheck(password);
+    } catch (err) {
+      console.error('[Auth] Erreur lors de la vérification du mot de passe:', err);
+      return res.status(500).json({ error: 'Erreur serveur.' });
+    }
+
+    if (user && passwordOk) {
       loginAccountLimiter.reset(username);
       const tv = user.token_version || 0;
       const token = jwt.sign({ id: user.id, username: user.username, tv }, SECRET, { expiresIn: '24h' });

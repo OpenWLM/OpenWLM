@@ -94,17 +94,41 @@ export const authenticateToken = (req, res, next) => {
   });
 };
 
-export const hashPassword = (authKeyHex, salt) => {
-  return crypto.pbkdf2Sync(authKeyHex, salt, 210000, 64, 'sha512').toString('hex');
-};
+// Paramètres PBKDF2 côté serveur. INCHANGÉS volontairement : ils doivent rester
+// identiques pour vérifier les hashs déjà stockés en base.
+const PBKDF2_ITERATIONS = 210000;
+const PBKDF2_KEYLEN = 64;
+const PBKDF2_DIGEST = 'sha512';
 
-export const verifyPasswordHash = (authKeyHex, salt, storedHash) => {
+/**
+ * Hash ASYNCHRONE de la clé d'authentification.
+ * PERFORMANCE/DoS : `pbkdf2Sync` (~100 ms) bloquait toute la boucle d'événements
+ * (HTTP + Socket.IO) à chaque login. `crypto.pbkdf2` s'exécute dans le pool libuv.
+ */
+export const hashPassword = (authKeyHex, salt) => new Promise((resolve, reject) => {
+  crypto.pbkdf2(authKeyHex, salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST, (err, derived) => {
+    if (err) reject(err);
+    else resolve(derived.toString('hex'));
+  });
+});
+
+export const verifyPasswordHash = async (authKeyHex, salt, storedHash) => {
   if (!authKeyHex || !salt || !storedHash || typeof storedHash !== 'string') return false;
-  const calculatedHash = hashPassword(authKeyHex, salt);
+  const calculatedHash = await hashPassword(authKeyHex, salt);
   const bufCalc = Buffer.from(calculatedHash, 'hex');
   const bufStored = Buffer.from(storedHash, 'hex');
   if (bufCalc.length !== bufStored.length) return false;
   return crypto.timingSafeEqual(bufCalc, bufStored);
+};
+
+// SÉCURITÉ (anti-énumération temporelle) : quand le compte n'existe pas, on effectue
+// quand même un calcul PBKDF2 complet contre un hash factice, pour que la réponse
+// prenne le même temps qu'un mauvais mot de passe sur un compte existant.
+const DUMMY_SALT = crypto.randomBytes(16).toString('hex');
+const DUMMY_HASH = crypto.randomBytes(PBKDF2_KEYLEN).toString('hex');
+export const burnPasswordCheck = async (authKeyHex) => {
+  await verifyPasswordHash(String(authKeyHex || ''), DUMMY_SALT, DUMMY_HASH);
+  return false;
 };
 
 export const safeTokenEqual = (a, b) => {

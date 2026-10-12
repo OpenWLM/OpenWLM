@@ -229,7 +229,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
   /**
    * Sauvegarde des clés E2E
    */
-  router.post('/user/keys', authenticateToken, sensitiveRateLimiter, (req, res) => {
+  router.post('/user/keys', authenticateToken, sensitiveRateLimiter, async (req, res) => {
     const { publicKey, encryptedPrivateKey, authKeyHex } = req.body;
     const userId = req.user.id;
 
@@ -245,7 +245,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     const existing = db.prepare('SELECT public_key, password_hash, salt FROM users WHERE id = ?').get(userId);
     if (existing && existing.public_key) {
       if (!authKeyHex || typeof authKeyHex !== 'string' ||
-          !verifyPasswordHash(authKeyHex, existing.salt, existing.password_hash)) {
+          !(await verifyPasswordHash(authKeyHex, existing.salt, existing.password_hash))) {
         return res.status(403).json({ error: "Clé d'authentification requise pour remplacer les clés existantes." });
       }
     }
@@ -262,7 +262,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
   /**
    * Réinitialisation d'urgence des clés E2E
    */
-  router.post('/user/reset-e2e-keys', authenticateToken, sensitiveRateLimiter, (req, res) => {
+  router.post('/user/reset-e2e-keys', authenticateToken, sensitiveRateLimiter, async (req, res) => {
     const userId = req.user.id;
     const { authKeyHex, publicKey, encryptedPrivateKey } = req.body;
 
@@ -288,7 +288,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
-    if (!verifyPasswordHash(authKeyHex, user.salt, user.password_hash)) {
+    if (!(await verifyPasswordHash(authKeyHex, user.salt, user.password_hash))) {
       return res.status(401).json({ error: "Mot de passe incorrect." });
     }
 
@@ -383,7 +383,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
   /**
    * Changement de mot de passe (Zero-Knowledge)
    */
-  router.post('/user/change-password', authenticateToken, sensitiveRateLimiter, (req, res) => {
+  router.post('/user/change-password', authenticateToken, sensitiveRateLimiter, async (req, res) => {
     const { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey } = req.body;
     const oldKey = oldAuthKeyHex || req.body.oldPassword;
     const newKey = newAuthKeyHex || req.body.newPassword;
@@ -402,7 +402,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     const user = db.prepare('SELECT password_hash, salt FROM users WHERE id = ?').get(userId);
     if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
 
-    if (!verifyPasswordHash(oldKey, user.salt, user.password_hash)) {
+    if (!(await verifyPasswordHash(oldKey, user.salt, user.password_hash))) {
       return res.status(401).json({ error: 'Ancien mot de passe incorrect.' });
     }
 
@@ -417,7 +417,13 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     }
 
     const newSalt = crypto.randomBytes(16).toString('hex');
-    const newHash = hashPassword(newKey, newSalt);
+    let newHash;
+    try {
+      newHash = await hashPassword(newKey, newSalt);
+    } catch (err) {
+      console.error("Change password hash error:", err);
+      return res.status(500).json({ error: 'Erreur lors du changement de mot de passe.' });
+    }
 
     try {
       db.transaction(() => {

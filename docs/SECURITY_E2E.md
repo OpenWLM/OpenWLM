@@ -96,3 +96,27 @@ limite habituelle de ce type d'application.
 - `src/components/CustomEmoticonsModal.tsx` — chiffrement des émoticônes avant upload.
 - `server/routes/rtc.js` — config STUN/TURN (`/api/rtc-config`).
 - `docs/CALLS.md`, `docs/CLOUDFLARE_WAF.md`, `docs/SERVER_ARCHITECTURE.md`.
+
+---
+
+## 7. Durcissements récents (2026-10-12)
+
+Ces changements **ne modifient pas** le périmètre E2E ci‑dessus (§1–§2) ; ils durcissent
+l'authentification et l'abus côté serveur :
+
+- **PBKDF2 asynchrone** (`crypto.pbkdf2`, pool libuv) : la vérification d'un login ne bloque
+  plus la boucle d'événements. Paramètres **inchangés** (hashs existants valides).
+- **Login à temps constant** : un calcul PBKDF2 est fait même pour un compte inexistant
+  (anti‑énumération de comptes).
+- **Inscription** : **preuve de travail** (hashcash) liée au captcha et à usage unique
+  (`POW_DIFFICULTY`, défaut 17) + **plafond par IP** (24 h glissantes, `SIGNUP_IP_DAILY_LIMIT`,
+  défaut 10). Le captcha mathématique reste, mais **n'est pas** une protection anti‑robot.
+- **Écriture de clés E2EE** : la preuve du mot de passe (`authKeyHex`) est exigée pour **toute**
+  installation/rotation de clés (empêche l'injection d'identité via une session volée).
+- **Appels** : `call_accept`/`call_reject` seulement pour un appel réellement en attente.
+- **Erreurs fatales** : arrêt propre (code 1) + **superviseur obligatoire** (systemd/pm2/Docker),
+  cf. `docs/DEPLOYMENT.md` ; exceptions des handlers Socket.IO confinées à l'événement.
+- Retrait de la dépendance inutilisée `sqlite3`.
+
+> ⚠️ **Limites inchangées** : pas de forward secrecy, métadonnées non protégées, TOFU au
+> premier contact, confiance dans le JS servi (cf. §2–§3).

@@ -102,6 +102,9 @@ TURN_PASSWORD=<credential>
   fois l'identité du contact vérifiée, le binding média↔identité est authentifié.
 - **Dégradation tolérante** : si le navigateur ne supporte pas RSA-PSS ou la clé de signature
   est absente, l'appel continue **sans** vérification d'empreinte (signature ignorée).
+- **Validation des appels** : `call_accept` / `call_reject` ne sont honorés que pour un appel
+  **réellement en attente** (TTL 60 s) ; raccrocher pendant la sonnerie l'annule ; les appels
+  en attente sont purgés à la déconnexion (anti‑DoS « occupé »).
 - ⚠️ **Format de signalisation changé** : les **deux pairs doivent recharger** l'app
   (Ctrl+F5). Un client ancien (signalisation non chiffrée) ne peut pas établir d'appel avec
   un client récent.

@@ -9,6 +9,34 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] - 2026-10-12
+
+### 🛡️ Server hardening & anti-abuse
+- **Asynchronous hashing**: `crypto.pbkdf2` (libuv pool) instead of `pbkdf2Sync` — every login attempt blocked the whole event loop (~113 ms); PBKDF2 parameters are unchanged (existing hashes stay valid).
+- **Constant-time login**: a full PBKDF2 is computed even for a non-existent account (anti account-enumeration).
+- **Signup**: hashcash proof-of-work bound to the captcha and single-use (`POW_DIFFICULTY`, default 17) + per-IP cap on successful signups over a sliding 24 h (`SIGNUP_IP_DAILY_LIMIT`, default 10).
+- **E2EE keys**: the password proof (`authKeyHex`) is now required for **every** key write, including the first install (prevents installing an attacker-controlled identity on a stolen session).
+- **Calls**: `call_accept` / `call_reject` are honored only for an actually pending call (anti "busy" DoS).
+- **Robustness**: clean exit (code 1) on an unhandled error so a supervisor restarts it; exceptions inside Socket.IO handlers are confined to the event. **A supervisor (systemd/pm2/Docker) is now mandatory in production** — see `docs/DEPLOYMENT.md`.
+- Removed the unused `sqlite3` dependency (−18 packages).
+
+### 📞 Calls (WebRTC) — reliability & end-to-end
+- **E2EE**: signaling (SDP/ICE) **encrypted** with the existing E2EE (the server becomes a blind relay) + **DTLS fingerprint signed (RSA-PSS)** and verified on receipt (anti-MITM).
+- **Network**: configurable ICE servers via `GET /api/rtc-config` (STUN/TURN — static or ephemeral TURN credentials); **ICE restart** on `disconnected`/`failed` and on socket reconnect; bounded bitrate budgets.
+- **UI**: mic/camera on-off, timer, quality indicator, mic/camera/speaker pickers, fullscreen/PiP, screen sharing, responsive; **looping ring** + **system notification** on incoming call.
+- **Dynamic adaptation** of bitrate/resolution (`getStats`) and ***perfect negotiation***.
+
+### 💬 Messaging
+- **Rich input**: typed emoticons (`:)`, `:D`, `(L)`, custom) render as inline images **while typing** and push the text (no more overlap).
+- **Rate limiting**: **Wizz** and **Winks** counters are now **separate** (independent 3/min and 7/min); cleanup window aligned with the handlers.
+
+### 😉 Winks
+- **Pre-render**: the trailing SWF loop (restart) is removed; audio re-aligned (recomputed offsets); added the missing `bow` thumbnail.
+
+### 📚 Documentation
+- New docs: `docs/SECURITY_E2E.md` (ground-truth E2E status, no marketing), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
+- **WAF rule generator** (`npm run waf:gen` / `waf:check`) driven by route auditing, with a "don't open wide" self-check and a CI guard.
+
 ## [Unreleased] - 2026-10-08
 
 ### 🔒 Desktop Client (Electron) Renderer Hardening

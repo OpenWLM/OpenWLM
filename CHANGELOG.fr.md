@@ -9,6 +9,34 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [Non publié] - 2026-10-12
+
+### 🛡️ Durcissement serveur & anti-abus
+- **Hachage asynchrone** : `crypto.pbkdf2` (pool libuv) au lieu de `pbkdf2Sync` — chaque tentative de login bloquait toute la boucle d'événements (~113 ms) ; les paramètres PBKDF2 sont inchangés (hashs existants valides).
+- **Login à temps constant** : un calcul PBKDF2 complet est effectué même pour un compte inexistant (anti-énumération temporelle).
+- **Inscription** : preuve de travail (hashcash) liée au captcha et à usage unique (`POW_DIFFICULTY`, défaut 17) + plafond des inscriptions réussies par IP sur 24 h glissantes (`SIGNUP_IP_DAILY_LIMIT`, défaut 10).
+- **Clés E2EE** : la preuve du mot de passe (`authKeyHex`) est désormais exigée pour **toute** écriture de clés, y compris la première installation (empêche d'installer une identité d'attaquant sur une session volée).
+- **Appels** : `call_accept` / `call_reject` ne sont honorés que pour un appel réellement en attente (anti-DoS « occupé »).
+- **Robustesse** : arrêt propre (code 1) sur erreur non gérée pour être relancé par un superviseur ; les exceptions dans les handlers Socket.IO sont confinées à l'événement. **Un superviseur (systemd/pm2/Docker) devient obligatoire en production** — voir `docs/DEPLOYMENT.md`.
+- Suppression de la dépendance inutilisée `sqlite3` (−18 paquets).
+
+### 📞 Appels (WebRTC) — fiabilité & bout-en-bout
+- **E2EE** : signalisation (SDP/ICE) **chiffrée** avec l'E2EE existant (le serveur devient un relais aveugle) + **empreinte DTLS signée (RSA-PSS)** et vérifiée à la réception (anti-MITM).
+- **Réseau** : serveurs ICE configurables via `GET /api/rtc-config` (STUN/TURN — identifiants TURN statiques ou éphémères) ; **reprise ICE** (`restartIce`) sur `disconnected`/`failed` et sur reconnexion socket ; budgets de débit bornés.
+- **UI** : micro/caméra on-off, minuteur, indicateur de qualité, sélecteur micro/caméra/haut-parleur, plein écran/PiP, partage d'écran, responsive ; **sonnerie en boucle** + **notification système** sur appel entrant.
+- **Adaptation dynamique** du débit/résolution (`getStats`) et ***perfect negotiation***.
+
+### 💬 Messagerie
+- **Champ de saisie riche** : les émoticônes tapées (`:)`, `:D`, `(L)`, perso) s'affichent en image **pendant la frappe** et poussent le texte (fin du chevauchement).
+- **Rate limiting** : compteurs **Wizz** et **Winks** désormais **séparés** (3/min et 7/min indépendants) ; fenêtre de nettoyage alignée sur celle des handlers.
+
+### 😉 Winks
+- **Pré-rendu** : la boucle de fin (redémarrage du SWF) est supprimée ; audio ré-aligné (offsets recalculés) ; vignette manquante de `bow` ajoutée.
+
+### 📚 Documentation
+- Nouveaux documents : `docs/SECURITY_E2E.md` (état E2E réel, sans marketing), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
+- **Générateur de règles WAF** (`npm run waf:gen` / `waf:check`) piloté par l'audit des routes, avec auto-contrôle anti-« ouverture en grand » et vérification en CI.
+
 ## [Non publié] - 2026-10-08
 
 ### 🔒 Durcissement du client de bureau (Electron)

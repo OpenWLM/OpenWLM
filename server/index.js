@@ -1,3 +1,6 @@
+// DOIT rester le tout premier import : charge .env AVANT l'évaluation des autres
+// modules (certains lisent process.env dès leur init, ex. middleware/auth.js).
+import './loadEnv.js';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -28,13 +31,6 @@ import { setupSocketHandlers } from './sockets/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Charge le fichier .env local s'il existe (secrets TURN/VAPID/JWT…), sans dépendance
-// externe. Les variables déjà présentes dans l'environnement restent prioritaires.
-const envFilePath = path.join(__dirname, '..', '.env');
-if (typeof process.loadEnvFile === 'function' && fs.existsSync(envFilePath)) {
-  try { process.loadEnvFile(envFilePath); } catch { /* fichier invalide : on l'ignore */ }
-}
 
 // ROBUSTESSE : après une exception non gérée, l'état du processus (verrous, Maps en
 // mémoire, transactions, sockets) n'est plus fiable. Continuer à servir est plus

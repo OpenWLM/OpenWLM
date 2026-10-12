@@ -18,6 +18,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Clés E2EE** : la preuve du mot de passe (`authKeyHex`) est désormais exigée pour **toute** écriture de clés, y compris la première installation (empêche d'installer une identité d'attaquant sur une session volée).
 - **Appels** : `call_accept` / `call_reject` ne sont honorés que pour un appel réellement en attente (anti-DoS « occupé »).
 - **Robustesse** : arrêt propre (code 1) sur erreur non gérée pour être relancé par un superviseur ; les exceptions dans les handlers Socket.IO sont confinées à l'événement. **Un superviseur (systemd/pm2/Docker) devient obligatoire en production** — voir `docs/DEPLOYMENT.md`.
+- **Chargement de `.env` corrigé** : déplacé dans un module importé **en tout premier** (`server/loadEnv.js`), pour qu'un `JWT_SECRET` (ou `VAPID_*`) fourni dans `.env` soit pris en compte **avant** l'initialisation des modules. Auparavant `.env` était chargé dans le corps de `index.js`, donc après l'évaluation de `middleware/auth.js` (`SECRET = getJwtSecret()`), qui retombait alors sur `.jwt_secret` généré.
 - Suppression de la dépendance inutilisée `sqlite3` (−18 paquets).
 
 ### 📞 Appels (WebRTC) — fiabilité & bout-en-bout

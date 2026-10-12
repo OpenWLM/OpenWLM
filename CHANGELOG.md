@@ -18,6 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **E2EE keys**: the password proof (`authKeyHex`) is now required for **every** key write, including the first install (prevents installing an attacker-controlled identity on a stolen session).
 - **Calls**: `call_accept` / `call_reject` are honored only for an actually pending call (anti "busy" DoS).
 - **Robustness**: clean exit (code 1) on an unhandled error so a supervisor restarts it; exceptions inside Socket.IO handlers are confined to the event. **A supervisor (systemd/pm2/Docker) is now mandatory in production** — see `docs/DEPLOYMENT.md`.
+- **`.env` loading fixed**: moved into a module imported **first** (`server/loadEnv.js`), so a `JWT_SECRET` (or `VAPID_*`) provided in `.env` is honored **before** modules initialize. Previously `.env` was loaded in the body of `index.js`, i.e. after `middleware/auth.js` evaluated (`SECRET = getJwtSecret()`), which then fell back to a generated `.jwt_secret`.
 - Removed the unused `sqlite3` dependency (−18 packages).
 
 ### 📞 Calls (WebRTC) — reliability & end-to-end

@@ -177,13 +177,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     } catch (e) { console.error('[WebRTC] Échec déchiffrement signal:', e); return null; }
   }, []);
 
-  // Vérifie la signature de l'empreinte DTLS (anti-MITM). Tolérant si indisponible.
+  // Vérifie la signature de l'empreinte DTLS (anti-MITM). STRICTE : une offre/réponse
+  // sans signature, ou impossible à vérifier, est REFUSÉE. L'ancienne version acceptait
+  // ces cas (« tolérant si indisponible ») : le serveur, qui connaît notre clé publique,
+  // pouvait alors chiffrer pour nous une signalisation non signée portant SA propre
+  // empreinte DTLS et s'interposer dans l'appel.
   const verifyFingerprint = useCallback(async (payload: SignalPayload): Promise<boolean> => {
-    if (!payload.fpSig || !payload.sdp) return true;
+    if (!payload.sdp || !payload.fpSig) return false;
     const contactPub = await resolveContactKey();
-    if (!contactPub) return true;
+    if (!contactPub) return false;
     const vk = await importPublicKeyForVerifying(contactPub);
-    if (!vk) return true;
+    if (!vk) return false;
     return await verifyString(vk, extractFingerprints(payload.sdp), payload.fpSig);
   }, [resolveContactKey]);
 

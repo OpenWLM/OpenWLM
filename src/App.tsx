@@ -8,8 +8,6 @@ import LocalDB from './utils/LocalDB';
 import { 
   sanitize, 
   generateKeyPair, 
-  encryptMessagePayload, 
-  decryptMessagePayload, 
   encryptPrivateKeyVault, 
   decryptPrivateKeyVault,
   deriveZeroKnowledgeKeys,
@@ -21,6 +19,7 @@ import {
   formatSafetyNumber
 } from './utils/Security';
 import E2EEKeyStorage from './utils/E2EEKeyStorage';
+import { sealMessage, openMessage, sanitizeDecryptedPayload, type EnvelopeStatus, type OpenedMessage } from './utils/MessageEnvelope';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
@@ -161,7 +160,14 @@ interface Message {
   customEmoticons?: Record<string, CustomEmoticonPayload>;
   delivery_status?: 'sent' | 'delivered' | 'read';
   isPrivate?: boolean;
+  /** Verdict d'authenticité de l'enveloppe signée (cf. utils/MessageEnvelope). */
+  _auth?: EnvelopeStatus;
+  /** Identifiant aléatoire signé par l'émetteur (détection des rejeux). */
+  mid?: string;
 }
+
+/** Verdicts pour lesquels un contenu est affiché (les deux derniers avec avertissement). */
+const DISPLAYABLE_AUTH: ReadonlySet<EnvelopeStatus> = new Set<EnvelopeStatus>(['verified', 'unsigned-legacy', 'unverifiable']);
 
 
 const formatMessageTime = (rawTimestamp: string | number | undefined, fallbackTime?: string): string => {
@@ -1115,6 +1121,63 @@ const App: React.FC = () => {
   const myKeysRef = useRef<{ publicKeyJwk: any; privateKeyJwk: any; privateKey?: CryptoKey; signingKey?: CryptoKey | null } | null>(null);
   useEffect(() => { myKeysRef.current = myKeys; }, [myKeys]);
 
+  // ---- MESSAGES SIGNÉS (enveloppe v2) ----------------------------------------------
+  // Référence toujours à jour vers getPublicKey (défini plus bas) : les handlers socket
+  // sont enregistrés une seule fois et ne doivent pas capturer un cache figé.
+  const getPublicKeyRef = useRef<(contactId: number, forceRefresh?: boolean) => Promise<JsonWebKey | null | undefined>>(async () => null);
+  // Identifiants de messages déjà vus (anti-rejeu) pour cette session.
+  const seenMidsRef = useRef<Set<string>>(new Set());
+  // Dernier rafraîchissement forcé de clé publique par contact (borne les requêtes si
+  // beaucoup de messages invalides arrivent, ex. historique falsifié par le serveur).
+  const keyRefreshAtRef = useRef<Map<number, number>>(new Map());
+  // Contacts dont on a déjà reçu un message signé valide. Leur client signe toujours :
+  // un message NON signé reçu en direct de leur part est une rétrogradation forcée.
+  const signedContactsRef = useRef<{ userId: number | null; ids: Set<number> }>({ userId: null, ids: new Set() });
+  const signedContactsKey = (uid: number) => `wlm_signed_contacts_${uid}`;
+  const getSignedContacts = (uid: number): Set<number> => {
+    if (signedContactsRef.current.userId !== uid) {
+      let ids: number[] = [];
+      try { ids = JSON.parse(localStorage.getItem(signedContactsKey(uid)) || '[]'); } catch { /* ignore */ }
+      signedContactsRef.current = { userId: uid, ids: new Set(Array.isArray(ids) ? ids.filter(Number.isInteger) : []) };
+    }
+    return signedContactsRef.current.ids;
+  };
+  const rememberSignedContact = (uid: number, contactId: number) => {
+    const ids = getSignedContacts(uid);
+    if (ids.has(contactId)) return;
+    ids.add(contactId);
+    try { localStorage.setItem(signedContactsKey(uid), JSON.stringify([...ids])); } catch { /* ignore */ }
+  };
+
+  /**
+   * Ouvre et authentifie un message (direct ou historique).
+   * Si la signature ne se vérifie pas avec la clé en cache, on retente UNE fois avec la
+   * clé fraîche du serveur (le contact a pu réinitialiser ses clés ; getPublicKey
+   * déclenche alors l'alerte de changement d'empreinte).
+   */
+  const authenticateIncoming = useCallback(async (
+    rawText: unknown, senderId: number, receiverId: number, myId: number
+  ): Promise<OpenedMessage> => {
+    const keys = myKeysRef.current;
+    if (!keys) return { status: 'undecryptable', payload: null };
+    const isSelf = senderId === myId;
+    const resolveKey = async (force: boolean): Promise<JsonWebKey | null> =>
+      isSelf ? keys.publicKeyJwk : ((await getPublicKeyRef.current(senderId, force)) ?? null);
+    const ctx = { serverSenderId: senderId, serverReceiverId: receiverId, myId, myPrivateKey: keys.privateKeyJwk };
+
+    let opened = await openMessage(rawText, { ...ctx, senderPublicKeyJwk: await resolveKey(false) });
+    if (!isSelf && (opened.status === 'invalid' || opened.status === 'unverifiable')) {
+      const last = keyRefreshAtRef.current.get(senderId) ?? 0;
+      if (Date.now() - last > 30_000) {
+        keyRefreshAtRef.current.set(senderId, Date.now());
+        const fresh = await resolveKey(true);
+        if (fresh) opened = await openMessage(rawText, { ...ctx, senderPublicKeyJwk: fresh });
+      }
+    }
+    if (opened.payload) opened = { ...opened, payload: sanitizeDecryptedPayload(opened.payload) };
+    return opened;
+  }, []);
+
   // Calcul automatique de ma propre empreinte locale de sécurité dès chargement des clés
   useEffect(() => {
     if (myKeys?.publicKeyJwk) {
@@ -1261,6 +1324,14 @@ const App: React.FC = () => {
             } catch {
               isKeyMatch = false;
             }
+          }
+
+          // Enregistrements d'appareil antérieurs à la signature des messages : pas de clé
+          // RSA-PSS. Sans elle, impossible d'envoyer des messages signés → reconnexion
+          // (le mot de passe permet de la recréer depuis le coffre).
+          if (isKeyMatch && !keyRes.data.signingCryptoKey) {
+            console.warn("[E2EE Session] Clé de signature absente de cet appareil : reconnexion requise.");
+            isKeyMatch = false;
           }
 
           if (isKeyMatch) {
@@ -1716,36 +1787,43 @@ const App: React.FC = () => {
   /**
    * DÉCHIFFREMENT D'UN TABLEAU DE MESSAGES
    */
-  const decryptMessageArray = useCallback(async (msgs: any[], privateKey: any) => {
+  const decryptMessageArray = useCallback(async (msgs: any[]) => {
     const results: Message[] = [];
+    const seenInHistory = new Set<string>();
     for (const m of msgs) {
-      let decryptedText = m.text;
-      let decryptedAudio = m.audio;
-      let decryptedStyle = m.style;
-      let fileData: FileDataPayload | undefined = m.fileData;
+      let decryptedText = '';
+      let decryptedAudio: string | null = null;
+      let decryptedStyle: any = null;
+      let fileData: FileDataPayload | undefined;
 
-      try {
-        const potentialJson = JSON.parse(m.text);
-        if (potentialJson && (potentialJson.keyReceiver || potentialJson.keySender)) {
-           const isSender = resolveMessageSide(m, user?.id) === 'self';
-           const payload = await decryptMessagePayload<any>(potentialJson, privateKey, isSender);
-           if (payload) {
-             if (payload.type === 'file' && payload.fileId) {
-               decryptedText = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
-               fileData = payload;
-             } else {
-               decryptedText = payload.text;
-             }
-              if (payload.audio) decryptedAudio = payload.audio;
-             if (payload.style) decryptedStyle = payload.style;
-             if (payload.customEmoticons) {
-               registerReceivedCustomEmoticons(payload.customEmoticons);
-             }
-           } else {
-             decryptedText = "[!] Message illisible (E2E)";
-           }
+      // AUTHENTIFICATION + DÉCHIFFREMENT (enveloppe signée v2). Les anciens messages
+      // (v1, avant les signatures) restent lisibles mais sont signalés « non vérifiés ».
+      const opened = await authenticateIncoming(
+        m.text,
+        Number(m.sender_id ?? m.senderId),
+        Number(m.receiver_id ?? m.receiverId),
+        Number(user?.id)
+      );
+      // Anti-rejeu : un même message signé n'apparaît qu'une fois dans l'historique
+      if (opened.mid) {
+        if (seenInHistory.has(opened.mid)) continue;
+        seenInHistory.add(opened.mid);
+        seenMidsRef.current.add(opened.mid);
+      }
+      const payload = DISPLAYABLE_AUTH.has(opened.status) ? (opened.payload as any) : null;
+      if (payload) {
+        if (payload.type === 'file' && payload.fileId) {
+          decryptedText = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
+          fileData = payload;
+        } else {
+          decryptedText = payload.text ?? '';
         }
-      } catch { /* Pas du JSON chiffré */ }
+        if (payload.audio) decryptedAudio = payload.audio;
+        if (payload.style) decryptedStyle = payload.style;
+        if (payload.customEmoticons) {
+          registerReceivedCustomEmoticons(payload.customEmoticons);
+        }
+      }
 
       const isSender = resolveMessageSide(m, user?.id) === 'self';
       const formattedTime = formatMessageTime(m.timestamp, m.time);
@@ -1770,11 +1848,14 @@ const App: React.FC = () => {
         time: formattedTime,
         timestamp: m.timestamp,
         fileData: fileData,
-        delivery_status: m.delivery_status || 'sent'
+        delivery_status: m.delivery_status || 'sent',
+        type: payload?.type || 'text',
+        _auth: opened.status,
+        mid: opened.mid
       });
     }
     return results;
-  }, [user?.id, user?.nickname, user?.username, myNickname]);
+  }, [user?.id, user?.nickname, user?.username, myNickname, authenticateIncoming]);
 
   /**
    * CHARGEMENT DE L'HISTORIQUE D'UNE CONVERSATION (UNIFIÉ SANS DOUBLON)
@@ -1809,7 +1890,14 @@ const App: React.FC = () => {
       try {
         const cached = await LocalDB.getMessages<Message>(`${user.id}_${chatId}`, keys.privateKeyJwk);
         if (cached && cached.length > 0) {
-          const decryptedCached = await decryptMessageArray(cached, keys.privateKeyJwk);
+          // Le cache local contient des messages DÉJÀ authentifiés et déchiffrés (chiffrés
+          // localement) : on ne les ré-ouvre pas. Les entrées écrites par un ancien client
+          // n'ont pas de verdict → « non vérifiées » jusqu'à la synchro serveur ci-dessous.
+          const decryptedCached: Message[] = cached.map(m => ({
+            ...m,
+            time: formatMessageTime(m.timestamp, m.time),
+            _auth: m._auth ?? 'unsigned-legacy'
+          }));
           setMessages(prev => {
             if (!prev[chatId] || prev[chatId].length === 0) {
               return { ...prev, [chatId]: decryptedCached };
@@ -1825,8 +1913,10 @@ const App: React.FC = () => {
       try {
         const res = await axios.get(`/api/messages/${user.id}/${chatId}`);
         if (Array.isArray(res.data)) {
-          const serverMsgs = await decryptMessageArray(res.data, keys.privateKeyJwk);
-          const validServerMsgs = serverMsgs.filter(m => m.text !== "[!] Message illisible (E2E)");
+          const serverMsgs = await decryptMessageArray(res.data);
+          // Les messages indéchiffrables (ex. chiffrés pour une ancienne clé) restent masqués ;
+          // les messages rejetés (signature invalide, texte clair) sont AFFICHÉS comme tels.
+          const validServerMsgs = serverMsgs.filter(m => m._auth !== 'undecryptable');
 
           setMessages(prev => {
             const currentMsgs = prev[chatId] || [];
@@ -1932,43 +2022,43 @@ const App: React.FC = () => {
       newSocket.on('receive_message', async (data) => {
         const senderId = data.senderId || data.sender_id;
         const isSender = resolveMessageSide({ senderId, sender_id: senderId }, user.id) === 'self';
-        let decryptedData = { ...data };
-        let fileData = data.fileData;
+        // AUTHENTIFICATION + DÉCHIFFREMENT (enveloppe signée v2)
+        const myIdNum = Number(user.id);
+        const senderIdNum = Number(senderId);
+        const opened = await authenticateIncoming(data.text, senderIdNum, Number(data.receiverId ?? data.receiver_id), myIdNum);
+        let authStatus: EnvelopeStatus = opened.status;
+        // Anti-rétrogradation (direct uniquement) : un contact qui a déjà signé signe toujours.
+        if (authStatus === 'unsigned-legacy' && !isSender && getSignedContacts(myIdNum).has(senderIdNum)) {
+          console.warn(`[Security] Message non signé reçu de ${senderIdNum} alors que ce contact signe ses messages : rejeté.`);
+          authStatus = 'invalid';
+        }
+        if (authStatus === 'verified' && !isSender) rememberSignedContact(myIdNum, senderIdNum);
+        if (authStatus !== 'verified') {
+          console.warn(`[Security] Message ${data.id ?? ''} de ${senderIdNum} : ${authStatus}${opened.reason ? ' (' + opened.reason + ')' : ''}`);
+        }
 
-        // Tentative de détection si le message est chiffré de bout en bout
-        let isEncrypted = false;
-        let parsedE2e = null;
-        try {
-           const potentialJson = JSON.parse(data.text);
-           if (potentialJson && (potentialJson.keyReceiver || potentialJson.keySender)) {
-              isEncrypted = true;
-              parsedE2e = potentialJson;
-           }
-        } catch(e) { /* Pas du JSON chiffré */ }
+        // Anti-rejeu : un même message signé (mid) n'est accepté qu'une fois
+        if (opened.mid) {
+          if (seenMidsRef.current.has(opened.mid)) {
+            console.warn(`[Security] Message rejoué ignoré (mid ${opened.mid}).`);
+            return;
+          }
+          seenMidsRef.current.add(opened.mid);
+        }
 
-        if (isEncrypted) {
-          const currentKeys = myKeysRef.current;
-          if (currentKeys) {
-            try {
-              const payload = await decryptMessagePayload<any>(parsedE2e, currentKeys.privateKeyJwk, isSender);
-              if (payload) {
-                 decryptedData = { ...data, ...payload };
-                 if (payload.type === 'file' && payload.fileId) {
-                   fileData = payload;
-                   decryptedData.text = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
-                 }
-                 if (payload.customEmoticons) {
-                   registerReceivedCustomEmoticons(payload.customEmoticons);
-                 }
-              } else {
-                 decryptedData = { ...data, text: "[!] Message chiffré illisible", audio: null };
-              }
-            } catch(e) {
-              console.error("Erreur de déchiffrement:", e);
-              decryptedData = { ...data, text: "[!] Erreur de déchiffrement", audio: null };
-            }
-          } else {
-            decryptedData = { ...data, text: "[!] Attente des clés de déchiffrement...", audio: null };
+        // Seuls les champs de contenu du payload sont repris (sanitizeDecryptedPayload) :
+        // il ne peut pas écraser id, senderId, timestamp, delivery_status…
+        const payload = DISPLAYABLE_AUTH.has(authStatus) ? (opened.payload as any) : null;
+        let decryptedData: any = { ...data, text: '', audio: null, style: null };
+        let fileData: FileDataPayload | undefined;
+        if (payload) {
+          decryptedData = { ...decryptedData, ...payload };
+          if (payload.type === 'file' && payload.fileId) {
+            fileData = payload;
+            decryptedData.text = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
+          }
+          if (payload.customEmoticons) {
+            registerReceivedCustomEmoticons(payload.customEmoticons);
           }
         }
 
@@ -2001,7 +2091,9 @@ const App: React.FC = () => {
           sender: finalSenderName,
           time: formattedTime,
           timestamp: decryptedData.timestamp || new Date().toISOString(),
-          fileData: fileData || (decryptedData.type === 'file' && decryptedData.fileId ? decryptedData : undefined)
+          fileData: fileData || (decryptedData.type === 'file' && decryptedData.fileId ? decryptedData : undefined),
+          _auth: authStatus,
+          mid: opened.mid
         };
 
         setMessages(prev => {
@@ -2449,6 +2541,26 @@ const App: React.FC = () => {
     }
     return null;
   };
+  // Mise à jour après chaque rendu (version courante de getPublicKey et de son cache)
+  useEffect(() => { getPublicKeyRef.current = getPublicKey; });
+
+  /**
+   * Chiffre ET signe un payload pour un contact (enveloppe v2).
+   * Échoue si la clé de signature est absente : on n'envoie jamais de message non signé.
+   */
+  const sealForContact = async (payload: unknown, contactId: number, contactPubKey: JsonWebKey) => {
+    const keys = myKeysRef.current;
+    if (!keys?.signingKey || !user?.id) {
+      throw new Error(t.chat.signingKeyMissing);
+    }
+    return sealMessage(payload, {
+      from: Number(user.id),
+      to: Number(contactId),
+      receiverPublicKeyJwk: contactPubKey,
+      senderPublicKeyJwk: keys.publicKeyJwk,
+      signingKey: keys.signingKey
+    });
+  };
 
   /**
    * Action utilisateur : basculer le statut vérifié localement
@@ -2715,7 +2827,7 @@ const App: React.FC = () => {
       }
       
       // Chiffrement du message
-      const e2eData = await encryptMessagePayload(unencryptedPayload, contactPubKey, myKeys.publicKeyJwk);
+      const e2eData = await sealForContact(unencryptedPayload, activeChatId, contactPubKey);
 
       const msgData = { 
         senderId: user?.id, 
@@ -2732,9 +2844,12 @@ const App: React.FC = () => {
       const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       // Ajout local immédiat pour la fluidité (optimistic UI)
+      seenMidsRef.current.add(e2eData.mid);
       const myLocalMsg: Message = { 
         ...unencryptedPayload, 
         id: clientMsgId,
+        mid: e2eData.mid,
+        _auth: 'verified',
         clientMsgId,
         senderId: user?.id,
         sender_id: user?.id,
@@ -2776,7 +2891,7 @@ const App: React.FC = () => {
 
     } catch (e) {
       console.error("Échec du chiffrement:", e);
-      alert("Erreur lors du chiffrement du message.");
+      alert(e instanceof Error && e.message === t.chat.signingKeyMissing ? e.message : "Erreur lors du chiffrement du message.");
     }
   };
 
@@ -2873,7 +2988,7 @@ const App: React.FC = () => {
         senderId: user?.id
       };
 
-      const e2eData = await encryptMessagePayload(filePayload, contactPubKey, myKeys.publicKeyJwk);
+      const e2eData = await sealForContact(filePayload, activeChatId, contactPubKey);
 
       const msgData = {
         senderId: user?.id,
@@ -3137,7 +3252,7 @@ const App: React.FC = () => {
       };
 
       try {
-        const e2eData = await encryptMessagePayload(unencryptedPayload, contactPubKey, myKeys.publicKeyJwk);
+        const e2eData = await sealForContact(unencryptedPayload, activeChatId, contactPubKey);
         socket.emit('send_message', {
           senderId: user?.id,
           receiverId: activeChatId,
@@ -3289,7 +3404,7 @@ const App: React.FC = () => {
             };
 
             try {
-              const e2eData = await encryptMessagePayload(unencryptedPayload, contactPubKey, myKeys.publicKeyJwk);
+              const e2eData = await sealForContact(unencryptedPayload, activeChatId, contactPubKey);
               const msgData = {
                 senderId: user?.id,
                 receiverId: activeChatId,
@@ -4795,6 +4910,16 @@ const App: React.FC = () => {
                            <div className={`msg-name ${isSender ? 'me' : ''}`}>
                              <span>{m.fileData ? formatNickname(fileHeaderLabel) : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}</span>
                              {m.time && <span className="msg-time">{m.time}</span>}
+                             {(m._auth === 'unsigned-legacy' || m._auth === 'unverifiable') && (
+                               <span
+                                 className="msg-auth-badge"
+                                 role="img"
+                                 aria-label={m._auth === 'unsigned-legacy' ? t.chat.authUnsignedLegacy : t.chat.authUnverifiable}
+                                 title={m._auth === 'unsigned-legacy' ? t.chat.authUnsignedLegacy : t.chat.authUnverifiable}
+                               >
+                                 ⚠
+                               </span>
+                             )}
                              {isSender && activeChatId !== SYSTEM_BOT_ID && (
                                <span 
                                  className={`msg-status-badge status-${m.delivery_status || (m._isPending ? 'pending' : 'sent')}`}
@@ -4808,7 +4933,11 @@ const App: React.FC = () => {
                                </span>
                              )}
                            </div>
-                           {m.fileData ? (
+                           {(m._auth === 'invalid' || m._auth === 'plaintext') ? (
+                             <div className="msg-rejected" role="alert">
+                               ⛔ {m._auth === 'plaintext' ? t.chat.authRejectedPlaintext : t.chat.authRejectedInvalid}
+                             </div>
+                           ) : m.fileData ? (
                              <FileTransferCard 
                                fileData={m.fileData} 
                                myPrivateKey={myKeys?.privateKeyJwk} 

@@ -4451,3 +4451,20 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 
 
 
+
+/* Authenticité des messages (enveloppe signée) */
+.msg-auth-badge {
+  margin-left: 6px;
+  font-size: 11px;
+  color: #c27c0e;
+  cursor: help;
+}
+.msg-rejected {
+  margin: 2px 0 2px 12px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #8a1f11;
+  background: #fdecea;
+  border: 1px solid #f3b8b0;
+  border-radius: 3px;
+}

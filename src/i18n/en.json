@@ -182,7 +182,12 @@
     "send": "Send",
     "clearHistory": "Clear history",
     "typing": "is typing a message...",
-    "unknownSender": "Unknown sender"
+    "unknownSender": "Unknown sender",
+    "authUnsignedLegacy": "Unverified message: legacy unsigned format (sent before signatures were enabled). Its authenticity cannot be guaranteed.",
+    "authUnverifiable": "Unverified message: the sender's public key is unavailable.",
+    "authRejectedInvalid": "Message rejected: invalid signature. It may not come from this contact.",
+    "authRejectedPlaintext": "Message rejected: it was not encrypted. It may not come from this contact.",
+    "signingKeyMissing": "Signing key unavailable. Sign out and sign back in to send signed messages."
   },
   "bot": {
     "name": "OpenWLM",

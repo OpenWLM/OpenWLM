@@ -48,6 +48,38 @@ const clearActive = (uid) => {
 };
 export const isUserBusy = (userId) => activeCalls.has(userId);
 
+// APPELS EN ATTENTE (sonnerie) : "<appelant>:<appelé>" -> expiration (ms).
+// SÉCURITÉ : call_accept / call_reject ne sont acceptés que pour un appel réellement
+// en attente. Sans cela, n'importe quel contact pouvait émettre call_accept et faire
+// passer un utilisateur (et lui-même) en « occupé » sans aucun appel (DoS d'appels),
+// ou envoyer de faux call_rejected.
+export const PENDING_CALL_TTL_MS = 60 * 1000;
+const pendingCalls = new Map();
+const pendingKey = (callerId, calleeId) => `${callerId}:${calleeId}`;
+const setPending = (callerId, calleeId) => {
+  pendingCalls.set(pendingKey(callerId, calleeId), Date.now() + PENDING_CALL_TTL_MS);
+};
+/** Consomme l'appel en attente caller→callee s'il existe et n'a pas expiré. */
+const takePending = (callerId, calleeId) => {
+  const key = pendingKey(callerId, calleeId);
+  const expires = pendingCalls.get(key);
+  pendingCalls.delete(key);
+  return expires !== undefined && expires > Date.now();
+};
+const clearPendingFor = (userId) => {
+  for (const key of pendingCalls.keys()) {
+    const [a, b] = key.split(':').map(Number);
+    if (a === userId || b === userId) pendingCalls.delete(key);
+  }
+};
+const pendingCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, expires] of pendingCalls.entries()) {
+    if (expires <= now) pendingCalls.delete(key);
+  }
+}, 60000);
+if (pendingCleanupTimer.unref) pendingCleanupTimer.unref();
+
 const asId = (v) => {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -77,6 +109,7 @@ export const registerWebRtcHandlers = (io, socket) => {
     const callerUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(self);
     if (!callerUser) return;
 
+    setPending(self, targetId);
     io.to(getUserRoom(targetId)).emit('incoming_call', {
       caller: self,
       callerName: callerUser.nickname || callerUser.username,
@@ -92,6 +125,8 @@ export const registerWebRtcHandlers = (io, socket) => {
     if (!targetId) return;
     if (!canInteract(self, targetId).allowed) return;
     if (!rtcRateAllowed(self, 20)) return;
+    // L'appelé (self) ne peut accepter qu'un appel que targetId lui a réellement envoyé
+    if (!takePending(targetId, self)) return;
 
     markActive(self, targetId);
     io.to(getUserRoom(targetId)).emit('call_accepted', { by: self });
@@ -102,6 +137,7 @@ export const registerWebRtcHandlers = (io, socket) => {
     if (!targetId) return;
     if (!canInteract(self, targetId).allowed) return;
     if (!rtcRateAllowed(self, 20)) return;
+    if (!takePending(targetId, self)) return;
 
     io.to(getUserRoom(targetId)).emit('call_rejected', { by: self });
   });
@@ -131,6 +167,9 @@ export const registerWebRtcHandlers = (io, socket) => {
     if (!canInteract(self, targetId).allowed) return;
 
     clearActive(self);
+    // L'appelant raccroche pendant la sonnerie : l'appel ne peut plus être accepté
+    pendingCalls.delete(pendingKey(self, targetId));
+    pendingCalls.delete(pendingKey(targetId, self));
     if (isUserOnline(targetId)) {
       io.to(getUserRoom(targetId)).emit('call_ended', { caller: self });
     }
@@ -138,6 +177,9 @@ export const registerWebRtcHandlers = (io, socket) => {
 
   // Coupure brutale (réseau, fermeture d'onglet) : prévenir le pair
   socket.on('disconnect', () => {
+    // Différé : le handler de sockets/index.js retire la socket du registre APRÈS celui-ci.
+    // Si c'était la dernière socket de l'utilisateur, ses appels en attente sont purgés.
+    setImmediate(() => { if (!isUserOnline(self)) clearPendingFor(self); });
     const peer = clearActive(self);
     if (peer !== undefined && isUserOnline(peer)) {
       io.to(getUserRoom(peer)).emit('call_ended', { caller: self });

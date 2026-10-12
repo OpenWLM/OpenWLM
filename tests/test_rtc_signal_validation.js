@@ -95,3 +95,55 @@ test('webrtc_signal/call_request : signal invalide ou trop gros rejeté, signal 
     cleanup();
   }
 });
+
+test('call_accept / call_reject : refusés sans appel réellement en attente (anti-DoS « occupé »)', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
+  seed();
+  const s1 = await connect(tok(IDS.a, 'rtc_a'));
+  const s2 = await connect(tok(IDS.b, 'rtc_b'));
+  try {
+    await wait(150);
+
+    // 1) B émet call_accept SANS que A l'ait appelé → rien n'est relayé à A
+    let p = onceOrNull(s1, 'call_accepted', 600);
+    s2.emit('call_accept', { target: IDS.a });
+    assert.equal(await p, null, 'call_accept sans appel en attente ignoré');
+
+    // ... et A n'est PAS marqué occupé : un appel B → A doit sonner normalement
+    p = onceOrNull(s2, 'call_busy', 600);
+    const ring = onceOrNull(s1, 'incoming_call', 600);
+    s2.emit('call_request', { target: IDS.a, signal: 'eyJ0eXBlIjoib2ZmZXIifQ==' });
+    assert.equal(await p, null, 'A ne doit pas être occupé');
+    assert.ok(await ring, 'l\'appel B → A sonne');
+    // B raccroche pendant la sonnerie → A ne peut plus accepter cet appel
+    s2.emit('end_call', { target: IDS.a });
+    await wait(150);
+    p = onceOrNull(s2, 'call_accepted', 600);
+    s1.emit('call_accept', { target: IDS.b });
+    assert.equal(await p, null, 'appel annulé par l\'appelant : acceptation ignorée');
+
+    // 2) call_reject sans appel en attente → non relayé
+    p = onceOrNull(s1, 'call_rejected', 600);
+    s2.emit('call_reject', { target: IDS.a });
+    assert.equal(await p, null, 'call_reject sans appel en attente ignoré');
+
+    // 3) Parcours nominal : A appelle, B accepte → relayé, puis l'appel est consommé
+    const incoming = onceOrNull(s2, 'incoming_call', 1000);
+    s1.emit('call_request', { target: IDS.b, signal: 'eyJ0eXBlIjoib2ZmZXIifQ==' });
+    assert.ok(await incoming, 'appel A → B reçu');
+    p = onceOrNull(s1, 'call_accepted', 1000);
+    s2.emit('call_accept', { target: IDS.a });
+    const accepted = await p;
+    assert.ok(accepted && accepted.by === IDS.b, 'acceptation d\'un appel en attente relayée');
+
+    p = onceOrNull(s1, 'call_accepted', 600);
+    s2.emit('call_accept', { target: IDS.a });
+    assert.equal(await p, null, 'un même appel ne peut pas être accepté deux fois');
+
+    s1.emit('end_call', { target: IDS.b });
+    await wait(150);
+  } finally {
+    s1.disconnect();
+    s2.disconnect();
+    cleanup();
+  }
+});

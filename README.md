@@ -136,6 +136,9 @@ npm run server
 # or directly:
 NODE_ENV=production node server/index.js
 ```
+
+> ⚠️ **In production, run the server under a supervisor** (systemd, pm2, Docker restart policy). It deliberately exits with code 1 after an unhandled error so it can be restarted in a clean state. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 The application will be accessible at: **http://localhost:3001**
 
 ---

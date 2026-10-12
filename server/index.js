@@ -36,14 +36,29 @@ if (typeof process.loadEnvFile === 'function' && fs.existsSync(envFilePath)) {
   try { process.loadEnvFile(envFilePath); } catch { /* fichier invalide : on l'ignore */ }
 }
 
-// SÉCURITÉ/ROBUSTESSE : filet global — ne jamais laisser une exception non gérée
-// (ex: erreur dans un handler socket) faire tomber tout le serveur.
-process.on('uncaughtException', (err) => {
-  console.error('[FATAL] uncaughtException (serveur maintenu en vie):', err);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('[FATAL] unhandledRejection (serveur maintenu en vie):', reason);
-});
+// ROBUSTESSE : après une exception non gérée, l'état du processus (verrous, Maps en
+// mémoire, transactions, sockets) n'est plus fiable. Continuer à servir est plus
+// dangereux que redémarrer : on journalise, on ferme proprement, puis on quitte avec
+// un code d'erreur pour que le superviseur (systemd, pm2, Docker restart policy…)
+// relance un processus sain. Cf. docs/DEPLOYMENT.md.
+let shuttingDown = false;
+const fatalShutdown = (kind, err) => {
+  console.error(`[FATAL] ${kind} — arrêt du processus pour redémarrage par le superviseur:`, err);
+  if (shuttingDown) return;
+  shuttingDown = true;
+  // Filet : sortie forcée si la fermeture propre se bloque
+  setTimeout(() => process.exit(1), 3000).unref();
+  try {
+    io.close(() => {
+      try { db.close(); } catch { /* ignore */ }
+      process.exit(1);
+    });
+  } catch {
+    process.exit(1);
+  }
+};
+process.on('uncaughtException', (err) => fatalShutdown('uncaughtException', err));
+process.on('unhandledRejection', (reason) => fatalShutdown('unhandledRejection', reason));
 
 const app = express();
 const httpServer = createServer(app);

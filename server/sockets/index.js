@@ -67,6 +67,21 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
   if (sessionSweep.unref) sessionSweep.unref();
 
   io.on('connection', (socket) => {
+    // ROBUSTESSE : une exception dans un handler d'événement (entrée client malformée,
+    // bug) est confinée à CET événement : journalisée puis ignorée. Sinon elle
+    // remonterait en uncaughtException, qui arrête désormais le processus
+    // (cf. server/index.js) — ce qui offrirait un crash à distance.
+    const registerEvent = socket.on.bind(socket);
+    socket.on = (event, handler) => registerEvent(event, (...args) => {
+      const report = (err) => console.error(`[Socket] Erreur dans le handler '${event}' (utilisateur ${socket.user?.id ?? '?'}):`, err);
+      try {
+        const result = handler(...args);
+        if (result && typeof result.catch === 'function') result.catch(report);
+      } catch (err) {
+        report(err);
+      }
+    });
+
     const authUserId = socket.user?.id;
     if (authUserId) {
       socket.join(getUserRoom(authUserId));

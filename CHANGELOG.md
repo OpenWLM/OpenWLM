@@ -25,6 +25,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **E2EE**: signaling (SDP/ICE) **encrypted** with the existing E2EE (the server becomes a blind relay) + **DTLS fingerprint signed (RSA-PSS)** and verified on receipt (anti-MITM).
 - **Network**: configurable ICE servers via `GET /api/rtc-config` (STUN/TURN — static or ephemeral TURN credentials); **ICE restart** on `disconnected`/`failed` and on socket reconnect; bounded bitrate budgets.
 - **UI**: mic/camera on-off, timer, quality indicator, mic/camera/speaker pickers, fullscreen/PiP, screen sharing, responsive; **looping ring** + **system notification** on incoming call.
+- **Non-blocking call window**: a call is no longer a full-viewport overlay that swallowed every click. It is a small window you can drag (clamped to the viewport), minimize/expand **without unmounting the WebRTC streams**, so the contact list and other conversations stay usable during the call (WLM 2009 style). Only the incoming-call accept/reject decision keeps the centered, dimmed modal; on mobile the window starts minimized (bar above the composer) and the ringing dialog keeps accept/reject fully visible (fixed a truncation caused by the video stage collapsing to zero height).
 - **Dynamic adaptation** of bitrate/resolution (`getStats`) and ***perfect negotiation***.
 
 ### 💬 Messaging
@@ -34,6 +35,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Private mode + offline contact**: nothing is stored server-side, so the message is now **explicitly refused** (`RECIPIENT_OFFLINE_PRIVATE`) instead of being silently lost while the sender saw "sent". Normal messages are unchanged (stored, delivered on reconnection). Winks follow the same rule (an ack now drives the sender's feedback).
 - **Voice clips**: encoded at 32 kbit/s with an automatic 90 s stop (system line), keeping the clip under the 1 MB socket frame limit; oversized payloads are marked "too large" without a resend button.
 - **Remaining loss window (honest limit)**: in private mode, presence is checked **at send time**; if the contact disconnects right after, the message can still be lost (no queue). Use normal mode for guaranteed delivery. See `docs/SECURITY_E2E.md`.
+- **Resend duplicate window (rare, documented limit)**: the 15 s ack timeout is **client-side only**; a late ack means the message was actually accepted, and since a resend re-signs with a **new `mid`**, anti-replay does not collapse the two copies. See `docs/SECURITY_E2E.md`.
 
 ### 🔐 Message signatures (authenticated E2EE)
 - Messages are now **signed (RSA-PSS)** in addition to being encrypted: the server can no longer forge a message "from" a contact. New **v2 envelope** (encrypt-then-sign): signature over a domain-separated canonical string (`openwlm-msg-v2`), `from`/`to`/`mid` duplicated **inside** the ciphertext (anti-stripping), verification **before** decryption, content-field allowlist.

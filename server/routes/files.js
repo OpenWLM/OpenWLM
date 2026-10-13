@@ -18,6 +18,10 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 const htaccessPath = path.join(UPLOADS_DIR, '.htaccess');
 if (!fs.existsSync(htaccessPath)) {
   try {
+    // Défense en profondeur, PAS la protection principale : dans l'architecture actuelle
+    // les fichiers sont servis par Express via un token d'accès (jamais par Apache/nginx
+    // en direct), donc ce .htaccess ne bloque rien ici. Il ne sert qu'au cas où un reverse
+    // proxy mal configuré viendrait à exposer uploads/ statiquement. Ne pas s'y fier.
     fs.writeFileSync(htaccessPath, 'Deny from all\nOptions -Indexes -ExecCGI\n');
   } catch (e) {}
 }

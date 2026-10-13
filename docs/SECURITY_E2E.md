@@ -141,6 +141,21 @@ est seulement relayé aux **sessions connectées** du destinataire. Conséquence
   quand le destinataire recharge/ouvre la conversation ; il n'y a **pas** de *replay* serveur
   des messages en attente au moment de la reconnexion socket.
 
+### Renvoi « Non envoyé » : fenêtre de doublon (rare)
+
+L'accusé d'envoi a un **délai de 15 s côté client uniquement** (`socket.timeout`) : il n'an-
+nule pas l'envoi déjà parti. Si le réseau est lent et que l'accusé du serveur arrive **après**
+ce délai, le message a en réalité été **accepté et stocké**, mais le client l'affiche
+« **Non envoyé** » et propose **Renvoyer**. Le clic renvoie le message **re-signé avec un
+nouveau `mid`** : ce sont donc deux messages **légitimement signés et distincts**, que
+l'**anti-rejeu ne couvre pas** → le contact peut recevoir **deux copies** (cas rare ; le
+TOCTOU du mode privé ci-dessus est plus probable).
+
+Correctif « serveur : dédupliquer par `mid` à l'écriture » : **insuffisant tel quel**, car le
+renvoi crée justement un **nouveau** `mid`. Une correction complète suppose que le **renvoi
+réutilise le `mid` d'origine** (le destinataire écarte alors la seconde copie via son
+anti-rejeu) **et/ou** une déduplication serveur par `(sender_id, mid)`.
+
 ---
 
 ## 5. Sécurité réseau / plateforme (contexte)

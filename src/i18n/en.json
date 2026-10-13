@@ -342,7 +342,9 @@
     "camera": "Camera",
     "speaker": "Speaker",
     "defaultDevice": "Default",
-    "unsecureContext": "Your browser blocks camera/microphone access because the site is not secure (HTTPS required)."
+    "unsecureContext": "Your browser blocks camera/microphone access because the site is not secure (HTTPS required).",
+    "expand": "Expand call",
+    "minimizeWindow": "Minimize call"
   },
   "settings": {
     "optionsTitle": "Options",

@@ -4386,15 +4386,59 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 /* ==========================================================================
    Appels audio/vidéo (WebRTC) — interface
    ========================================================================== */
+
+/* Calque plein écran mais TRANSPARENT AUX CLICS : la fenêtre d'appel elle-même
+   (ci-dessous) est la seule zone cliquable. Contrairement à une modale classique,
+   le reste de l'application (liste de contacts, conversations) reste utilisable
+   PENDANT l'appel — comme sur WLM 2009, où l'appel n'était jamais bloquant. */
 .wlm-video-modal {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
-  display: flex; align-items: center; justify-content: center; z-index: 4000;
+  position: fixed; inset: 0; z-index: 4000; pointer-events: none;
 }
+/* Seule la phase de sonnerie (décision immédiate à prendre) reste une vraie modale,
+   centrée avec un fond assombri. */
+.wlm-video-modal.wlm-video-modal-ringing {
+  background: rgba(0, 0, 0, 0.6); pointer-events: auto;
+  display: flex; align-items: center; justify-content: center;
+}
+
 .wlm-video-box {
   background: #fff; border: 1px solid #99b4d1; border-radius: 5px;
-  width: 600px; max-width: 100%; overflow: hidden;
+  width: 600px; max-width: calc(100vw - 16px); overflow: hidden;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column;
+  pointer-events: auto;
 }
+/* Position flottante par défaut (bas-droite) tant que l'utilisateur n'a pas
+   déplacé la fenêtre (cf. style inline left/top posé par le glisser-déposer). */
+.wlm-video-modal:not(.wlm-video-modal-ringing) .wlm-video-box {
+  position: absolute; right: 16px; bottom: 16px;
+}
+
+/* Habillage « fenêtre d'appel » : barre de titre bleue classique, façon WLM 2009,
+   distincte du style des autres boîtes de dialogue de l'application. */
+.wlm-call-titlebar {
+  background: linear-gradient(to bottom, #3e8ef7 0%, #1d5fce 45%, #184fae 100%) !important;
+  color: #fff !important; text-shadow: 0 1px 1px rgba(0,0,0,0.35);
+  cursor: move; user-select: none; touch-action: none;
+}
+.wlm-video-modal-ringing .wlm-call-titlebar { cursor: default; }
+.wlm-call-titlebar-actions { display: flex; gap: 4px; }
+.wlm-call-titlebar .win-close-btn {
+  color: #fff; width: 20px; height: 18px; line-height: 16px;
+  background: linear-gradient(to bottom, #5c9ff8, #2a6fdb);
+  border: 1px solid #184fae; border-radius: 2px; font-size: 12px; font-weight: bold;
+}
+.wlm-call-titlebar .win-close-btn:hover { background: linear-gradient(to bottom, #76b0ff, #3a7ce6); }
+
+/* Mode réduit : simple barre, la scène vidéo et les contrôles complets sont masqués
+   (le flux WebRTC continue en arrière-plan, rien n'est interrompu). */
+.wlm-call-minimized { width: 300px; }
+.wlm-call-minibar {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer;
+  font-size: 12px; background: #eef4fc;
+}
+.wlm-call-minibar-name { font-weight: bold; color: #1d4e89; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wlm-call-minibar-status { color: #5a7a9a; font-style: italic; }
+.wlm-call-btn.small { width: 26px; height: 26px; font-size: 13px; flex: 0 0 auto; }
 .wlm-video-stage { position: relative; width: 100%; height: 400px; background: #000; }
 .wlm-video-remote { width: 100%; height: 100%; object-fit: contain; }
 .wlm-video-remote-audio { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; }
@@ -4440,12 +4484,23 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .wlm-devices-pop select { font-size: 12px; padding: 3px; width: 100%; max-width: 100%; box-sizing: border-box; }
 
 @media (max-width: 600px) {
-  .wlm-video-box { width: 100%; height: 100%; max-width: none; border-radius: 0; }
+  /* Étendu : occupe l'écran pour regarder/parler confortablement, mais reste
+     déplaçable/réductible (pas une vraie modale plein écran verrouillée). */
+  .wlm-video-modal:not(.wlm-video-modal-ringing) .wlm-video-box:not(.wlm-call-minimized) {
+    width: 100%; max-width: 100%; height: 85vh; border-radius: 10px 10px 0 0;
+    right: 0; bottom: 0; left: 0 !important; top: auto !important;
+  }
   .wlm-video-stage { height: auto; flex: 1 1 auto; min-height: 0; }
   .wlm-video-local { width: 90px; height: 68px; right: 8px; bottom: 8px; }
-  .wlm-call-controls { padding: 8px; }
+  .wlm-call-controls { padding: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
   .wlm-call-btn { width: 42px; height: 42px; }
   .wlm-devices-pop { width: calc(100% - 16px); }
+
+  /* Réduit : petite barre épinglée en bas, au-dessus de la zone de saisie, pour
+     revenir à la liste de contacts ou à une autre conversation pendant l'appel. */
+  .wlm-video-box.wlm-call-minimized {
+    width: calc(100% - 16px); left: 8px !important; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 

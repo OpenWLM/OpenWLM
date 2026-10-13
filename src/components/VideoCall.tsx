@@ -72,6 +72,56 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const [camId, setCamId] = useState('');
   const [spkId, setSpkId] = useState('');
 
+  // FENÊTRE FLOTTANTE NON BLOQUANTE (style WLM 2009 : l'appel n'est pas une boîte de
+  // dialogue modale, on garde la main sur la liste de contacts et les conversations).
+  const isMobileViewport = () => window.matchMedia('(max-width: 600px)').matches;
+  const [minimized, setMinimized] = useState(() => isMobileViewport());
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null); // null = position par défaut (bas-droite)
+  const boxRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; pointerId: number } | null>(null);
+
+  const clampToViewport = (x: number, y: number, el: HTMLElement) => {
+    const margin = 8;
+    const maxX = window.innerWidth - el.offsetWidth - margin;
+    const maxY = window.innerHeight - el.offsetHeight - margin;
+    return { x: Math.min(Math.max(x, margin), Math.max(margin, maxX)), y: Math.min(Math.max(y, margin), Math.max(margin, maxY)) };
+  };
+
+  const onDragPointerDown = (e: React.PointerEvent) => {
+    // Ignore un clic sur un bouton de l'en-tête (fermer…)
+    if ((e.target as HTMLElement).closest('button')) return;
+    const el = boxRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, originX: rect.left, originY: rect.top, pointerId: e.pointerId };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onDragPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    const el = boxRef.current;
+    if (!d || !el || d.pointerId !== e.pointerId) return;
+    const next = clampToViewport(d.originX + (e.clientX - d.startX), d.originY + (e.clientY - d.startY), el);
+    setPos(next);
+  };
+  const onDragPointerUp = (e: React.PointerEvent) => {
+    if (dragRef.current?.pointerId === e.pointerId) dragRef.current = null;
+  };
+
+  // Garde la fenêtre dans le viewport : au redimensionnement de la fenêtre du navigateur,
+  // et après un passage réduire/déplier (la boîte change de taille et peut déborder).
+  useEffect(() => {
+    const reclamp = () => setPos((p) => {
+      const el = boxRef.current;
+      if (!el || !p) return p;
+      const next = clampToViewport(p.x, p.y, el);
+      // Même référence si inchangé : évite toute boucle de re-rendu.
+      return (next.x === p.x && next.y === p.y) ? p : next;
+    });
+    window.addEventListener('resize', reclamp);
+    reclamp();
+    return () => window.removeEventListener('resize', reclamp);
+  }, [minimized]);
+
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -666,15 +716,74 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const showOverlay = callStatus !== 'connected' || audioOnly;
   const qualityLabel = quality === 'good' ? t.videoCall.qualityGood : quality === 'fair' ? t.videoCall.qualityFair : t.videoCall.qualityPoor;
 
+  // Pendant la sonnerie, une décision immédiate est attendue : on garde une boîte
+  // centrée classique. Une fois l'appel engagé, la fenêtre devient flottante et
+  // déplaçable, et ne bloque plus l'accès au reste de l'application (liste de
+  // contacts, autres conversations) — comme sur WLM 2009.
+  const isModalPhase = callStatus === 'ringing';
+  // La réduction est ignorée pendant la sonnerie : sur mobile l'appel démarre réduit par
+  // défaut, mais les boutons accepter/refuser (dans la scène) doivent être visibles
+  // immédiatement pour répondre à l'appel entrant.
+  const effMinimized = minimized && callStatus !== 'ringing';
+  const boxStyle: React.CSSProperties = (!isModalPhase && pos) ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : {};
+
   return (
-    <div className="wlm-video-modal">
-      <div className="wlm-video-box">
-        <div className="win-modal-header" style={styles.header}>
+    <div className={`wlm-video-modal${isModalPhase ? ' wlm-video-modal-ringing' : ''}`}>
+      <div
+        ref={boxRef}
+        className={`wlm-video-box wlm-call-skin${effMinimized ? ' wlm-call-minimized' : ''}`}
+        style={boxStyle}
+      >
+        <div
+          className="win-modal-header wlm-call-titlebar"
+          style={styles.header}
+          onPointerDown={isModalPhase ? undefined : onDragPointerDown}
+          onPointerMove={isModalPhase ? undefined : onDragPointerMove}
+          onPointerUp={isModalPhase ? undefined : onDragPointerUp}
+        >
           <span>{formatNickname(t.videoCall.conversationWith.replace('{type}', audioOnly ? t.videoCall.audio : t.videoCall.video).replace('{name}', contactName))}</span>
-          <button className="win-close-btn" onClick={handleEndCall}>✕</button>
+          <span className="wlm-call-titlebar-actions">
+            {!isModalPhase && (
+              <button
+                className="win-close-btn"
+                onClick={() => setMinimized((v) => !v)}
+                title={effMinimized ? t.videoCall.expand : t.videoCall.minimizeWindow}
+                aria-label={effMinimized ? t.videoCall.expand : t.videoCall.minimizeWindow}
+              >
+                {effMinimized ? '▢' : '_'}
+              </button>
+            )}
+            <button className="win-close-btn" onClick={handleEndCall} aria-label={t.videoCall.hangup}>✕</button>
+          </span>
         </div>
 
-        <div ref={containerRef} className="wlm-video-stage">
+        {effMinimized ? (
+          <div className="wlm-call-minibar" onClick={() => setMinimized(false)}>
+            <span className="wlm-call-minibar-name">{formatNickname(contactName)}</span>
+            {callStatus === 'connected' && <span className="wlm-call-timer">{fmtDuration(duration)}</span>}
+            {callStatus !== 'connected' && <span className="wlm-call-minibar-status">{overlayText()}</span>}
+            <button
+              className={`wlm-call-btn small${micOn ? '' : ' off'}`}
+              onClick={(e) => { e.stopPropagation(); toggleMic(); }}
+              title={micOn ? t.videoCall.mute : t.videoCall.unmute}
+              aria-label={micOn ? t.videoCall.mute : t.videoCall.unmute}
+            >
+              {micOn ? '🎤' : '🔇'}
+            </button>
+            <button
+              className="wlm-call-btn small"
+              onClick={(e) => { e.stopPropagation(); handleEndCall(); }}
+              title={t.videoCall.hangup}
+              aria-label={t.videoCall.hangup}
+              style={styles.hangupBtnSmall}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ transform: 'rotate(135deg)' }}><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+            </button>
+          </div>
+        ) : null}
+        {/* La scène vidéo reste montée (jamais démontée) même réduite, pour ne pas
+            interrompre les flux WebRTC : elle est seulement masquée via CSS. */}
+        <div ref={containerRef} className="wlm-video-stage" style={effMinimized ? { display: 'none' } : undefined}>
           <video ref={remoteVideoRef} autoPlay playsInline className={`wlm-video-remote${audioOnly ? ' wlm-video-remote-audio' : ''}`} />
           <video ref={localVideoRef} autoPlay playsInline muted className="wlm-video-local" style={{ display: audioOnly ? 'none' : 'block' }} />
 
@@ -704,7 +813,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
           )}
         </div>
 
-        {callStatus !== 'ringing' && (
+        {callStatus !== 'ringing' && !effMinimized && (
         <div className="wlm-call-controls">
           <button className={`wlm-call-btn${micOn ? '' : ' off'}`} onClick={toggleMic} title={micOn ? t.videoCall.mute : t.videoCall.unmute} aria-label={micOn ? t.videoCall.mute : t.videoCall.unmute}>
             {micOn ? '🎤' : '🔇'}
@@ -763,6 +872,7 @@ const styles = {
   header: { padding: '8px 15px', background: 'linear-gradient(to bottom, #fcfdfe, #e1eff7)', borderBottom: '1px solid #b8d9eb', fontWeight: 'bold', fontSize: '13px', color: '#004b8d' },
   acceptBtn: { background: '#25D366', color: 'white', border: 'none', borderRadius: '50%', width: '60px', height: '60px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   hangupBtn: { background: '#FF3B30', color: 'white', border: 'none', borderRadius: '50%', width: '52px', height: '52px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  hangupBtnSmall: { background: '#FF3B30', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' },
 };
 
 export default VideoCall;

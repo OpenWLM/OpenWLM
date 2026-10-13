@@ -342,7 +342,9 @@
     "camera": "Caméra",
     "speaker": "Haut-parleur",
     "defaultDevice": "Par défaut",
-    "unsecureContext": "Votre navigateur bloque l'accès à la caméra/micro car le site n'est pas sécurisé (HTTPS requis)."
+    "unsecureContext": "Votre navigateur bloque l'accès à la caméra/micro car le site n'est pas sécurisé (HTTPS requis).",
+    "expand": "Agrandir l'appel",
+    "minimizeWindow": "Réduire l'appel"
   },
   "settings": {
     "optionsTitle": "Options",

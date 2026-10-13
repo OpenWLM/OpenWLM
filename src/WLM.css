@@ -4400,6 +4400,10 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   background: rgba(0, 0, 0, 0.6); pointer-events: auto;
   display: flex; align-items: center; justify-content: center;
 }
+/* La boîte de sonnerie ne dépasse jamais le viewport : sur un écran court (téléphone
+   en paysage), la scène se compresse et les boutons accepter/refuser restent centrés
+   et entièrement visibles au lieu d'être rognés. */
+.wlm-video-modal-ringing .wlm-video-box { max-height: calc(100vh - 16px); }
 
 .wlm-video-box {
   background: #fff; border: 1px solid #99b4d1; border-radius: 5px;
@@ -4489,6 +4493,14 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   .wlm-video-modal:not(.wlm-video-modal-ringing) .wlm-video-box:not(.wlm-call-minimized) {
     width: 100%; max-width: 100%; height: 85vh; border-radius: 10px 10px 0 0;
     right: 0; bottom: 0; left: 0 !important; top: auto !important;
+  }
+  /* Sonnerie : l'ancienne modale PLEIN ÉCRAN est conservée (la décision accepter/refuser
+     doit être immédiatement lisible). Sans hauteur explicite, la boîte basée sur
+     .wlm-video-box (600px, sans height) s'effondre sur mobile : la scène passe en
+     height:auto; flex:1; min-height:0, ne contient que des enfants positionnés en
+     absolu, prend 0 de haut, et les boutons centrés sont rognés par overflow:hidden. */
+  .wlm-video-modal-ringing .wlm-video-box {
+    width: 100%; max-width: 100%; height: 100%; border-radius: 0;
   }
   .wlm-video-stage { height: auto; flex: 1 1 auto; min-height: 0; }
   .wlm-video-local { width: 90px; height: 68px; right: 8px; bottom: 8px; }

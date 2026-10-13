@@ -155,7 +155,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### 🎮 Features
 - **Puissance 4 (Connect Four) 1v1 Mini-Game**:
   - Full 7x6 board with authentic late-2000s Aero retro design (molded blue casing, glossy red and yellow discs).
-  - Authoritative server-side validation: turn enforcement, gravity row calculation, column overflow rejection, win and draw detection.
+  - Server-side validation: turn enforcement, gravity row calculation, column overflow rejection, win and draw detection.
   - Smooth gravity drop animations, winning 4-disc pulse glow, and hover column guides.
   - Native bilingual support (FR/EN) for turn announcements, banners, and tooltips.
   - Integrated in chat games menu, invite banners, docked pill, and bot test assistant (`/p4` or `/puissance4`).
@@ -164,7 +164,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.0.0] - 2026-10-02
 
-This major release consolidates the modern recreation of late-2000s instant messaging (Aero theme) with production-grade security hardening, a built-in test assistant contact ("OpenWLM"), and authoritative automated regression testing.
+This major release consolidates the modern recreation of late-2000s instant messaging (Aero theme) with security hardening, a built-in test assistant contact ("OpenWLM"), and automated regression testing.
 
 ### 🚀 Features
 
@@ -180,7 +180,7 @@ This major release consolidates the modern recreation of late-2000s instant mess
   - Automatic dual rendering sizes (inline 19px and standard 50px).
 - **Multiplayer Activities & Mini-Games**:
   - Classic Tic-Tac-Toe (Morpion) in real-time.
-  - Real-time Checkers (Jeu de dames) with authoritative server validation.
+  - Real-time Checkers (Jeu de dames) with server-side validation.
   - Collapsible dock banner allowing users to minimize active games without leaving the chat.
 - **E2EE File Transfer**:
   - Encrypted peer file sharing with automatic 4-hour time-to-live (TTL).
@@ -204,13 +204,13 @@ This major release consolidates the modern recreation of late-2000s instant mess
   - Deprecated static fallback secrets.
   - Automatic generation of a high-entropy 256-bit secret stored in `.jwt_secret` with strict file permissions (`0600`) and Git exclusion.
 - **Centralized Authorization Helper `canInteract(senderId, targetId)`**:
-  - Authoritative validation of mutual contact status and absence of blocks.
+  - Server-side validation of mutual contact status and absence of blocks.
   - Enforced across all messages, wizz, winks, WebRTC calls, game invites, and file transfers.
 - **Anti-Identity Spoofing**:
   - Immediate rejection when `socket.user.id !== senderId`.
   - Display nicknames (`senderNickname`) systematically recomputed from the SQL database (never trusting client-supplied strings).
-- **Authoritative Off-The-Record (Private Mode)**:
-  - Server-enforced non-persistence: if either user has enabled global private mode (`global_private = 1`), messages are never persisted to SQLite, overriding client parameters.
+- **Server-Enforced Off-The-Record (Private Mode)**:
+  - Non-persistence enforced server-side: if either user has enabled global private mode (`global_private = 1`), messages are never persisted to SQLite, regardless of client parameters.
 
 #### Priority 2 — Data Isolation & Session Revocation
 - **File Transfer Hardening (`/api/files/upload`)**:
@@ -247,8 +247,8 @@ This major release consolidates the modern recreation of late-2000s instant mess
 
 ### 🧪 Infrastructure & Testing
 
-- **Authoritative Enforcement Test Suite (`tests/audit_security_enforcement.js`)**:
-  - Automated headless test suite verifying that all frontend UI restrictions are strictly enforced server-side.
+- **Automated Security-Test Suite (`tests/audit_security_enforcement.js`)**:
+  - Headless test suite issuing direct requests to check that the main client-side restrictions are also enforced server-side.
   - Integrated command: `npm test` / `npm run test:security`.
 - **Demo Database Seeder (`scripts/seed-demo.js`)**:
   - Command `npm run db:seed` creating clean, fictitious local demonstration accounts (Alice & Bob) with zero personal data.

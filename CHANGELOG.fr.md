@@ -180,7 +180,7 @@ Cette version majeure consolide la réécriture moderne de la messagerie instant
   - Découpage automatique des tailles d'affichage (inline 19px et standard 50px).
 - **Activités & Jeux multijoueurs intégrés** :
   - Morpion classique (Tic-Tac-Toe) temps réel.
-  - Jeu de dames (Checkers) temps réel avec validation autoritaire.
+  - Jeu de dames (Checkers) temps réel avec validation côté serveur.
   - Réduction de fenêtre de jeu (dock banner) sans interrompre la discussion.
 - **Transfert de fichiers chiffré E2EE** :
   - Partage de fichiers volumineux chiffrés avec expiration automatique (4 heures).
@@ -209,8 +209,8 @@ Cette version majeure consolide la réécriture moderne de la messagerie instant
 - **Prévention de l'usurpation d'identité (Anti-Spoofing)** :
   - Rejet immédiat si `socket.user.id !== senderId`.
   - Recalcul obligatoire du pseudonyme (`senderNickname`) depuis la base de données SQL (aucune confiance accordée au client).
-- **Mode Privé (Off-The-Record) autoritaire** :
-  - Forçage côté serveur de la non-persistance si l'un des contacts a activé le mode privé global (`global_private = 1`), ignorant tout contournement client.
+- **Mode Privé (Off-The-Record) appliqué côté serveur** :
+  - Aucune persistance côté serveur si l'un des contacts a activé le mode privé global (`global_private = 1`), quels que soient les paramètres envoyés par le client.
 
 #### Priorité 2 — Isolation des données & Révocation
 - **Sécurisation des transferts de fichiers (`/api/files/upload`)** :
@@ -247,8 +247,8 @@ Cette version majeure consolide la réécriture moderne de la messagerie instant
 
 ### 🧪 Infrastructure & Tests
 
-- **Suite de tests d'enforcement (`tests/audit_security_enforcement.js`)** :
-  - Vérification automatisée sans interface utilisateur testant le contournement direct des restrictions (messages, invitations, fichiers, jeux, statuts, profils, etc.).
+- **Suite de tests de sécurité automatisés (`tests/audit_security_enforcement.js`)** :
+  - Suite de tests sans interface envoyant des requêtes directes pour vérifier que les principales restrictions côté client sont aussi appliquées côté serveur.
   - Commande intégrée `npm run test:security` / `npm test`.
 - **Script de peuplement de démonstration (`scripts/seed-demo.js`)** :
   - Commande `npm run db:seed` créant un environnement de test local propre (Alice & Bob) sans aucune donnée personnelle.

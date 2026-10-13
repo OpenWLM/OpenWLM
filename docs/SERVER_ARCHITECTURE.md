@@ -71,7 +71,7 @@ Chaque domaine métier est encapsulé dans une fonction usine injectant les dép
 ### E. Gestionnaires Socket.IO (`server/sockets/`)
 - `registerMessageHandlers` : Contrôle de débit, validation de taille (< 5 Mo), persistance conditionnelle (neutralisée si l'un des contacts est en mode privé global), émission des notifications Web Push.
 - `registerWebRtcHandlers` : Validation stricte des trames SDP / ICE (taille <= 64 Ko, structure autorisée) et relais vers le pair.
-- `registerGameHandlers` : Validation autoritaire côté serveur pour les jeux de Dames (déplacements diagonaux, sauts, prises, promotions en dame, fin de partie).
+- `registerGameHandlers` : Validation côté serveur pour les jeux de Dames (déplacements diagonaux, sauts, prises, promotions en dame, fin de partie).
 
 ---
 

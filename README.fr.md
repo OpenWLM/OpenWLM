@@ -8,14 +8,14 @@
 
 # OpenWLM (Modern Web Stack)
 
-Une récréation moderne, open-source et sécurisée de l'expérience iconique de messagerie instantanée rétro de la fin des années 2000 (interface Aero). Ce projet combine le design nostalgique des années 2000 avec les standards de sécurité, de chiffrement et de performance de 2026.
+Une récréation moderne et open-source de l'expérience iconique de messagerie instantanée rétro de la fin des années 2000 (interface Aero). Elle associe le design nostalgique des années 2000 au chiffrement de bout en bout du contenu des messages et à des pratiques de sécurité web actuelles. Le périmètre E2E réel — ce qui est protégé, ce qui ne l'est pas, et les limites — est documenté ci-dessous.
 
 ⚠️ **Avertissement & Notice légale** :  
 OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgique aux logiciels de messagerie instantanée de la fin des années 2000. Il n'est en aucun cas affilié, associé, autorisé ou soutenu par une quelconque entreprise ou entité tierce.
 
 > [!WARNING]
 > **Avertissement sur le développement assisté par IA** :  
-> Ce projet a été développé avec l'assistance d'une Intelligence Artificielle (Google Antigravity / programmation en binôme assistée par LLM). Bien que des revues rigoureuses, des tests de bout en bout et un audit d'enforcement de sécurité approfondi (`npm run test:security`) aient été menés, des anomalies, régressions marginales ou comportements imprévus peuvent subsister. Les revues de code, audits communautaires et retours de sécurité sont les bienvenus !
+> Ce projet a été développé avec l'assistance d'une Intelligence Artificielle (Google Antigravity / programmation en binôme assistée par LLM). Il est relu manuellement et couvert par des tests de bout en bout ainsi qu'une suite de tests de sécurité automatisés (`npm run test:security`). Il ne s'agit **pas** d'un audit externe indépendant : des anomalies, régressions marginales ou comportements imprévus peuvent donc subsister. Les revues de code, tests communautaires et retours de sécurité sont les bienvenus !
 
 ---
 
@@ -30,7 +30,7 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgi
 - **Audio & Vidéo (WebRTC)** : Appels vocaux et vidéo en direct avec signalisation chiffrée.
 - **Messages Vocaux** : Enregistrement et lecture de clips vocaux chiffrés.
 - **Winks & Wizz** : Clins d'œil animés et Wizz secouant la fenêtre.
-- **Activités & Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers) et Puissance 4 (Connect Four sur grille 7x6) en temps réel avec validation autoritaire anti-triche côté serveur, animations de gravité et barre de jeu réductible.
+- **Activités & Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers) et Puissance 4 (Connect Four sur grille 7x6) en temps réel avec validation anti-triche côté serveur, animations de gravité et barre de jeu réductible.
 - **Transfert de fichiers chiffré E2EE** : Partage temporaire (expiration 4h) avec déchiffrement direct et prévisualisation d'images.
 - **Internationalisation Complète (FR / EN)** : Support bilingue natif Français et Anglais avec bascule réactive instantanée, détection automatique du navigateur et zéro régression visuelle sur le rendu Aero.
 
@@ -38,7 +38,7 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgi
 
 ## 🔐 Sécurité & Architecture (Security Hardened)
 
-OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement de bout en bout :
+OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées par une suite de tests automatisés et par relecture du code — et non par un audit externe indépendant :
 
 > 📌 **Périmètre E2E — ce qui est réellement de bout en bout, ce qui ne l'est pas, et les limites :**
 > voir **[docs/SECURITY_E2E.md](docs/SECURITY_E2E.md)**.
@@ -60,8 +60,8 @@ OpenWLM a fait l'objet d'un audit de sécurité approfondi et d'un durcissement 
 5. **Prévention de l'usurpation d'identité (Anti-Spoofing)** :
    - Validation stricte de l'identité émettrice via le token JWT certifié (`socket.user.id === senderId`).
    - Les pseudonymes affichés sont systématiquement recalculés depuis la base de données SQL côté serveur.
-6. **Mode Privé (Off-The-Record) autoritaire** :
-   - Forçage côté serveur de la non-persistance si un contact a activé le mode privé global (`global_private = 1`).
+6. **Mode Privé (Off-The-Record) appliqué côté serveur** :
+   - Aucune persistance : si un contact a activé le mode privé global (`global_private = 1`), les messages ne sont jamais écrits sur disque, quelle que soit la manipulation tentée côté client.
 7. **Protection contre les abus & déni de service** :
    - Quota de stockage strict de **1 Go** par compte utilisateur pour les fichiers partagés.
    - Rate limiting étagé : authentification (10 req/min), uploads (5 req/min), wizz (3/min), winks (7/min), messages (20 / 10s).
@@ -145,7 +145,7 @@ L'application est accessible sur : **http://localhost:3001**
 
 ## 🧪 Tests de Sécurité & Non-Régression
 
-Une suite de tests d'enforcement serveur est intégrée au projet pour valider que toutes les restrictions du frontend sont rigoureusement appliquées côté API et sockets :
+Une suite de tests automatisés vérifie que les principales restrictions côté client sont aussi appliquées côté API et sockets :
 
 ```bash
 npm test
@@ -153,7 +153,7 @@ npm test
 npm run test:security
 ```
 
-Cette suite simule des contournements directs sans passer par l'interface :
+Elle envoie des requêtes API et WebSocket directes (sans passer par l'interface) pour tenter de contourner le client :
 - Usurpation d'identifiant expéditeur (rejet immédiat)
 - Espionnage ou suppression de l'historique d'autrui (rejet HTTP 403)
 - Forçage de persistance en mode privé (rejeté par le serveur)
@@ -163,6 +163,8 @@ Cette suite simule des contournements directs sans passer par l'interface :
 - Triche aux jeux multi-joueurs (coup hors-tour, case déjà occupée)
 - Téléchargement de fichiers sans token cryptographique d'accès (rejet HTTP 401/403)
 - Injection de chemin (Path Traversal) sur les avatars/scènes (rejet HTTP 400)
+
+> Ces tests détectent des régressions sur des cas connus ; c'est un filet de sécurité, pas une preuve de sécurité.
 
 ---
 

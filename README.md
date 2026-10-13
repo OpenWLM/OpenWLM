@@ -8,14 +8,14 @@
 
 # OpenWLM (Modern Web Stack)
 
-A modern, open-source, and secure recreation of the iconic late-2000s retro instant messaging experience (Aero glass UI). This project combines the nostalgic design of the 2000s with 2026 security, end-to-end encryption, and performance standards.
+A modern, open-source recreation of the iconic late-2000s retro instant messaging experience (Aero glass UI). It pairs the nostalgic design of the 2000s with end-to-end encryption of message content and current web security practices. The real E2E scope — what is protected, what is not, and the limits — is documented below.
 
 ⚠️ **Disclaimer & Legal Notice**:  
 OpenWLM is an independent educational, open-source project and a nostalgic tribute to classic 2000s instant messaging software. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with any proprietary brand, software, or corporation.
 
 > [!WARNING]
 > **AI-Assisted Development Notice**:  
-> This project was developed with the assistance of Artificial Intelligence (Google Antigravity / LLM-assisted pair programming). While thorough manual reviews, end-to-end testing, and authoritative security audits (`npm run test:security`) have been implemented, unexpected bugs, edge-case regressions, or design oversights may still remain. Peer reviews, community audits, and security vulnerability reports are warmly welcomed!
+> This project was developed with the assistance of Artificial Intelligence (Google Antigravity / LLM-assisted pair programming). It is reviewed manually and covered by end-to-end tests plus an automated security-test suite (`npm run test:security`). This is **not** an independent third-party audit, so unexpected bugs, edge-case regressions, or design oversights may still remain. Peer reviews, community testing, and vulnerability reports are warmly welcomed!
 
 ---
 
@@ -30,7 +30,7 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 - **Audio & Video Calls (WebRTC)**: Real-time peer-to-peer voice and video calls with encrypted signaling.
 - **Voice Clips**: Record and stream end-to-end encrypted audio messages.
 - **Winks & Nudges**: Animated full-screen winks and screen-shaking Wizz effects.
-- **1v1 Multiplayer Mini-Games**: Real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), and Connect Four (Puissance 4 on a classic 7x6 board) with authoritative server-side anti-cheat validation, gravity animations, and collapsible game docks.
+- **1v1 Multiplayer Mini-Games**: Real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), and Connect Four (Puissance 4 on a classic 7x6 board) with server-side anti-cheat validation, gravity animations, and collapsible game docks.
 - **Encrypted File Transfer**: Temporary peer file sharing (4-hour TTL) with on-the-fly decryption and image lightbox previews.
 - **Full Bilingual Internationalization (EN / FR)**: Native English and French support with instant reactive switching, browser language autodetection, and zero UI overflow preserving the classic retro Aero layout.
 
@@ -38,7 +38,7 @@ OpenWLM is an independent educational, open-source project and a nostalgic tribu
 
 ## 🔐 Architecture & Security Hardening
 
-OpenWLM has undergone an extensive security audit and rigorous end-to-end hardening:
+OpenWLM applies the security measures below. They are checked by an automated test suite and code review — not by an independent external audit:
 
 > 📌 **E2E scope — what is really end-to-end, what is not, and the limits:**
 > see **[docs/SECURITY_E2E.md](docs/SECURITY_E2E.md)**.
@@ -60,8 +60,8 @@ OpenWLM has undergone an extensive security audit and rigorous end-to-end harden
 5. **Identity Spoofing Prevention**:
    - Strict validation of sender identity via verified JWT tokens (`socket.user.id === senderId`).
    - Display nicknames are systematically recalculated server-side from the SQL database (client-provided names are never trusted).
-6. **Authoritative Off-The-Record (Private Mode)**:
-   - Server-enforced non-persistence: if either user in a conversation enables global private mode (`global_private = 1`), messages are never persisted to disk, overriding any client manipulation.
+6. **Server-Enforced Off-The-Record (Private Mode)**:
+   - Nothing is persisted: if either user in a conversation enables global private mode (`global_private = 1`), messages are never written to disk — this is enforced server-side and overrides any client manipulation.
 7. **Rate Limiting & Abuse Prevention**:
    - Strict **1 GB** storage quota per account for active shared files.
    - Tiered rate limiters: authentication (10 req/min), file uploads (5 req/min), nudges (3/min), winks (7/min), messages (20 / 10s).
@@ -145,7 +145,7 @@ The application will be accessible at: **http://localhost:3001**
 
 ## 🧪 Security & Regression Testing
 
-An authoritative security enforcement test suite is included in the project to verify that all frontend restrictions are strictly enforced server-side:
+An automated security-test suite checks that the key client-side restrictions are also enforced server-side:
 
 ```bash
 npm test
@@ -153,7 +153,7 @@ npm test
 npm run test:security
 ```
 
-This automated suite tests direct API and WebSocket bypass attempts:
+It issues direct API and WebSocket requests (bypassing the UI) and checks the server rejects them:
 - Sender ID spoofing (rejected)
 - Unauthorized message history reading or deletion (HTTP 403)
 - Forced persistence in private mode (overridden by server)
@@ -163,6 +163,8 @@ This automated suite tests direct API and WebSocket bypass attempts:
 - Game cheating attempts (out-of-turn moves, already occupied cells)
 - File download attempts without valid secret tokens (HTTP 401/403)
 - Directory traversal attacks on avatars or scenes (HTTP 400)
+
+> These tests catch regressions on known cases; they are a safety net, not a proof of security.
 
 ---
 

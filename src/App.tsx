@@ -24,6 +24,7 @@ import { useMessageCrypto } from './hooks/useMessageCrypto';
 import { useContacts } from './hooks/useContacts';
 import { useGames } from './hooks/useGames';
 import { useCalls } from './hooks/useCalls';
+import { useWinksAndNudge, WINKS } from './hooks/useWinksAndNudge';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
@@ -188,24 +189,6 @@ const SCENES = [
   { id: '6', file: '0006.png', name: 'Aurore' },
   { id: '10', file: 'CarbonFiber.jpg', name: 'Carbone' },
   { id: '16', file: 'ButterflyPattern.png', name: 'Papillon' },
-];
-
-const WINKS = [
-  { id: 'bouncy_ball', name: 'Bouncy Ball', icon: '⚽' },
-  { id: 'kiss', name: 'Kiss', icon: '💋' },
-  { id: 'love_letter', name: 'Love Letter', icon: '💌' },
-  { id: 'frog', name: 'Frog', icon: '🐸' },
-  { id: 'guitar_smash', name: 'Guitar Smash', icon: '🎸' },
-  { id: 'heart', name: 'Heart', icon: '❤️' },
-  { id: 'knock', name: 'Knock', icon: '🚪' },
-  { id: 'bow', name: 'Bow', icon: '🎀' },
-  { id: 'dancing_pig', name: 'Dancing Pig', icon: '🐷' },
-  { id: 'eyeball', name: 'Eyeball', icon: '👁️' },
-  { id: 'lipstick_girl', name: 'Lipstick Girl', icon: '💄' },
-  { id: 'notes', name: 'Notes', icon: '🎵' },
-  { id: 'silly_face', name: 'Silly Face', icon: '😜' },
-  { id: 'stars', name: 'Stars', icon: '⭐' },
-  { id: 'water_balloon', name: 'Water Balloon', icon: '🎈' },
 ];
 
 const STATUS_OPTIONS = [
@@ -944,11 +927,7 @@ const App: React.FC = () => {
     };
   }, [lastActivity, awayTimeout, enableAutoAway, isAutoAway, syncProfile]);
 
-  // --- ÉTAT DES INTERACTIONS (Winks, Nudges, Voice) ---
-  const [activeWink, setActiveWink] = useState<string | null>(null);
-  const [winkCounter, setWinkCounter] = useState(0);
-  const [isNudging, setIsNudging] = useState(false);
-  const [nudgeTimestamps, setNudgeTimestamps] = useState<number[]>([]);
+  // --- ÉTAT DES INTERACTIONS (Enregistrement vocal) ---
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const cancelRecordingRef = useRef(false);
@@ -1121,6 +1100,31 @@ const App: React.FC = () => {
     handleStartCall,
     handleEndCall
   } = useCalls({ user, activeChatId });
+
+  // Domaine clins d'œil & Wizz — extrait dans un hook dédié.
+  const {
+    activeWink,
+    winkCounter,
+    isNudging,
+    setIsNudging,
+    handleSendWink,
+    handleNudge,
+    handleWinkFinish
+  } = useWinksAndNudge({
+    socket,
+    user,
+    activeChatId,
+    myNickname,
+    myKeys,
+    getPublicKey: (id, force) => getPublicKeyRef.current(id, force),
+    sealForContact,
+    globalPrivateMode,
+    isPrivateMode,
+    setMessages,
+    setShowWinksModal,
+    winkNotSentNetworkText: t.chat.winkNotSentNetwork,
+    winkNotSentOfflineText: t.chat.winkNotSentOffline
+  });
 
   // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
   useEffect(() => {
@@ -3095,143 +3099,6 @@ const App: React.FC = () => {
       window.removeEventListener('paste', onWindowPaste);
     };
   }, [activeChatId, handlePaste]);
-
-  /**
-   * ENVOI D'UN CLIN D'ŒIL (WINK)
-   */
-  const handleSendWink = async (winkId: string, received: boolean = false, fromId: number = 0) => {
-    const targetId = received ? fromId : activeChatId;
-    const wink = WINKS.find(w => w.id === winkId);
-    const winkName = wink?.name || winkId;
-    const winkTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    setShowWinksModal(false);
-    setActiveWink(winkId);
-    setWinkCounter(prev => prev + 1);
-
-    // Réception : simple ligne système (le clin d'œil reçu a déjà été remis par le serveur).
-    if (received) {
-      setMessages(prev => ({
-        ...prev,
-        [targetId]: [...(prev[targetId] || []), {
-          text: `Vous avez reçu un clin d'œil (${winkName}).`,
-          sender: 'Système', time: winkTime(), isWink: true, style: null
-        }]
-      }));
-      return;
-    }
-
-    if (!socket || !myKeys) return;
-    const contactPubKey = await getPublicKey(activeChatId);
-    if (!contactPubKey) {
-      alert("Ce contact doit être en ligne pour recevoir un clin d'œil.");
-      return;
-    }
-
-    const unencryptedPayload = {
-      text: `--- Clin d'œil: ${winkName} ---`,
-      sender: myNickname,
-      winkId: winkId,
-      type: 'wink'
-    };
-
-    let e2eData: unknown;
-    try {
-      e2eData = await sealForContact(unencryptedPayload, activeChatId, contactPubKey);
-    } catch (err) { console.error("Echec envoi Wink chiffré:", err); return; }
-
-    const pushWinkLine = (text: string) => setMessages(prev => ({
-      ...prev,
-      [targetId]: [...(prev[targetId] || []), { text, sender: 'Système', time: winkTime(), isWink: true, style: null }]
-    }));
-
-    // ACCUSÉ : on n'affiche « envoyé » qu'après acceptation du serveur. En mode privé vers un
-    // contact hors ligne, le serveur refuse (rien n'est conservé) — même garantie que les
-    // messages texte/fichier/vocal (cf. deliverSealedMessage).
-    if (!socket.connected) {
-      pushWinkLine(t.chat.winkNotSentNetwork);
-      return;
-    }
-    socket.timeout(SEND_ACK_TIMEOUT_MS).emit('send_message', {
-      senderId: user?.id,
-      receiverId: activeChatId,
-      text: JSON.stringify(e2eData),
-      type: 'wink',
-      isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
-    }, (err: Error | null, ack?: { success?: boolean; code?: string }) => {
-      if (err || !ack?.success) {
-        pushWinkLine(ack?.code === 'RECIPIENT_OFFLINE_PRIVATE' ? t.chat.winkNotSentOffline : t.chat.winkNotSentNetwork);
-      } else {
-        pushWinkLine(`Vous venez d'envoyer un clin d'œil (${winkName}).`);
-      }
-    });
-  };
-
-  /**
-   * ENVOI/RÉCEPTION D'UN WIZZ (NUDGE)
-   */
-  const handleNudge = (received: boolean = false, fromId: number = 0) => {
-    const targetId = received ? fromId : activeChatId;
-    
-    if (!received) {
-      if (activeChatId === SYSTEM_BOT_ID) {
-        SoundManager.play('NUDGE');
-        if (!isNudging) {
-          setIsNudging(true);
-          setTimeout(() => setIsNudging(false), 2000);
-        }
-        setMessages(prev => ({ 
-          ...prev, 
-          [SYSTEM_BOT_ID]: [...(prev[SYSTEM_BOT_ID] || []), { text: "Vous venez d'envoyer un Wizz !", sender: 'Système' }] 
-        }));
-
-        setTimeout(() => {
-          SoundManager.play('NUDGE');
-          setIsNudging(true);
-          setTimeout(() => setIsNudging(false), 2000);
-          setMessages(prev => ({ 
-            ...prev, 
-            [SYSTEM_BOT_ID]: [
-              ...(prev[SYSTEM_BOT_ID] || []), 
-              { text: "Vous venez de recevoir un Wizz !", sender: 'Système' },
-              { 
-                senderId: SYSTEM_BOT_ID,
-                receiverId: user?.id,
-                text: "Wizz bien reçu.", 
-                sender: 'OpenWLM',
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                timestamp: new Date().toISOString()
-              }
-            ] 
-          }));
-        }, 1500);
-        return;
-      }
-
-      // Anti-spam local pour les Wizz
-      const now = Date.now();
-      const recentNudges = nudgeTimestamps.filter(ts => now - ts < 60000);
-      if (recentNudges.length >= 3) {
-        setMessages(prev => ({ 
-          ...prev, 
-          [activeChatId]: [...(prev[activeChatId] || []), { text: 'Vous ne pouvez pas envoyer de Wizz aussi souvent.', sender: 'Système' }] 
-        }));
-        return;
-      }
-      setNudgeTimestamps([...recentNudges, now]);
-      if (socket) socket.emit('send_wizz', { senderId: user?.id, receiverId: activeChatId });
-    }
-    
-    SoundManager.play('NUDGE');
-    if (isNudging) return;
-    setIsNudging(true);
-    
-    const msgText = received ? 'Vous venez de recevoir un Wizz !' : 'Vous venez d\'envoyer un Wizz !';
-    setMessages(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), { text: msgText, sender: 'Système' }] }));
-    setTimeout(() => setIsNudging(false), 2000);
-  };
-
-  const handleWinkFinish = useCallback(() => setActiveWink(null), []);
 
   /**
    * GESTION DES CLIPS VOCAUX

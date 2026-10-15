@@ -26,6 +26,7 @@ import { useGames } from './hooks/useGames';
 import { useCalls } from './hooks/useCalls';
 import { useWinksAndNudge, WINKS } from './hooks/useWinksAndNudge';
 import { useProfile } from './hooks/useProfile';
+import { useNotifications } from './hooks/useNotifications';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
@@ -38,22 +39,17 @@ import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticon
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
-import DesktopToastContainer, { type ToastItem } from './components/DesktopToast';
+import DesktopToastContainer from './components/DesktopToast';
 import AeroConfirmDialog from './components/AeroConfirmDialog';
 import {
   decideNotificationType,
   showSystemNotification,
-  requestSystemNotificationPermission,
   isSystemNotificationSupported,
   getSystemNotificationPermission
 } from './utils/NotificationManager';
 import {
   isAndroidDevice,
-  isPushSupported,
-  subscribeToWebPush,
-  sendTestWebPush,
-  fetchPushBackendStatus,
-  type PushBackendStatus
+  isPushSupported
 } from './utils/PushNotificationManager';
 import { reorderChatTabs, sanitizeOpenChatIds } from './utils/TabUtils';
 import { resolveMessageSide } from './utils/MessageIdentity';
@@ -77,8 +73,6 @@ import {
   savePrivateModes,
   loadGlobalPrivateMode,
   saveGlobalPrivateMode,
-  loadEnableDesktopToasts,
-  saveEnableDesktopToasts,
   saveAwayTimeout,
   saveEnableAutoAway,
   sanitizeUserForStorage
@@ -617,138 +611,8 @@ const App: React.FC = () => {
   }>>({});
   const myCustomShortcutsRef = useRef<Set<string>>(new Set());
 
-  // --- ÉTAT DES NOTIFICATIONS DESKTOP & ALERTES RETRO WLM ---
+  // --- ONGLET DE LA MODALE D'OPTIONS ---
   const [optionsTab, setOptionsTab] = useState<'personal' | 'alerts'>('personal');
-  const [enableDesktopToasts, setEnableDesktopToasts] = useState<boolean>(() => loadEnableDesktopToasts(true));
-  const enableDesktopToastsRef = useRef(enableDesktopToasts);
-  useEffect(() => {
-    enableDesktopToastsRef.current = enableDesktopToasts;
-    saveEnableDesktopToasts(enableDesktopToasts);
-  }, [enableDesktopToasts]);
-
-  const [systemPermission, setSystemPermission] = useState<NotificationPermission | 'unsupported'>(() => {
-    return getSystemNotificationPermission();
-  });
-  const [permissionAttempted, setPermissionAttempted] = useState<boolean>(false);
-  const [prepromptDismissed, setPrepromptDismissed] = useState<boolean>(false);
-  const [testAlertFeedback, setTestAlertFeedback] = useState<string | null>(null);
-  const [pushStatus, setPushStatus] = useState<PushBackendStatus | null>(null);
-  const [pushTestFeedback, setPushTestFeedback] = useState<string | null>(null);
-
-  useEffect(() => {
-    const updatePerm = () => {
-      const current = getSystemNotificationPermission();
-      setSystemPermission(current);
-      if (current === 'granted') {
-        setPrepromptDismissed(true);
-      }
-    };
-
-    window.addEventListener('focus', updatePerm);
-    document.addEventListener('visibilitychange', updatePerm);
-
-    if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: 'notifications' as PermissionName })
-        .then(status => {
-          status.onchange = () => {
-            updatePerm();
-          };
-        })
-        .catch(() => {});
-    }
-
-    return () => {
-      window.removeEventListener('focus', updatePerm);
-      document.removeEventListener('visibilitychange', updatePerm);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (showOptionsModal) {
-      const current = getSystemNotificationPermission();
-      setSystemPermission(current);
-      if (current === 'granted') {
-        setPrepromptDismissed(true);
-      }
-      setTestAlertFeedback(null);
-      setPushTestFeedback(null);
-      if (isPushSupported()) {
-        fetchPushBackendStatus().then(status => setPushStatus(status)).catch(() => {});
-      }
-    }
-  }, [showOptionsModal]);
-
-  // Synchronisation Push / Service Worker lorsque l'utilisateur est connecté et que les notifications sont accordées
-  useEffect(() => {
-    if (!user) return;
-    if (isPushSupported()) {
-      fetchPushBackendStatus().then(status => {
-        setPushStatus(status);
-        if (status.hasVapid && getSystemNotificationPermission() === 'granted') {
-          subscribeToWebPush().catch(err => {
-            console.warn('[App] Push auto-subscribe:', err);
-          });
-        }
-      }).catch(() => {});
-    }
-  }, [user, systemPermission]);
-
-  // Écoute des clics sur notification transmis par le Service Worker (PWA / Web Push)
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
-    const handleSwMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'OPEN_CHAT' && event.data?.senderId) {
-        const sId = Number(event.data.senderId);
-        if (sId) {
-          setOpenChatIds(prev => prev.includes(sId) ? prev : [...prev, sId]);
-          setActiveChatId(sId);
-        }
-      }
-    };
-    navigator.serviceWorker.addEventListener('message', handleSwMessage);
-    return () => {
-      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
-    };
-  }, []);
-
-  // Détection du paramètre URL ?chat=ID (démarrage à froid via clic sur notification)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const chatParam = params.get('chat');
-      if (chatParam) {
-        const cId = parseInt(chatParam, 10);
-        if (cId && !isNaN(cId)) {
-          setOpenChatIds(prev => prev.includes(cId) ? prev : [...prev, cId]);
-          setActiveChatId(cId);
-        }
-      }
-    } catch {}
-  }, []);
-
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-  const addToast = useCallback((toast: Omit<ToastItem, 'id' | 'isExiting'>) => {
-    if (!enableDesktopToastsRef.current) return;
-    const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    setToasts(prev => {
-      const updated = prev.length >= 3 ? prev.slice(prev.length - 2) : prev;
-      return [...updated, { ...toast, id, isExiting: false }];
-    });
-  }, []);
-
-  const dismissToast = useCallback((toastId: string) => {
-    setToasts(prev => prev.map(t => t.id === toastId ? { ...t, isExiting: true } : t));
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== toastId));
-    }, 240);
-  }, []);
-
-  const handleToastOpenChat = useCallback((senderId: number) => {
-    setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
-    setActiveChatId(senderId);
-  }, []);
 
   // --- ÉTAT DU COLLAGE DE CAPTURE D'ÉCRAN ---
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
@@ -1048,6 +912,31 @@ const App: React.FC = () => {
     setShowWinksModal,
     winkNotSentNetworkText: t.chat.winkNotSentNetwork,
     winkNotSentOfflineText: t.chat.winkNotSentOffline
+  });
+
+  // Domaine notifications (toasts, notifications système, Web Push) — hook dédié.
+  const {
+    enableDesktopToasts,
+    setEnableDesktopToasts,
+    toasts,
+    addToast,
+    dismissToast,
+    handleToastOpenChat,
+    systemPermission,
+    prepromptDismissed,
+    setPrepromptDismissed,
+    permissionAttempted,
+    testAlertFeedback,
+    pushStatus,
+    pushTestFeedback,
+    handleRequestPermission,
+    handleTestAlert,
+    handleTestPush
+  } = useNotifications({
+    user,
+    showOptionsModal,
+    setOpenChatIds,
+    setActiveChatId
   });
 
   // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
@@ -5295,17 +5184,7 @@ const App: React.FC = () => {
                             <button 
                               type="button" 
                               className="win-btn" 
-                              onClick={async () => {
-                                setPermissionAttempted(true);
-                                const p = await requestSystemNotificationPermission();
-                                setSystemPermission(p);
-                                if (p === 'granted') {
-                                  setPrepromptDismissed(true);
-                                  if (isPushSupported()) {
-                                    subscribeToWebPush().catch(() => {});
-                                  }
-                                }
-                              }}
+                              onClick={handleRequestPermission}
                               style={{ fontWeight: 600 }}
                             >
                               {t.settings.browserNotifPrompt}
@@ -5326,17 +5205,7 @@ const App: React.FC = () => {
                           <button 
                             type="button" 
                             className="win-btn" 
-                            onClick={async () => {
-                              setPermissionAttempted(true);
-                              const p = await requestSystemNotificationPermission();
-                              setSystemPermission(p);
-                              if (p === 'granted') {
-                                setPrepromptDismissed(true);
-                                if (isPushSupported()) {
-                                  subscribeToWebPush().catch(() => {});
-                                }
-                              }
-                            }}
+                            onClick={handleRequestPermission}
                           >
                             {t.settings.browserNotifPrompt}
                           </button>
@@ -5367,17 +5236,7 @@ const App: React.FC = () => {
                             <button 
                               type="button" 
                               className="win-btn" 
-                              onClick={async () => {
-                                setPermissionAttempted(true);
-                                const p = await requestSystemNotificationPermission();
-                                setSystemPermission(p);
-                                if (p === 'granted') {
-                                  setPrepromptDismissed(true);
-                                  if (isPushSupported()) {
-                                    subscribeToWebPush().catch(() => {});
-                                  }
-                                }
-                              }}
+                              onClick={handleRequestPermission}
                               style={{ fontSize: '11px', padding: '2px 8px' }}
                             >
                               {t.settings.browserNotifRetry}
@@ -5390,30 +5249,7 @@ const App: React.FC = () => {
                         <button 
                           type="button" 
                           className="win-btn" 
-                          onClick={() => {
-                            addToast({
-                              senderId: SYSTEM_BOT_ID,
-                              senderName: 'OpenWLM Assistant',
-                              avatar: SYSTEM_BOT_CONTACT.avatar,
-                              text: t.settings.testAlertText,
-                              actionText: t.settings.toastAction
-                            });
-                            if (systemPermission === 'granted') {
-                              showSystemNotification({
-                                title: 'OpenWLM',
-                                body: t.settings.testAlertText,
-                                icon: '/assets/openwlm_logo.png',
-                                tag: 'openwlm-test-alert'
-                              });
-                              setTestAlertFeedback('success');
-                            } else if (systemPermission === 'default') {
-                              setTestAlertFeedback(permissionAttempted ? 'edge_quiet' : 'unconfigured');
-                            } else if (systemPermission === 'denied') {
-                              setTestAlertFeedback('denied');
-                            } else if (systemPermission === 'unsupported') {
-                              setTestAlertFeedback('unsupported');
-                            }
-                          }}
+                          onClick={handleTestAlert}
                         >
                           {t.settings.testAlertBtn}
                         </button>
@@ -5477,16 +5313,7 @@ const App: React.FC = () => {
                             type="button" 
                             className="win-btn" 
                             style={{ fontSize: '11px', padding: '3px 10px' }}
-                            onClick={async () => {
-                              setPushTestFeedback(null);
-                              await subscribeToWebPush().catch(() => {});
-                              const res = await sendTestWebPush();
-                              if (res.success) {
-                                setPushTestFeedback(t.settings.pushTestSuccess || 'Notification Push de test envoyée avec succès !');
-                              } else {
-                                setPushTestFeedback((t.settings.pushTestError || 'Échec du test push') + (res.error ? ` : ${res.error}` : ''));
-                              }
-                            }}
+                            onClick={handleTestPush}
                           >
                             🔔 {t.settings.pushTestButton || 'Tester la notification Push'}
                           </button>

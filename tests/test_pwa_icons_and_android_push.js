@@ -82,7 +82,8 @@ test('Frontend: PushNotificationManager and App.tsx Android & Web Push integrati
   assert.ok(pushManagerCode.includes('export async function subscribeToWebPush'), 'Must export subscribeToWebPush');
   assert.ok(pushManagerCode.includes('export async function unsubscribeFromWebPush'), 'Must export unsubscribeFromWebPush');
 
-  const appCode = fs.readFileSync(path.join(rootDir, 'src/App.tsx'), 'utf8');
+  const appCode = fs.readFileSync(path.join(rootDir, 'src/App.tsx'), 'utf8')
+    + '\n' + fs.readFileSync(path.join(rootDir, 'src/hooks/useNotifications.ts'), 'utf8');
   assert.ok(appCode.includes("event.data?.type === 'OPEN_CHAT'"), 'App.tsx must listen to OPEN_CHAT from SW');
   assert.ok(appCode.includes("params.get('chat')"), 'App.tsx must detect ?chat=ID url param');
   assert.ok(appCode.includes('t.settings.androidSectionTitle'), 'App.tsx must display Android section');

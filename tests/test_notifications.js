@@ -203,9 +203,11 @@ test('PWA / Service Worker: sw.js handles notificationclick event to focus windo
 });
 
 test('UI Logic: Permission request is strictly bound to user click without automatic popups', () => {
-  const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+  // La logique de notification vit dans App.tsx (rendu) ET src/hooks/useNotifications.ts (état/effets).
+  const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8')
+    + '\n' + fs.readFileSync(path.join(process.cwd(), 'src/hooks/useNotifications.ts'), 'utf8');
 
-  // Verify requestSystemNotificationPermission is only called in onClick handlers
+  // Verify requestSystemNotificationPermission is only called from the click-bound handler
   const requestMatches = [...appSrc.matchAll(/requestSystemNotificationPermission\(\)/g)];
   assert.strictEqual(requestMatches.length >= 1, true, 'Should call requestSystemNotificationPermission');
 
@@ -213,12 +215,18 @@ test('UI Logic: Permission request is strictly bound to user click without autom
   const useEffectWithRequest = /useEffect\([^)]*requestSystemNotificationPermission/;
   assert.strictEqual(useEffectWithRequest.test(appSrc), false, 'Must not call requestSystemNotificationPermission inside useEffect');
 
-  // Verify showSystemNotification is called on test alert when granted
-  assert.strictEqual(appSrc.includes("if (systemPermission === 'granted') {\n                              showSystemNotification({"), true, 'Test alert must trigger showSystemNotification when granted');
+  // Verify showSystemNotification is called on test alert when granted (indentation-tolerant)
+  assert.strictEqual(
+    /if\s*\(\s*systemPermission === 'granted'\s*\)\s*\{[\s\S]{0,60}?showSystemNotification\(/.test(appSrc),
+    true,
+    'Test alert must trigger showSystemNotification when granted'
+  );
 });
 
 test('UI Logic: Edge quiet prompt and pre-prompt states handling', () => {
-  const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+  // Rend JSX (App.tsx) + état/effets (hook) : les deux sources sont vérifiées ensemble.
+  const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8')
+    + '\n' + fs.readFileSync(path.join(process.cwd(), 'src/hooks/useNotifications.ts'), 'utf8');
 
   // 1. Pre-prompt encart with "Activer" and "Plus tard" buttons
   assert.strictEqual(appSrc.includes('options-preprompt-box'), true, 'Pre-prompt box must exist in App.tsx');

@@ -156,7 +156,8 @@ test('Frontend PushNotificationManager: exports all necessary push methods', () 
 });
 
 test('Frontend UI: App.tsx displays dynamic push status and test button', () => {
-  const appCode = fs.readFileSync(path.join(rootDir, 'src/App.tsx'), 'utf8');
+  const appCode = fs.readFileSync(path.join(rootDir, 'src/App.tsx'), 'utf8')
+    + '\n' + fs.readFileSync(path.join(rootDir, 'src/hooks/useNotifications.ts'), 'utf8');
   assert.ok(appCode.includes('subscribeToWebPush'), 'App.tsx must use subscribeToWebPush');
   assert.ok(appCode.includes('sendTestWebPush'), 'App.tsx must use sendTestWebPush');
   assert.ok(appCode.includes('fetchPushBackendStatus'), 'App.tsx must use fetchPushBackendStatus');

@@ -22,6 +22,7 @@ import E2EEKeyStorage from './utils/E2EEKeyStorage';
 import { type EnvelopeStatus } from './utils/MessageEnvelope';
 import { useMessageCrypto } from './hooks/useMessageCrypto';
 import { useContacts } from './hooks/useContacts';
+import { useGames } from './hooks/useGames';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
@@ -957,47 +958,6 @@ const App: React.FC = () => {
   const [callSignal, setCallSignal] = useState<any>(null);
   const [isAudioOnly, setIsAudioOnly] = useState(false);
 
-  // --- ÉTAT DES JEUX (ACTIVITÉS MSN : MORPION, DAMES & PUISSANCE 4) ---
-  const [activeGame, setActiveGame] = useState<{
-    opponentId: number;
-    opponentName: string;
-    mySymbol?: string;
-    myColor?: 'white' | 'black' | 'red' | 'yellow';
-    isMyTurn: boolean;
-    gameType: string;
-  } | null>(null);
-  const [incomingGameInvite, setIncomingGameInvite] = useState<{
-    from: number;
-    fromName: string;
-    gameType: string;
-  } | null>(null);
-  const [outgoingGameInvite, setOutgoingGameInvite] = useState<{
-    target: number;
-    targetName: string;
-    gameType?: string;
-  } | null>(null);
-  const [resumableGames, setResumableGames] = useState<Array<{
-    opponentId: number;
-    opponentName: string;
-    gameType: string;
-    mySymbol?: string;
-    myColor?: 'white' | 'black' | 'red' | 'yellow';
-    isMyTurn: boolean;
-  }>>([]);
-  const [showGamesMenu, setShowGamesMenu] = useState(false);
-  const [isGameMinimized, setIsGameMinimized] = useState<boolean>(false);
-  const [gameSummary, setGameSummary] = useState<{
-    isMyTurn: boolean;
-    myScore: number;
-    opponentScore: number;
-    winner: 'me' | 'opponent' | 'draw' | null;
-  }>({
-    isMyTurn: false,
-    myScore: 0,
-    opponentScore: 0,
-    winner: null
-  });
-
   // --- ÉTAT DES MESSAGES & CONVERSATIONS ---
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
   const [inputText, setInputText] = useState('');
@@ -1119,6 +1079,38 @@ const App: React.FC = () => {
     setContactEmail,
     setShowAddContactModal,
     clearHistoryErrorText: t.roster.clearHistoryError
+  });
+
+  // Domaine jeux (partie active, invitations, reprise) — extrait dans un hook dédié.
+  const {
+    activeGame,
+    setActiveGame,
+    incomingGameInvite,
+    setIncomingGameInvite,
+    outgoingGameInvite,
+    setOutgoingGameInvite,
+    resumableGames,
+    showGamesMenu,
+    setShowGamesMenu,
+    isGameMinimized,
+    setIsGameMinimized,
+    gameSummary,
+    setGameSummary,
+    refreshResumableGames,
+    handleGameClose,
+    handleGameMinimize,
+    handleGameStateChange,
+    handleInviteGame,
+    handleAcceptGameInvite,
+    handleDeclineGameInvite,
+    handleCancelOutgoingInvite,
+    handleQuitActiveGame
+  } = useGames({
+    socket,
+    user,
+    activeChatId,
+    contacts,
+    setMessages
   });
 
   // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
@@ -1880,48 +1872,6 @@ const App: React.FC = () => {
     }, 50);
     return () => clearTimeout(timer);
   }, [messages, activeChatId]);
-
-  /**
-   * Reprise de partie : rafraîchit la liste des parties actives de l'utilisateur
-   */
-  const refreshResumableGames = useCallback(async () => {
-    try {
-      const res = await axios.get('/api/games/active');
-      setResumableGames(Array.isArray(res.data?.games) ? res.data.games : []);
-    } catch { /* ignore */ }
-  }, []);
-
-  // Callbacks STABLES passés aux jeux. Indispensable : les useEffect des composants de jeu
-  // dépendent de ces props ET appellent setState → un prop instable = boucle de rendu (freeze).
-  const handleGameClose = useCallback(() => {
-    setActiveGame(null);
-    setIsGameMinimized(false);
-    refreshResumableGames();
-  }, [refreshResumableGames]);
-
-  const handleGameMinimize = useCallback(() => {
-    setIsGameMinimized(true);
-  }, []);
-
-  const handleGameStateChange = useCallback((summary: { isMyTurn: boolean; myScore: number; opponentScore: number; winner: 'me' | 'opponent' | 'draw' | null }) => {
-    setGameSummary(summary);
-  }, []);
-
-  // Reprise automatique d'une partie en cours à l'ouverture de la conversation
-  useEffect(() => {
-    if (!activeChatId || activeGame) return;
-    const g = resumableGames.find(x => x.opponentId === activeChatId);
-    if (g) {
-      setActiveGame({
-        opponentId: g.opponentId,
-        opponentName: g.opponentName,
-        mySymbol: g.mySymbol,
-        myColor: g.myColor,
-        isMyTurn: g.isMyTurn,
-        gameType: g.gameType
-      });
-    }
-  }, [activeChatId, resumableGames, activeGame]);
 
   /**
    * GESTION DES SOCKETS (CONNEXION & ÉVÉNEMENTS)
@@ -3667,83 +3617,6 @@ const App: React.FC = () => {
   };
 
   /**
-   * GESTION DES JEUX MULTI-JOUEURS (MORPION, DAMES & PUISSANCE 4)
-   */
-  const handleInviteGame = (gameType: string = 'checkers') => {
-    if (!activeChatId || !user) return;
-
-    // Invitation de jeu contre OpenWLM (mode solo local)
-    if (activeChatId === SYSTEM_BOT_ID) {
-      if (gameType === 'morpion') {
-        setActiveGame({
-          opponentId: SYSTEM_BOT_ID,
-          opponentName: 'OpenWLM',
-          mySymbol: 'X',
-          isMyTurn: true,
-          gameType: 'morpion'
-        });
-        setIsGameMinimized(false);
-        setShowGamesMenu(false);
-        setMessages(prev => ({
-          ...prev,
-          [SYSTEM_BOT_ID]: [
-            ...(prev[SYSTEM_BOT_ID] || []),
-            {
-              senderId: SYSTEM_BOT_ID,
-              receiverId: user.id,
-              sender: 'OpenWLM',
-              text: "Partie de Morpion lancée. À vous de jouer (X).",
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              timestamp: new Date().toISOString()
-            }
-          ]
-        }));
-      } else if (gameType === 'puissance4') {
-        setActiveGame({
-          opponentId: SYSTEM_BOT_ID,
-          opponentName: 'OpenWLM',
-          mySymbol: 'R',
-          myColor: 'red',
-          isMyTurn: true,
-          gameType: 'puissance4'
-        });
-        setIsGameMinimized(false);
-        setShowGamesMenu(false);
-        setMessages(prev => ({
-          ...prev,
-          [SYSTEM_BOT_ID]: [
-            ...(prev[SYSTEM_BOT_ID] || []),
-            {
-              senderId: SYSTEM_BOT_ID,
-              receiverId: user.id,
-              sender: 'OpenWLM',
-              text: "Partie de Puissance 4 lancée. À vous de jouer (Rouge 🔴).",
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              timestamp: new Date().toISOString()
-            }
-          ]
-        }));
-      } else {
-        alert("OpenWLM prend en charge le Morpion et le Puissance 4 pour les tests solo.");
-        setShowGamesMenu(false);
-      }
-      return;
-    }
-
-    if (!socket) return;
-    const contact = contacts.find(c => c.id === activeChatId);
-    if (!contact || contact.status === 'offline') {
-      const gameLabel = gameType === 'checkers' ? 'au Jeu de dames' : (gameType === 'puissance4' ? 'au Puissance 4' : 'au Morpion');
-      alert(`Ce contact doit être en ligne pour jouer ${gameLabel}.`);
-      return;
-    }
-
-    socket.emit('game_invite', { target: activeChatId, gameType });
-    setOutgoingGameInvite({ target: activeChatId, targetName: contact.nickname || contact.username, gameType });
-    setShowGamesMenu(false);
-  };
-
-  /**
    * ACTIONS ET COMMANDES D'OPENWLM (TESTS LOCAUX SANS RÉSEAU)
    */
   const handleAssistantAction = (action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'puissance4' | 'help') => {
@@ -3806,32 +3679,6 @@ const App: React.FC = () => {
         }));
       }, 300);
     }
-  };
-
-  const handleAcceptGameInvite = () => {
-    if (!incomingGameInvite || !socket) return;
-    socket.emit('game_accept', { target: incomingGameInvite.from, gameType: incomingGameInvite.gameType });
-    setIncomingGameInvite(null);
-  };
-
-  const handleDeclineGameInvite = () => {
-    if (!incomingGameInvite || !socket) return;
-    socket.emit('game_decline', { target: incomingGameInvite.from });
-    setIncomingGameInvite(null);
-  };
-
-  const handleCancelOutgoingInvite = () => {
-    if (!outgoingGameInvite || !socket) return;
-    socket.emit('game_quit', { target: outgoingGameInvite.target });
-    setOutgoingGameInvite(null);
-  };
-
-  const handleQuitActiveGame = () => {
-    if (activeGame && socket) {
-      socket.emit('game_quit', { target: activeGame.opponentId });
-    }
-    setActiveGame(null);
-    setIsGameMinimized(false);
   };
 
   /**

@@ -21,6 +21,7 @@ import {
 import E2EEKeyStorage from './utils/E2EEKeyStorage';
 import { type EnvelopeStatus } from './utils/MessageEnvelope';
 import { useMessageCrypto } from './hooks/useMessageCrypto';
+import { useContacts } from './hooks/useContacts';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
@@ -54,12 +55,10 @@ import { reorderChatTabs, sanitizeOpenChatIds } from './utils/TabUtils';
 import { resolveMessageSide } from './utils/MessageIdentity';
 import {
   loadConversationBackgrounds,
-  setConversationBackground,
-  removeConversationBackground
+  setConversationBackground
 } from './utils/ConversationBackgrounds';
 import {
   type User,
-  type Contact,
   type Message,
   type CustomEmoticonPayload,
   SYSTEM_BOT_ID,
@@ -999,16 +998,7 @@ const App: React.FC = () => {
     winner: null
   });
 
-  // --- ÉTAT DES CONTACTS & MESSAGES ---
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const contactsRef = useRef<Contact[]>([]);
-  useEffect(() => { contactsRef.current = contacts; }, [contacts]);
-  const isInitialContactsLoadRef = useRef(true);
-  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, contactId: number } | null>(null);
-  const [clearConfirmContactId, setClearConfirmContactId] = useState<number | null>(null);
-  const [clearNotice, setClearNotice] = useState<string | null>(null);
+  // --- ÉTAT DES MESSAGES & CONVERSATIONS ---
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
   const [inputText, setInputText] = useState('');
   const [isGroupOpen, setIsGroupOpen] = useState(true);
@@ -1093,6 +1083,43 @@ const App: React.FC = () => {
   const loadingChatsRef = useRef<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [contactEmail, setContactEmail] = useState('');
+
+  // Domaine contacts (roster, invitations, menu contextuel) — extrait dans un hook dédié.
+  const {
+    contacts,
+    setContacts,
+    contactsRef,
+    pendingInvites,
+    searchQuery,
+    setSearchQuery,
+    contextMenu,
+    setContextMenu,
+    clearConfirmContactId,
+    setClearConfirmContactId,
+    clearNotice,
+    setClearNotice,
+    refreshData,
+    handleBlockContact,
+    handleDeleteContact,
+    handleClearHistory,
+    performClearHistory,
+    handleContextMenu,
+    handleInvite,
+    handleAcceptInvite,
+    handleDeclineInvite
+  } = useContacts({
+    user,
+    setPublicKeysCache,
+    setMessages,
+    activeChatId,
+    setActiveChatId,
+    setOpenChatIds,
+    setConversationBackgrounds,
+    contactEmail,
+    setContactEmail,
+    setShowAddContactModal,
+    clearHistoryErrorText: t.roster.clearHistoryError
+  });
 
   // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
   useEffect(() => {
@@ -2589,57 +2616,6 @@ const App: React.FC = () => {
   }, [activeChatId]);
 
   /**
-   * RÉCUPÉRATION DES CONTACTS & INVITATIONS
-   */
-  const refreshData = useCallback(async () => {
-    if (!user) return;
-    try {
-      const [resContacts, resInvites] = await Promise.all([
-        axios.get(`/api/contacts/${user.id}`),
-        axios.get(`/api/invitations/${user.id}`)
-      ]);
-      
-      if (Array.isArray(resContacts.data)) {
-        if (!isInitialContactsLoadRef.current) {
-          // Détection d'un contact qui vient de se connecter lors d'une synchronisation périodique
-          resContacts.data.forEach((newC: any) => {
-            const oldC = contactsRef.current.find(c => c.id === newC.id);
-            if (oldC && oldC.status === 'offline' && newC.status && newC.status !== 'offline') {
-              console.log(`[Audio] Contact ${newC.nickname || newC.username} devenu en ligne via refreshData -> online.mp3`);
-              SoundManager.play('ONLINE');
-            }
-          });
-        } else {
-          isInitialContactsLoadRef.current = false;
-        }
-
-        setContacts(resContacts.data);
-        // Synchroniser le cache des clés publiques pour éviter les messages illisibles
-        const newKeys: Record<number, any> = {};
-        resContacts.data.forEach((c: any) => {
-          if (c.public_key) {
-            try {
-              newKeys[c.id] = typeof c.public_key === 'string' ? JSON.parse(c.public_key) : c.public_key;
-            } catch(e) {}
-          }
-        });
-        setPublicKeysCache(prev => ({ ...prev, ...newKeys }));
-      }
-      if (Array.isArray(resInvites.data)) setPendingInvites(resInvites.data);
-    } catch (err) { 
-      console.error("Erreur lors du rafraîchissement des données:", err); 
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (user) {
-      refreshData();
-      const interval = setInterval(refreshData, 15000); // Rafraîchissement toutes les 15s
-      return () => clearInterval(interval);
-    }
-  }, [user, refreshData]);
-
-  /**
    * ENVOI D'UN MESSAGE TEXTE
    */
   const handleSendMessage = async () => {
@@ -3949,106 +3925,6 @@ const App: React.FC = () => {
     setDraggedTabId(null);
     setDragOverTabId(null);
     setDropPosition(null);
-  };
-
-  /**
-   * GESTION DES CONTACTS (Blocage, Suppression)
-   */
-  const handleBlockContact = async (contactId: number, block: boolean) => {
-    if (!user) return;
-    try {
-      await axios.post('/api/contacts/block', { userId: user.id, contactId, block });
-      refreshData();
-      setContextMenu(null);
-    } catch (err) { 
-      console.error("Erreur lors du blocage/déblocage:", err); 
-    }
-  };
-
-  const handleDeleteContact = async (contactId: number) => {
-    if (!user) return;
-    if (!window.confirm("Voulez-vous vraiment supprimer ce contact ?")) return;
-    try {
-      await axios.post('/api/contacts/delete', { userId: user.id, contactId });
-      refreshData();
-      setContextMenu(null);
-      if (activeChatId === contactId) setActiveChatId(0);
-      setOpenChatIds(prev => prev.filter(id => id !== contactId));
-      setConversationBackgrounds(prev => removeConversationBackground(prev, contactId));
-    } catch (err) {
-      console.error("Erreur lors de la suppression du contact:", err);
-    }
-  };
-
-  const handleClearHistory = (contactId: number) => {
-    if (!user) return;
-    setContextMenu(null);
-    setClearConfirmContactId(contactId);
-  };
-
-  const performClearHistory = async (contactId: number) => {
-    if (!user) return;
-    try {
-      // 1. Supprimer sur le serveur (efface l'historique des DEUX côtés)
-      await axios.post('/api/messages/clear', { userId: user.id, contactId });
-
-      // 2. Supprimer en local (IndexedDB)
-      await LocalDB.clearHistory(`${user.id}_${contactId}`);
-
-      // 3. Mettre à jour l'état React
-      setMessages(prev => {
-        const next = { ...prev };
-        delete next[contactId];
-        return next;
-      });
-    } catch (err) {
-      console.error("Erreur lors de la suppression de l'historique:", err);
-      setClearNotice(t.roster.clearHistoryError);
-    }
-  };
-
-  const handleContextMenu = (e: React.MouseEvent, contactId: number) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, contactId });
-  };
-
-  useEffect(() => {
-    const hideMenu = () => setContextMenu(null);
-    window.addEventListener('click', hideMenu);
-    return () => window.removeEventListener('click', hideMenu);
-  }, []);
-
-  /**
-   * GESTION DES INVITATIONS
-   */
-  const handleInvite = async () => {
-    if (!contactEmail.trim()) return;
-    try {
-      await axios.post('/api/invite', { senderId: user?.id, receiverUsername: contactEmail });
-      alert('Invitation envoyée !');
-      setShowAddContactModal(false);
-      setContactEmail('');
-    } catch (err: any) { 
-      alert(err.response?.data?.error || 'Erreur lors de l\'envoi de l\'invitation.'); 
-    }
-  };
-
-  const handleAcceptInvite = async (invitationId: number) => {
-    try {
-      await axios.post('/api/accept-invite', { invitationId, userId: user?.id });
-      refreshData();
-    } catch (err) { 
-      console.error("Erreur acceptation invitation:", err); 
-    }
-  };
-
-  const handleDeclineInvite = async (invitationId: number) => {
-    try {
-      await axios.post('/api/decline-invite', { invitationId });
-      refreshData();
-    } catch (err) { 
-      console.error("Erreur refus invitation:", err); 
-    }
   };
 
   /**

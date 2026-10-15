@@ -57,6 +57,22 @@ import {
   setConversationBackground,
   removeConversationBackground
 } from './utils/ConversationBackgrounds';
+import {
+  loadOpenChatIds,
+  saveOpenChatIds,
+  loadActiveChatId,
+  saveActiveChatId,
+  loadPrivateModes,
+  savePrivateModes,
+  loadGlobalPrivateMode,
+  saveGlobalPrivateMode,
+  loadEnableDesktopToasts,
+  saveEnableDesktopToasts,
+  loadAwayTimeout,
+  saveAwayTimeout,
+  loadEnableAutoAway,
+  saveEnableAutoAway
+} from './utils/profileStorage';
 
 axios.defaults.withCredentials = true;
 
@@ -640,18 +656,8 @@ const App: React.FC = () => {
 
   // --- ÉTAT SOCKET & NAVIGATION ---
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [openChatIds, setOpenChatIds] = useState<number[]>(() => {
-    try {
-      const saved = localStorage.getItem('wlm_open_chats');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) { return []; }
-  });
-  const [activeChatId, setActiveChatId] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('wlm_active_chat');
-      return saved ? parseInt(saved) : 0;
-    } catch (e) { return 0; }
-  });
+  const [openChatIds, setOpenChatIds] = useState<number[]>(loadOpenChatIds);
+  const [activeChatId, setActiveChatId] = useState<number>(loadActiveChatId);
   const activeChatIdRef = useRef(activeChatId);
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -708,14 +714,8 @@ const App: React.FC = () => {
 
   // --- ÉTAT DE L'INACTIVITÉ (AUTO-AWAY) ---
   const [lastActivity, setLastActivity] = useState(() => Date.now());
-  const [awayTimeout, setAwayTimeout] = useState(() => {
-    const saved = localStorage.getItem('wlm_away_timeout');
-    return saved ? parseInt(saved) : 5; // Défaut 5 minutes
-  });
-  const [enableAutoAway, setEnableAutoAway] = useState(() => {
-    const saved = localStorage.getItem('wlm_enable_auto_away');
-    return saved !== 'false'; // Défaut activé
-  });
+  const [awayTimeout, setAwayTimeout] = useState(() => loadAwayTimeout(5));
+  const [enableAutoAway, setEnableAutoAway] = useState(() => loadEnableAutoAway(true));
   const [isAutoAway, setIsAutoAway] = useState(false);
 
   // --- ÉTAT DES MODALES & MENUS ---
@@ -749,20 +749,11 @@ const App: React.FC = () => {
 
   // --- ÉTAT DES NOTIFICATIONS DESKTOP & ALERTES RETRO WLM ---
   const [optionsTab, setOptionsTab] = useState<'personal' | 'alerts'>('personal');
-  const [enableDesktopToasts, setEnableDesktopToasts] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('wlm_enable_toasts');
-      return saved === null ? true : saved === 'true';
-    } catch {
-      return true;
-    }
-  });
+  const [enableDesktopToasts, setEnableDesktopToasts] = useState<boolean>(() => loadEnableDesktopToasts(true));
   const enableDesktopToastsRef = useRef(enableDesktopToasts);
   useEffect(() => {
     enableDesktopToastsRef.current = enableDesktopToasts;
-    try {
-      localStorage.setItem('wlm_enable_toasts', enableDesktopToasts.toString());
-    } catch {}
+    saveEnableDesktopToasts(enableDesktopToasts);
   }, [enableDesktopToasts]);
 
   const [systemPermission, setSystemPermission] = useState<NotificationPermission | 'unsupported'>(() => {
@@ -1096,22 +1087,17 @@ const App: React.FC = () => {
   const [isOfflineGroupOpen, setIsOfflineGroupOpen] = useState(true);
   const [isServicesGroupOpen, setIsServicesGroupOpen] = useState(true);
   const [conversationBackgrounds, setConversationBackgrounds] = useState<Record<number, string>>(loadConversationBackgrounds);
-  const [isPrivateMode, setIsPrivateMode] = useState<Record<number, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('wlm_private_modes');
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) { return {}; }
-  });
+  const [isPrivateMode, setIsPrivateMode] = useState<Record<number, boolean>>(loadPrivateModes);
   
   const [globalPrivateMode, setGlobalPrivateMode] = useState(() => {
     if (user && user.global_private !== undefined) return user.global_private === 1;
-    return localStorage.getItem('wlm_global_private') === 'true';
+    return loadGlobalPrivateMode();
   });
 
   // Sauvegarde persistante du mode privé global
   useEffect(() => {
-    localStorage.setItem('wlm_global_private', globalPrivateMode.toString());
-    
+    saveGlobalPrivateMode(globalPrivateMode);
+
     // Synchroniser avec les chats ouverts
     if (user?.id && openChatIds.length > 0) {
        // Note: To avoid socket missing here, we'll handle emission in another way, 
@@ -1121,7 +1107,7 @@ const App: React.FC = () => {
 
   // Sauvegarde persistante du mode privé
   useEffect(() => {
-    localStorage.setItem('wlm_private_modes', JSON.stringify(isPrivateMode));
+    savePrivateModes(isPrivateMode);
   }, [isPrivateMode]);
 
   const isPrivateModeRef = useRef(isPrivateMode);
@@ -1521,11 +1507,11 @@ const App: React.FC = () => {
    * PERSISTENCE DE LA NAVIGATION
    */
   useEffect(() => {
-    localStorage.setItem('wlm_open_chats', JSON.stringify(openChatIds));
+    saveOpenChatIds(openChatIds);
   }, [openChatIds]);
 
   useEffect(() => {
-    localStorage.setItem('wlm_active_chat', activeChatId.toString());
+    saveActiveChatId(activeChatId);
   }, [activeChatId]);
 
   /**
@@ -5866,7 +5852,7 @@ const App: React.FC = () => {
                           checked={enableAutoAway} 
                           onChange={e => {
                             setEnableAutoAway(e.target.checked);
-                            localStorage.setItem('wlm_enable_auto_away', e.target.checked.toString());
+                            saveEnableAutoAway(e.target.checked);
                           }} 
                         />
                         <label htmlFor="check-away">{t.settings.autoAwayPrefix}</label>
@@ -5877,7 +5863,7 @@ const App: React.FC = () => {
                           onChange={e => {
                             const val = parseInt(e.target.value) || 1;
                             setAwayTimeout(val);
-                            localStorage.setItem('wlm_away_timeout', val.toString());
+                            saveAwayTimeout(val);
                           }} 
                           style={{ width: '40px', textAlign: 'center', margin: '0 5px' }} 
                         />

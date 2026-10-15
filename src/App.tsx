@@ -19,7 +19,8 @@ import {
   formatSafetyNumber
 } from './utils/Security';
 import E2EEKeyStorage from './utils/E2EEKeyStorage';
-import { sealMessage, openMessage, sanitizeDecryptedPayload, type EnvelopeStatus, type OpenedMessage } from './utils/MessageEnvelope';
+import { type EnvelopeStatus } from './utils/MessageEnvelope';
+import { useMessageCrypto } from './hooks/useMessageCrypto';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
@@ -1137,58 +1138,21 @@ const App: React.FC = () => {
   // Référence toujours à jour vers getPublicKey (défini plus bas) : les handlers socket
   // sont enregistrés une seule fois et ne doivent pas capturer un cache figé.
   const getPublicKeyRef = useRef<(contactId: number, forceRefresh?: boolean) => Promise<JsonWebKey | null | undefined>>(async () => null);
-  // Identifiants de messages déjà vus (anti-rejeu) pour cette session.
-  const seenMidsRef = useRef<Set<string>>(new Set());
-  // Dernier rafraîchissement forcé de clé publique par contact (borne les requêtes si
-  // beaucoup de messages invalides arrivent, ex. historique falsifié par le serveur).
-  const keyRefreshAtRef = useRef<Map<number, number>>(new Map());
-  // Contacts dont on a déjà reçu un message signé valide. Leur client signe toujours :
-  // un message NON signé reçu en direct de leur part est une rétrogradation forcée.
-  const signedContactsRef = useRef<{ userId: number | null; ids: Set<number> }>({ userId: null, ids: new Set() });
-  const signedContactsKey = (uid: number) => `wlm_signed_contacts_${uid}`;
-  const getSignedContacts = (uid: number): Set<number> => {
-    if (signedContactsRef.current.userId !== uid) {
-      let ids: number[] = [];
-      try { ids = JSON.parse(localStorage.getItem(signedContactsKey(uid)) || '[]'); } catch { /* ignore */ }
-      signedContactsRef.current = { userId: uid, ids: new Set(Array.isArray(ids) ? ids.filter(Number.isInteger) : []) };
-    }
-    return signedContactsRef.current.ids;
-  };
-  const rememberSignedContact = (uid: number, contactId: number) => {
-    const ids = getSignedContacts(uid);
-    if (ids.has(contactId)) return;
-    ids.add(contactId);
-    try { localStorage.setItem(signedContactsKey(uid), JSON.stringify([...ids])); } catch { /* ignore */ }
-  };
 
-  /**
-   * Ouvre et authentifie un message (direct ou historique).
-   * Si la signature ne se vérifie pas avec la clé en cache, on retente UNE fois avec la
-   * clé fraîche du serveur (le contact a pu réinitialiser ses clés ; getPublicKey
-   * déclenche alors l'alerte de changement d'empreinte).
-   */
-  const authenticateIncoming = useCallback(async (
-    rawText: unknown, senderId: number, receiverId: number, myId: number
-  ): Promise<OpenedMessage> => {
-    const keys = myKeysRef.current;
-    if (!keys) return { status: 'undecryptable', payload: null };
-    const isSelf = senderId === myId;
-    const resolveKey = async (force: boolean): Promise<JsonWebKey | null> =>
-      isSelf ? keys.publicKeyJwk : ((await getPublicKeyRef.current(senderId, force)) ?? null);
-    const ctx = { serverSenderId: senderId, serverReceiverId: receiverId, myId, myPrivateKey: keys.privateKeyJwk };
-
-    let opened = await openMessage(rawText, { ...ctx, senderPublicKeyJwk: await resolveKey(false) });
-    if (!isSelf && (opened.status === 'invalid' || opened.status === 'unverifiable')) {
-      const last = keyRefreshAtRef.current.get(senderId) ?? 0;
-      if (Date.now() - last > 30_000) {
-        keyRefreshAtRef.current.set(senderId, Date.now());
-        const fresh = await resolveKey(true);
-        if (fresh) opened = await openMessage(rawText, { ...ctx, senderPublicKeyJwk: fresh });
-      }
-    }
-    if (opened.payload) opened = { ...opened, payload: sanitizeDecryptedPayload(opened.payload) };
-    return opened;
-  }, []);
+  // Primitive E2EE (scellement, authentification, anti-rejeu, anti-rétrogradation).
+  // Extraites dans un hook dédié ; les références sont injectées pour rester à jour.
+  const {
+    seenMidsRef,
+    getSignedContacts,
+    rememberSignedContact,
+    authenticateIncoming,
+    sealForContact
+  } = useMessageCrypto({
+    myKeysRef,
+    getPublicKeyRef,
+    userId: user?.id,
+    signingKeyMissingMessage: t.chat.signingKeyMissing
+  });
 
   // Calcul automatique de ma propre empreinte locale de sécurité dès chargement des clés
   useEffect(() => {
@@ -2555,25 +2519,6 @@ const App: React.FC = () => {
   };
   // Mise à jour après chaque rendu (version courante de getPublicKey et de son cache)
   useEffect(() => { getPublicKeyRef.current = getPublicKey; });
-
-  /**
-   * Chiffre ET signe un payload pour un contact (enveloppe v2).
-   * Échoue si la clé de signature est absente : on n'envoie jamais de message non signé.
-   */
-  const sealForContact = async (payload: unknown, contactId: number, contactPubKey: JsonWebKey, mid?: string) => {
-    const keys = myKeysRef.current;
-    if (!keys?.signingKey || !user?.id) {
-      throw new Error(t.chat.signingKeyMissing);
-    }
-    return sealMessage(payload, {
-      from: Number(user.id),
-      to: Number(contactId),
-      receiverPublicKeyJwk: contactPubKey,
-      senderPublicKeyJwk: keys.publicKeyJwk,
-      signingKey: keys.signingKey,
-      mid
-    });
-  };
 
   // ---- ENVOI AVEC ACCUSÉ, ÉCHEC VISIBLE ET RENVOI ------------------------------------
   // Payload en clair des messages non envoyés (mémoire uniquement) pour pouvoir les renvoyer.

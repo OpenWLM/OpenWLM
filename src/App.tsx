@@ -23,6 +23,7 @@ import { type EnvelopeStatus } from './utils/MessageEnvelope';
 import { useMessageCrypto } from './hooks/useMessageCrypto';
 import { useContacts } from './hooks/useContacts';
 import { useGames } from './hooks/useGames';
+import { useCalls } from './hooks/useCalls';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
@@ -952,12 +953,6 @@ const App: React.FC = () => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const cancelRecordingRef = useRef(false);
 
-  // --- ÉTAT DES APPELS (WebRTC) ---
-  const [activeCallId, setActiveCallId] = useState<number | null>(null);
-  const [isReceivingCall, setIsReceivingCall] = useState(false);
-  const [callSignal, setCallSignal] = useState<any>(null);
-  const [isAudioOnly, setIsAudioOnly] = useState(false);
-
   // --- ÉTAT DES MESSAGES & CONVERSATIONS ---
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
   const [inputText, setInputText] = useState('');
@@ -1112,6 +1107,20 @@ const App: React.FC = () => {
     contacts,
     setMessages
   });
+
+  // Domaine appels (WebRTC) — extrait dans un hook dédié.
+  const {
+    activeCallId,
+    setActiveCallId,
+    isReceivingCall,
+    setIsReceivingCall,
+    callSignal,
+    setCallSignal,
+    isAudioOnly,
+    setIsAudioOnly,
+    handleStartCall,
+    handleEndCall
+  } = useCalls({ user, activeChatId });
 
   // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
   useEffect(() => {
@@ -3593,27 +3602,6 @@ const App: React.FC = () => {
     } catch (e) {
       console.warn('[Session] Erreur lors de l\'oubli de l\'appareil:', e);
     }
-  };
-
-  /**
-   * LANCER UN APPEL (AUDIO OU VIDÉO)
-   */
-  const handleStartCall = (audioOnly: boolean) => {
-    if (!activeChatId || !user) return;
-    if (activeChatId === SYSTEM_BOT_ID) {
-      alert("Les appels audio/vidéo nécessitent un contact humain réel connecté.");
-      return;
-    }
-    setIsAudioOnly(audioOnly);
-    setActiveCallId(activeChatId);
-    setIsReceivingCall(false);
-    setCallSignal(null);
-  };
-
-  const handleEndCall = () => {
-    setActiveCallId(null);
-    setIsReceivingCall(false);
-    setCallSignal(null);
   };
 
   /**

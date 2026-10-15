@@ -44,6 +44,18 @@ export const registerMessageHandlers = (io, socket) => {
     const finalIsPrivate = isPrivate || isForcedPrivate;
     const senderDisplayName = sender ? (sender.nickname || sender.username) : null;
 
+    // Enveloppe v2 : on extrait le `mid` (identifiant aléatoire signé) pour rendre
+    // l'écriture idempotente. Le renvoi d'un message « Non envoyé » réutilise ce mid.
+    let envelopeMid = null;
+    if (typeof text === 'string') {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && parsed.v === 2 && typeof parsed.mid === 'string' && parsed.mid.length > 0) {
+          envelopeMid = parsed.mid;
+        }
+      } catch (_) { /* texte non-JSON : pas de mid */ }
+    }
+
     // MODE PRIVÉ : rien n'est conservé côté serveur. Si le destinataire n'a aucune session
     // connectée, le message serait perdu : on le REFUSE explicitement (au lieu de répondre
     // « succès ») pour que le client affiche « Non envoyé » et propose de renvoyer.
@@ -56,6 +68,23 @@ export const registerMessageHandlers = (io, socket) => {
         });
       }
       return;
+    }
+
+    // DÉDUPLICATION DU RENVOI : si ce mid a déjà été persisté pour cet émetteur, le
+    // message a déjà été accepté (l'accusé s'est simplement perdu). On répond « succès »
+    // avec l'id existant, SANS rediffuser ni re-notifier, pour ne pas créer de doublon.
+    if (!finalIsPrivate && envelopeMid) {
+      try {
+        const existing = db.prepare('SELECT id, timestamp FROM messages WHERE sender_id = ? AND mid = ?').get(senderId, envelopeMid);
+        if (existing) {
+          if (typeof callback === 'function') {
+            callback({ success: true, id: existing.id, timestamp: existing.timestamp, isPrivate: false, duplicate: true });
+          }
+          return;
+        }
+      } catch (err) {
+        console.error("Erreur vérification doublon (mid):", err);
+      }
     }
 
     if (text && text.length > 5000000) {
@@ -86,13 +115,24 @@ export const registerMessageHandlers = (io, socket) => {
     if (!finalIsPrivate) {
       try {
         const stmt = db.prepare(`
-          INSERT INTO messages (sender_id, receiver_id, text, style, audio, type, delivery_status, timestamp) 
-          VALUES (?, ?, ?, ?, ?, ?, 'sent', ?)
+          INSERT INTO messages (sender_id, receiver_id, text, style, audio, type, delivery_status, timestamp, mid) 
+          VALUES (?, ?, ?, ?, ?, ?, 'sent', ?, ?)
         `);
-        const info = stmt.run(senderId, receiverId, text, JSON.stringify(style), audio, type || 'text', nowIso);
+        const info = stmt.run(senderId, receiverId, text, JSON.stringify(style), audio, type || 'text', nowIso, envelopeMid);
         messageToDeliver.id = info.lastInsertRowid;
         messageToDeliver.delivery_status = 'sent';
       } catch (err) {
+        // Course concurrente : deux renvois du même mid ont tenté l'insertion en même temps.
+        // L'index unique (sender_id, mid) fait échouer le second : on le traite comme un doublon.
+        if (envelopeMid && /UNIQUE|constraint/i.test(String(err?.code || err?.message || ''))) {
+          const existing = db.prepare('SELECT id, timestamp FROM messages WHERE sender_id = ? AND mid = ?').get(senderId, envelopeMid);
+          if (existing) {
+            if (typeof callback === 'function') {
+              callback({ success: true, id: existing.id, timestamp: existing.timestamp, isPrivate: false, duplicate: true });
+            }
+            return;
+          }
+        }
         console.error("Erreur insertion BDD message:", err);
         // SÉCURITÉ/FIABILITÉ : ne pas présenter un échec de persistance comme un succès
         if (typeof callback === 'function') callback({ success: false, error: "Échec de l'enregistrement du message." });

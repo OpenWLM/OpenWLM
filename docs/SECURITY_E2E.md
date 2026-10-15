@@ -141,20 +141,30 @@ est seulement relayé aux **sessions connectées** du destinataire. Conséquence
   quand le destinataire recharge/ouvre la conversation ; il n'y a **pas** de *replay* serveur
   des messages en attente au moment de la reconnexion socket.
 
-### Renvoi « Non envoyé » : fenêtre de doublon (rare)
+### Renvoi « Non envoyé » : idempotence et doublon (traité)
 
 L'accusé d'envoi a un **délai de 15 s côté client uniquement** (`socket.timeout`) : il n'an-
 nule pas l'envoi déjà parti. Si le réseau est lent et que l'accusé du serveur arrive **après**
 ce délai, le message a en réalité été **accepté et stocké**, mais le client l'affiche
-« **Non envoyé** » et propose **Renvoyer**. Le clic renvoie le message **re-signé avec un
-nouveau `mid`** : ce sont donc deux messages **légitimement signés et distincts**, que
-l'**anti-rejeu ne couvre pas** → le contact peut recevoir **deux copies** (cas rare ; le
-TOCTOU du mode privé ci-dessus est plus probable).
+« **Non envoyé** » et propose **Renvoyer**.
 
-Correctif « serveur : dédupliquer par `mid` à l'écriture » : **insuffisant tel quel**, car le
-renvoi crée justement un **nouveau** `mid`. Une correction complète suppose que le **renvoi
-réutilise le `mid` d'origine** (le destinataire écarte alors la seconde copie via son
-anti-rejeu) **et/ou** une déduplication serveur par `(sender_id, mid)`.
+Le renvoi **réutilise le `mid` d'origine** de l'enveloppe (même signature logique). Le serveur
+**déduplique par `(sender_id, mid)`** à l'écriture (colonne `mid` + index unique partiel) et
+répond « **succès** » avec l'`id` existant, **sans rediffuser ni re-notifier** : un renvoi est
+donc **idempotent**. Si l'accusé initial s'était perdu alors que le message avait été remis, le
+contact ne reçoit **pas** de seconde copie.
+
+Réserves honnêtes :
+
+- **Pas de déduplication en mode privé** (rien n'est persisté, donc rien à comparer). Dans ce
+  cas, c'est l'**anti-rejeu du destinataire** (unicité du `mid`) qui écarte une éventuelle
+  seconde copie remise en direct.
+- Le `mid` est extrait du **clair de l'enveloppe signée** (le serveur ne déchiffre pas) ; un
+  émetteur pourrait le réutiliser volontairement pour ses propres messages — l'effet se limite
+  à ses propres envois, sans impact sur les autres utilisateurs.
+- **Sans `mid` exploitable** (texte non‑enveloppé), aucune déduplication n'a lieu : le
+  comportement antérieur subsiste.
+
 
 ---
 

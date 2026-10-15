@@ -2560,7 +2560,7 @@ const App: React.FC = () => {
    * Chiffre ET signe un payload pour un contact (enveloppe v2).
    * Échoue si la clé de signature est absente : on n'envoie jamais de message non signé.
    */
-  const sealForContact = async (payload: unknown, contactId: number, contactPubKey: JsonWebKey) => {
+  const sealForContact = async (payload: unknown, contactId: number, contactPubKey: JsonWebKey, mid?: string) => {
     const keys = myKeysRef.current;
     if (!keys?.signingKey || !user?.id) {
       throw new Error(t.chat.signingKeyMissing);
@@ -2570,13 +2570,14 @@ const App: React.FC = () => {
       to: Number(contactId),
       receiverPublicKeyJwk: contactPubKey,
       senderPublicKeyJwk: keys.publicKeyJwk,
-      signingKey: keys.signingKey
+      signingKey: keys.signingKey,
+      mid
     });
   };
 
   // ---- ENVOI AVEC ACCUSÉ, ÉCHEC VISIBLE ET RENVOI ------------------------------------
   // Payload en clair des messages non envoyés (mémoire uniquement) pour pouvoir les renvoyer.
-  const resendInfoRef = useRef<Map<string, { contactId: number; payload: unknown; type: string }>>(new Map());
+  const resendInfoRef = useRef<Map<string, { contactId: number; payload: unknown; type: string; mid?: string }>>(new Map());
 
   const markSendFailed = (chatId: number, clientMsgId: string, failed: NonNullable<Message['_failed']>, reason?: string) => {
     setMessages(prev => ({
@@ -2600,7 +2601,14 @@ const App: React.FC = () => {
     plainPayload: unknown,
     type: string
   ) => {
-    resendInfoRef.current.set(clientMsgId, { contactId: chatId, payload: plainPayload, type });
+    // On mémorise le mid de l'enveloppe : un renvoi le réutilisera pour que le serveur
+    // puisse dédupliquer (idempotent) et que le destinataire écarte une seconde copie.
+    let envelopeMid: string | undefined;
+    try {
+      const parsed = JSON.parse(String(msgData.text));
+      if (parsed && typeof parsed.mid === 'string') envelopeMid = parsed.mid;
+    } catch { /* pas d'enveloppe : rien à mémoriser */ }
+    resendInfoRef.current.set(clientMsgId, { contactId: chatId, payload: plainPayload, type, mid: envelopeMid });
 
     if (JSON.stringify(msgData).length > MAX_SOCKET_MESSAGE_CHARS) {
       resendInfoRef.current.delete(clientMsgId); // renvoyer ne servirait à rien
@@ -2632,7 +2640,7 @@ const App: React.FC = () => {
     });
   };
 
-  /** Renvoie un message « Non envoyé » : re-scellé (nouvelle signature, nouveau mid). */
+  /** Renvoie un message « Non envoyé » en réutilisant le mid d'origine (le serveur déduplique). */
   const handleResendMessage = async (chatId: number, clientMsgId: string) => {
     const info = resendInfoRef.current.get(clientMsgId);
     const localMsg = (messages[chatId] || []).find(m => m.clientMsgId === clientMsgId);
@@ -2640,7 +2648,7 @@ const App: React.FC = () => {
     try {
       const contactPubKey = await getPublicKey(info.contactId);
       if (!contactPubKey) throw new Error('Clé publique du contact indisponible');
-      const envelope = await sealForContact(info.payload, info.contactId, contactPubKey);
+      const envelope = await sealForContact(info.payload, info.contactId, contactPubKey, info.mid);
       seenMidsRef.current.add(envelope.mid);
       const msgData = {
         senderId: user?.id,

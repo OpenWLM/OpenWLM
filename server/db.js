@@ -130,6 +130,18 @@ try {
   db.exec("ALTER TABLE messages ADD COLUMN delivery_status TEXT DEFAULT 'sent';");
 } catch(e) {}
 
+// IDENTIFIANT D'ENVELOPPE (mid) : permet de dédupliquer les renvois « Non envoyé ».
+// Le renvoi réutilise le mid d'origine ; un index unique (sender_id, mid) rend
+// l'écriture idempotente et empêche un doublon si l'accusé initial s'est perdu.
+try {
+  db.exec("ALTER TABLE messages ADD COLUMN mid TEXT;");
+} catch(e) {}
+try {
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_sender_mid ON messages(sender_id, mid) WHERE mid IS NOT NULL;");
+} catch (e) {
+  console.warn("Index unique messages(sender_id, mid) déjà présent ou erreur:", e.message);
+}
+
 // Curseur minimal de lecture par conversation
 try {
   db.exec(`

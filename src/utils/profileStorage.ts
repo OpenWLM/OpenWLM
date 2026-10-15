@@ -18,8 +18,29 @@ export const STORAGE_KEYS = {
   globalPrivate: 'wlm_global_private',
   enableToasts: 'wlm_enable_toasts',
   awayTimeout: 'wlm_away_timeout',
-  enableAutoAway: 'wlm_enable_auto_away'
+  enableAutoAway: 'wlm_enable_auto_away',
+  user: 'wlm_user'
 } as const;
+
+/**
+ * SANITISATION STRICTE DU PROFIL UTILISATEUR POUR LE STOCKAGE WEB
+ * `wlm_user` ne peut contenir au maximum que :
+ * id, username, nickname, avatar, scene, status, rememberMe.
+ * AUCUN token, AUCUNE clé, AUCUN coffre, AUCUN payload crypto.
+ */
+export const sanitizeUserForStorage = (u: any): Record<string, any> => {
+  if (!u) return {};
+  const sanitized: Record<string, any> = {
+    id: Number(u.id),
+    username: String(u.username || '')
+  };
+  if (u.nickname !== undefined) sanitized.nickname = String(u.nickname);
+  if (u.avatar !== undefined) sanitized.avatar = String(u.avatar);
+  if (u.scene !== undefined) sanitized.scene = String(u.scene);
+  if (u.status !== undefined) sanitized.status = String(u.status);
+  if (u.rememberMe !== undefined) sanitized.rememberMe = Boolean(u.rememberMe);
+  return sanitized;
+};
 
 // --- Navigation (onglets ouverts / conversation active) ---------------------------
 

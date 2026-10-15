@@ -25,6 +25,7 @@ import { useContacts } from './hooks/useContacts';
 import { useGames } from './hooks/useGames';
 import { useCalls } from './hooks/useCalls';
 import { useWinksAndNudge, WINKS } from './hooks/useWinksAndNudge';
+import { useProfile } from './hooks/useProfile';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
@@ -78,40 +79,12 @@ import {
   saveGlobalPrivateMode,
   loadEnableDesktopToasts,
   saveEnableDesktopToasts,
-  loadAwayTimeout,
   saveAwayTimeout,
-  loadEnableAutoAway,
-  saveEnableAutoAway
+  saveEnableAutoAway,
+  sanitizeUserForStorage
 } from './utils/profileStorage';
 
 axios.defaults.withCredentials = true;
-
-/**
- * SANITISATION STRICTE DU PROFIL UTILISATEUR POUR LE STOCKAGE WEB
- * Selon les règles strictes d'architecture de sécurité OpenWLM :
- * wlm_user ne peut contenir au maximum que :
- * - id
- * - username
- * - nickname
- * - avatar
- * - scene
- * - status
- * - rememberMe
- * AUCUN token, AUCUNE clé, AUCUN coffre, AUCUN payload crypto.
- */
-export const sanitizeUserForStorage = (u: any): Record<string, any> => {
-  if (!u) return {};
-  const sanitized: Record<string, any> = {
-    id: Number(u.id),
-    username: String(u.username || '')
-  };
-  if (u.nickname !== undefined) sanitized.nickname = String(u.nickname);
-  if (u.avatar !== undefined) sanitized.avatar = String(u.avatar);
-  if (u.scene !== undefined) sanitized.scene = String(u.scene);
-  if (u.status !== undefined) sanitized.status = String(u.status);
-  if (u.rememberMe !== undefined) sanitized.rememberMe = Boolean(u.rememberMe);
-  return sanitized;
-};
 
 /**
  * INTERFACES (types de domaine partagés, cf. src/types.ts)
@@ -615,21 +588,6 @@ const App: React.FC = () => {
     return unsub;
   }, []);
 
-  // --- ÉTAT DU PROFIL PERSONNEL ---
-  const [myStatus, setMyStatus] = useState('online');
-  const [myPSM, setMyPSM] = useState('Disponible');
-  const [myNickname, setMyNickname] = useState('');
-  const [myAvatar, setMyAvatar] = useState('/assets/usertiles/chess.png');
-  const [myScene, setMyScene] = useState('/assets/scenes/0006.png');
-  const [isEditingNickname, setIsEditingNickname] = useState(false);
-  const [isEditingPSM, setIsEditingPSM] = useState(false);
-
-  // --- ÉTAT DE L'INACTIVITÉ (AUTO-AWAY) ---
-  const [lastActivity, setLastActivity] = useState(() => Date.now());
-  const [awayTimeout, setAwayTimeout] = useState(() => loadAwayTimeout(5));
-  const [enableAutoAway, setEnableAutoAway] = useState(() => loadEnableAutoAway(true));
-  const [isAutoAway, setIsAutoAway] = useState(false);
-
   // --- ÉTAT DES MODALES & MENUS ---
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [showSceneModal, setShowSceneModal] = useState(false);
@@ -797,8 +755,6 @@ const App: React.FC = () => {
   const isSubmittingPasteRef = useRef(false);
 
   // --- RÉFÉRENCES ---
-  const myStatusRef = useRef(myStatus);
-  useEffect(() => { myStatusRef.current = myStatus; }, [myStatus]);
   
   // Champ de saisie riche (contentEditable) : émoticônes rendues pendant la frappe
   const chatInputRef = useRef<HTMLDivElement>(null);
@@ -861,71 +817,6 @@ const App: React.FC = () => {
       });
     }
   };
-
-  /**
-   * MISE À JOUR DU PROFIL SUR LE SERVEUR
-   */
-  const syncProfile = useCallback(async (updates: Partial<User>) => {
-    if (!user) return;
-    try {
-      await axios.post('/api/user/update', {
-        userId: user.id,
-        nickname: updates.nickname !== undefined ? updates.nickname : myNickname,
-        psm: updates.psm !== undefined ? updates.psm : myPSM,
-        avatar: updates.avatar !== undefined ? updates.avatar : myAvatar,
-        scene: updates.scene !== undefined ? updates.scene : myScene,
-        status: updates.status !== undefined ? updates.status : myStatus
-      });
-      const newUser = { ...user, ...updates };
-      setUser(newUser);
-
-      if (newUser.rememberMe) {
-        localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage(newUser)));
-      }
-    } catch (err) { 
-      console.error("Échec de synchronisation du profil:", err); 
-    }
-  }, [user, myNickname, myPSM, myAvatar, myScene, myStatus]);
-
-  /**
-   * DÉTECTION D'INACTIVITÉ (AUTO-AWAY)
-   */
-  useEffect(() => {
-    const resetActivity = () => {
-      setLastActivity(Date.now());
-      if (isAutoAway) {
-        setIsAutoAway(false);
-        if (myStatusRef.current === 'away') {
-          setMyStatus('online');
-          syncProfile({ status: 'online' });
-        }
-      }
-    };
-
-    window.addEventListener('mousemove', resetActivity);
-    window.addEventListener('keydown', resetActivity);
-    window.addEventListener('mousedown', resetActivity);
-    window.addEventListener('scroll', resetActivity);
-
-    const interval = setInterval(() => {
-      if (enableAutoAway && !isAutoAway && myStatusRef.current === 'online') {
-        const inactiveTime = Date.now() - lastActivity;
-        if (inactiveTime > awayTimeout * 60 * 1000) {
-          setIsAutoAway(true);
-          setMyStatus('away');
-          syncProfile({ status: 'away' });
-        }
-      }
-    }, 10000); // Vérification toutes les 10s
-
-    return () => {
-      window.removeEventListener('mousemove', resetActivity);
-      window.removeEventListener('keydown', resetActivity);
-      window.removeEventListener('mousedown', resetActivity);
-      window.removeEventListener('scroll', resetActivity);
-      clearInterval(interval);
-    };
-  }, [lastActivity, awayTimeout, enableAutoAway, isAutoAway, syncProfile]);
 
   // --- ÉTAT DES INTERACTIONS (Enregistrement vocal) ---
   const [isRecording, setIsRecording] = useState(false);
@@ -1100,6 +991,39 @@ const App: React.FC = () => {
     handleStartCall,
     handleEndCall
   } = useCalls({ user, activeChatId });
+
+  // Domaine profil (identité, auto-absence, sécurité du compte) — hook dédié.
+  const {
+    myStatus,
+    setMyStatus,
+    myPSM,
+    setMyPSM,
+    myNickname,
+    setMyNickname,
+    myAvatar,
+    setMyAvatar,
+    myScene,
+    setMyScene,
+    isEditingNickname,
+    setIsEditingNickname,
+    isEditingPSM,
+    setIsEditingPSM,
+    awayTimeout,
+    setAwayTimeout,
+    enableAutoAway,
+    setEnableAutoAway,
+    syncProfile,
+    handleChangePassword,
+    handleForgetDevice
+  } = useProfile({
+    user,
+    setUser,
+    myKeysRef,
+    setShowPasswordModal,
+    setIsDeviceRemembered,
+    setPersistenceNotice,
+    forgetDeviceSuccessText: t.auth.forgetDeviceSuccess
+  });
 
   // Domaine clins d'œil & Wizz — extrait dans un hook dédié.
   const {
@@ -3244,71 +3168,6 @@ const App: React.FC = () => {
   };
 
   /**
-   * CHANGEMENT DE MOT DE PASSE (ZERO-KNOWLEDGE STRICT)
-   * 1. Dérive oldAuthKeyHex et oldVaultKey depuis l'ancien mot de passe
-   * 2. Déchiffre la clé privée RSA avec oldVaultKey (si nécessaire)
-   * 3. Dérive newAuthKeyHex et newVaultKey depuis le nouveau mot de passe
-   * 4. Re-chiffre la clé privée RSA avec newVaultKey -> newEncryptedPrivateKey
-   * 5. Envoie { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey }
-   */
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    const oldPInput = document.getElementById('old-password') as HTMLInputElement;
-    const newPInput = document.getElementById('new-password') as HTMLInputElement;
-    const oldP = oldPInput ? oldPInput.value : '';
-    const newP = newPInput ? newPInput.value : '';
-    
-    if (!oldP || !newP) {
-      alert("Veuillez renseigner l'ancien et le nouveau mot de passe.");
-      return;
-    }
-
-    try {
-      // 1. Dériver oldAuthKeyHex et oldVaultKey depuis l'ancien mot de passe
-      const { authKeyHex: oldAuthKeyHex, vaultKey: oldVaultKey } = await deriveZeroKnowledgeKeys(user.username, oldP);
-
-      // 2. Déchiffrer la clé privée RSA existante
-      let privateKeyJwk = myKeysRef.current?.privateKeyJwk;
-      if (!privateKeyJwk && user.encrypted_private_key) {
-        const vault = typeof user.encrypted_private_key === 'string'
-          ? JSON.parse(user.encrypted_private_key)
-          : user.encrypted_private_key;
-        privateKeyJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, oldVaultKey);
-      }
-
-      if (!privateKeyJwk) {
-        alert("Impossible de déchiffrer votre clé privée actuelle. Vérifiez l'ancien mot de passe.");
-        return;
-      }
-
-      // 3. Dériver newAuthKeyHex et newVaultKey depuis le nouveau mot de passe
-      const { authKeyHex: newAuthKeyHex, vaultKey: newVaultKey } = await deriveZeroKnowledgeKeys(user.username, newP);
-
-      // 4. Re-chiffrer la clé privée RSA avec newVaultKey
-      const newEncryptedPrivateKey = await encryptPrivateKeyVault(privateKeyJwk, newVaultKey);
-
-      // 5. Envoyer { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey }
-      const res = await axios.post('/api/user/change-password', {
-        oldAuthKeyHex,
-        newAuthKeyHex,
-        newEncryptedPrivateKey
-      });
-
-      if (res.data && res.data.success) {
-        setUser(prev => prev ? { ...prev, encrypted_private_key: JSON.stringify(newEncryptedPrivateKey) } : null);
-        if (oldPInput) oldPInput.value = '';
-        if (newPInput) newPInput.value = '';
-        alert('Mot de passe changé avec succès !');
-        setShowPasswordModal(false);
-      }
-    } catch (err: any) {
-      console.error("Échec changement mot de passe:", err);
-      alert(err.response?.data?.error || 'Erreur lors du changement de mot de passe');
-    }
-  };
-
-  /**
    * RÉINITIALISATION DES CLÉS E2E (OUVERTURE DE LA MODALE DE CONFIRMATION)
    */
   const handleResetE2EKeys = () => {
@@ -3450,26 +3309,6 @@ const App: React.FC = () => {
     window.location.reload(); 
   };
 
-  /**
-   * OUBLIER CET APPAREIL (Suppression des clés locales sans déconnexion forcée)
-   */
-  const handleForgetDevice = async () => {
-    try {
-      if (user?.id) {
-        await E2EEKeyStorage.removeKeys(user.id);
-      }
-      localStorage.removeItem('wlm_user');
-      localStorage.removeItem('token');
-      sessionStorage.clear();
-      setIsDeviceRemembered(false);
-      if (user) {
-        setUser({ ...user, rememberMe: false });
-      }
-      setPersistenceNotice(t.auth.forgetDeviceSuccess);
-    } catch (e) {
-      console.warn('[Session] Erreur lors de l\'oubli de l\'appareil:', e);
-    }
-  };
 
   /**
    * ACTIONS ET COMMANDES D'OPENWLM (TESTS LOCAUX SANS RÉSEAU)

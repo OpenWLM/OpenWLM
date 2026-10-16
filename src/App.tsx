@@ -1506,7 +1506,10 @@ const App: React.FC = () => {
   /**
    * CHARGEMENT DE L'HISTORIQUE D'UNE CONVERSATION (UNIFIÉ SANS DOUBLON)
    */
-  const loadChatHistory = useCallback(async (chatId: number) => {
+  const loadChatHistory = useCallback(async (chatId: number, opts?: { incremental?: boolean }) => {
+    // incremental : rattrapage après coupure — on AJOUTE seulement les messages manquants
+    // sans remplacer la liste (qui peut contenir des messages privés ou système locaux).
+    const incremental = !!opts?.incremental;
     const keys = myKeysRef.current;
     if (!user || chatId === 0) return;
 
@@ -1533,7 +1536,7 @@ const App: React.FC = () => {
 
     try {
       // 1. Préchargement du cache local rapide (IndexedDB)
-      try {
+      if (!incremental) try {
         const cached = await LocalDB.getMessages<Message>(`${user.id}_${chatId}`, keys.privateKeyJwk);
         if (cached && cached.length > 0) {
           // Le cache local contient des messages DÉJÀ authentifiés et déchiffrés (chiffrés
@@ -1564,7 +1567,29 @@ const App: React.FC = () => {
           // les messages rejetés (signature invalide, texte clair) sont AFFICHÉS comme tels.
           const validServerMsgs = serverMsgs.filter(m => m._auth !== 'undecryptable');
 
-          setMessages(prev => {
+          if (incremental) {
+            setMessages(prev => {
+              const currentMsgs = prev[chatId] || [];
+              const knownIds = new Set(currentMsgs.map(m => m.id).filter(Boolean));
+              const knownMids = new Set(currentMsgs.map(m => m.mid).filter(Boolean));
+              const serverById = new Map(validServerMsgs.filter(m => m.id).map(m => [m.id, m]));
+              let changed = false;
+              // Statuts (remis / lu) mis à jour pendant la coupure
+              const updated = currentMsgs.map(m => {
+                const srv = m.id ? serverById.get(m.id) : undefined;
+                if (srv && srv.delivery_status && srv.delivery_status !== m.delivery_status) {
+                  changed = true;
+                  return { ...m, delivery_status: srv.delivery_status };
+                }
+                return m;
+              });
+              const missing = validServerMsgs.filter(m =>
+                (!m.id || !knownIds.has(m.id)) && (!m.mid || !knownMids.has(m.mid))
+              );
+              if (missing.length === 0 && !changed) return prev;
+              return { ...prev, [chatId]: [...updated, ...missing] };
+            });
+          } else setMessages(prev => {
             const currentMsgs = prev[chatId] || [];
             const serverIds = new Set(validServerMsgs.map(m => m.id).filter(Boolean));
             const serverClientIds = new Set(validServerMsgs.map(m => m.clientMsgId).filter(Boolean));
@@ -1601,6 +1626,42 @@ const App: React.FC = () => {
   }, [user, !!myKeys, JSON.stringify(openChatIds), loadChatHistory]);
 
   /**
+   * RATTRAPAGE APRÈS COUPURE
+   * Un message reçu pendant que le socket était coupé (mobile en veille, réseau perdu)
+   * est bien stocké côté serveur mais n'est jamais poussé en direct : sans rattrapage,
+   * il n'apparaissait qu'en rouvrant la conversation. On recharge donc l'historique des
+   * onglets ouverts à chaque reconnexion du socket et au retour au premier plan.
+   */
+  const openChatIdsRef = useRef(openChatIds);
+  useEffect(() => { openChatIdsRef.current = openChatIds; }, [openChatIds]);
+  const lastResyncRef = useRef(0);
+  const resyncOpenChats = useCallback((force = false) => {
+    const now = Date.now();
+    // visibilitychange + pageshow arrivent souvent ensemble : un seul rechargement
+    if (!force && now - lastResyncRef.current < 1500) return;
+    lastResyncRef.current = now;
+    const ids = new Set(openChatIdsRef.current);
+    if (activeChatIdRef.current) ids.add(activeChatIdRef.current);
+    ids.forEach(id => { if (id !== SYSTEM_BOT_ID) loadChatHistory(id, { incremental: true }); });
+  }, [loadChatHistory]);
+  const resyncOpenChatsRef = useRef(resyncOpenChats);
+  useEffect(() => { resyncOpenChatsRef.current = resyncOpenChats; }, [resyncOpenChats]);
+
+  useEffect(() => {
+    if (!user) return;
+    const onVisible = () => { if (document.visibilityState === 'visible') resyncOpenChatsRef.current(); };
+    const onResume = () => resyncOpenChatsRef.current();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onResume);
+    window.addEventListener('online', onResume);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onResume);
+      window.removeEventListener('online', onResume);
+    };
+  }, [user]);
+
+  /**
    * AUTO-SCROLL DES MESSAGES
    */
   useEffect(() => {
@@ -1617,9 +1678,13 @@ const App: React.FC = () => {
     if (user?.id) {
       const newSocket = io({ auth: { token: user.token } });
 
+      let hasConnectedOnce = false;
       newSocket.on('connect', () => {
         newSocket.emit('identify', user.id);
         refreshResumableGames();
+        // Reconnexion : récupérer ce qui a été reçu pendant la coupure
+        if (hasConnectedOnce) resyncOpenChatsRef.current(true);
+        hasConnectedOnce = true;
       });
 
       // Réception d'un message (texte ou audio, éventuellement chiffré)

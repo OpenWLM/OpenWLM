@@ -24,7 +24,7 @@ import { useMessageCrypto } from './hooks/useMessageCrypto';
 import { useContacts } from './hooks/useContacts';
 import { useGames } from './hooks/useGames';
 import { useCalls } from './hooks/useCalls';
-import { useWinksAndNudge, WINKS } from './hooks/useWinksAndNudge';
+import { useWinksAndNudge } from './hooks/useWinksAndNudge';
 import { useProfile } from './hooks/useProfile';
 import { useNotifications } from './hooks/useNotifications';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
@@ -37,6 +37,7 @@ import Puissance4Game from './components/Puissance4Game';
 import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import { SceneModal } from './components/SceneModal';
 import { AvatarModal } from './components/AvatarModal';
+import { WinksModal } from './components/WinksModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -4869,19 +4870,10 @@ const App: React.FC = () => {
 
       {/* Modale: Choix d'un Clin d'œil (Wink) */}
       {showWinksModal && (
-        <div className="modal-bg" onClick={() => setShowWinksModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="win-modal-header"><span>{t.modals.chooseWinkTitle}</span><button className="win-close-btn" onClick={() => setShowWinksModal(false)}>✕</button></div>
-            <div className="scene-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', padding: '20px' }}>
-              {WINKS.map(w => (
-                <div key={w.id} className="scene-thumb" style={{ height: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }} onClick={() => handleSendWink(w.id)}>
-                   <img src={`/assets/winks/${w.id}/${w.id}.png`} alt={w.name} style={{ height: '40px', width: 'auto', marginBottom: '5px' }} />
-                  <div className="scene-name" style={{ fontSize: '9px', position: 'static', background: 'transparent' }}>{w.name}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <WinksModal
+          onClose={() => setShowWinksModal(false)}
+          onSelect={(winkId) => handleSendWink(winkId)}
+        />
       )}
 
       {/* Modale: Changement de mot de passe */}

@@ -36,6 +36,7 @@ import CheckersGame from './components/CheckersGame';
 import Puissance4Game from './components/Puissance4Game';
 import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import { SceneModal } from './components/SceneModal';
+import { AvatarModal } from './components/AvatarModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -411,14 +412,6 @@ function renderRichTokens(root: HTMLElement, tokens: RichToken[]): void {
   if (endsWithNewline) frag.appendChild(document.createTextNode(RICH_ZWSP));
   root.replaceChildren(frag);
 }
-
-const USERTILES = [
-  'basketball.png', 'bonsai.png', 'chef.png', 'chess.png', 'daisy.png',
-  'doctor.png', 'dog.png', 'electric_guitar.png', 'executive.png', 'fish.png',
-  'flare.png', 'gerber_daisy.png', 'golf.png', 'guest.png', 'guitar.png',
-  'kitten.png', 'leaf.png', 'morty.png', 'music.png', 'robot.png',
-  'seastar.png', 'shopping.png', 'sports.png', 'surf.png', 'tennis.png'
-];
 
 const CONV_BACKGROUNDS = [
   { id: 'none', name: 'Standard', file: '' },
@@ -4756,18 +4749,14 @@ const App: React.FC = () => {
 
       {/* Modale: Choisir une image perso (Avatar) */}
       {showAvatarModal && (
-        <div className="modal-bg" onClick={() => setShowAvatarModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="win-modal-header"><span>{t.modals.chooseAvatarTitle}</span><button className="win-close-btn" onClick={() => setShowAvatarModal(false)}>✕</button></div>
-            <div className="scene-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
-              {USERTILES.map(tile => (
-                <div key={tile} className="scene-thumb" style={{ height: '60px' }} onClick={() => { setMyAvatar(`/assets/usertiles/${tile}`); setShowAvatarModal(false); syncProfile({ avatar: `/assets/usertiles/${tile}` }); }}>
-                  <img src={`/assets/usertiles/${tile}`} alt="Avatar" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <AvatarModal
+          onClose={() => setShowAvatarModal(false)}
+          onSelect={(tile) => {
+            setMyAvatar(`/assets/usertiles/${tile}`);
+            setShowAvatarModal(false);
+            syncProfile({ avatar: `/assets/usertiles/${tile}` });
+          }}
+        />
       )}
 
       {/* Modale: Paramètres de la police (Style Windows Classique) */}

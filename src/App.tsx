@@ -38,6 +38,7 @@ import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import { SceneModal } from './components/SceneModal';
 import { AvatarModal } from './components/AvatarModal';
 import { WinksModal } from './components/WinksModal';
+import { BgModal } from './components/BgModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -413,15 +414,6 @@ function renderRichTokens(root: HTMLElement, tokens: RichToken[]): void {
   if (endsWithNewline) frag.appendChild(document.createTextNode(RICH_ZWSP));
   root.replaceChildren(frag);
 }
-
-const CONV_BACKGROUNDS = [
-  { id: 'none', name: 'Standard', file: '' },
-  { id: 'car', name: 'Voiture', file: 'car.jpg' },
-  { id: 'fish', name: 'Poissons', file: 'fish.jpg' },
-  { id: 'hearts', name: 'Cœurs', file: 'hearts.jpg' },
-  { id: 'lavender', name: 'Lavande', file: 'lavender.jpg' },
-  { id: 'planets', name: 'Planètes', file: 'planets.jpg' },
-];
 
 /**
  * COMPOSANTS AUXILIAIRES
@@ -4724,28 +4716,15 @@ const App: React.FC = () => {
 
       {/* Modale: Modifier l'arrière-plan de la discussion */}
       {showBgModal && (
-        <div className="modal-bg" onClick={() => setShowBgModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="win-modal-header"><span>{t.modals.changeBgTitle}</span><button className="win-close-btn" onClick={() => setShowBgModal(false)}>✕</button></div>
-            <div className="scene-grid">
-              {CONV_BACKGROUNDS.map(bg => (
-                <div 
-                  key={bg.id} 
-                  className="scene-thumb" 
-                  onClick={() => { 
-                    if (activeChatId) {
-                      setConversationBackgrounds(prev => setConversationBackground(prev, activeChatId, bg.file));
-                    }
-                    setShowBgModal(false); 
-                  }}
-                >
-                  {bg.file ? <img src={`/assets/backgrounds/${bg.file}`} alt={bg.name} /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f0f0' }}>{t.modals.bgNone}</div>}
-                  <div className="scene-name">{bg.name}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <BgModal
+          onClose={() => setShowBgModal(false)}
+          onSelect={(file) => {
+            if (activeChatId) {
+              setConversationBackgrounds(prev => setConversationBackground(prev, activeChatId, file));
+            }
+            setShowBgModal(false);
+          }}
+        />
       )}
 
       {/* Modale: Choisir une image perso (Avatar) */}

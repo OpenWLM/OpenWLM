@@ -307,6 +307,7 @@
     "calling": "Appel vers {name}...",
     "ringing": "Appel entrant de {name}...",
     "audioInProgress": "Appel vocal en cours...",
+    "remoteCameraOff": "{name} a coupé sa caméra",
     "remoteRinging": "{name} est en train de sonner...",
     "audioIncoming": "Appel audio entrant…",
     "videoIncoming": "Appel vidéo entrant…",

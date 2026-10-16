@@ -307,6 +307,7 @@
     "calling": "Calling {name}...",
     "ringing": "Incoming call from {name}...",
     "audioInProgress": "Voice call in progress...",
+    "remoteCameraOff": "{name} turned their camera off",
     "remoteRinging": "{name} is ringing...",
     "audioIncoming": "Incoming audio call…",
     "videoIncoming": "Incoming video call…",

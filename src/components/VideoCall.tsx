@@ -32,6 +32,8 @@ interface SignalPayload {
   sdp?: string;
   candidate?: RTCIceCandidateInit;
   fpSig?: string;
+  /** type 'media-state' : le pair indique s'il envoie de la vidéo (caméra ou écran) */
+  video?: boolean;
 }
 
 type CallStatus = 'calling' | 'remoteRinging' | 'ringing' | 'connecting' | 'connected' | 'reconnecting' | 'ended';
@@ -65,6 +67,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const [quality, setQuality] = useState<Quality>('good');
   const [showDevices, setShowDevices] = useState(false);
   const [sharingScreen, setSharingScreen] = useState(false);
+  // Vidéo reçue du pair (caméra ou partage d'écran) — un appel audio peut passer en vidéo
+  const [remoteVideoOn, setRemoteVideoOn] = useState(!audioOnly);
   const [micList, setMicList] = useState<MediaDeviceInfo[]>([]);
   const [camList, setCamList] = useState<MediaDeviceInfo[]>([]);
   const [spkList, setSpkList] = useState<MediaDeviceInfo[]>([]);
@@ -144,6 +148,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const adaptAppliedRef = useRef<Quality>('good');
   const adaptCandidateRef = useRef<{ level: Quality; count: number }>({ level: 'good', count: 0 });
   const ringAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Flux distant assemblé piste par piste (une piste vidéo peut arriver en cours d'appel)
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const camOnRef = useRef(!audioOnly);
+  const sharingRef = useRef(false);
 
   useEffect(() => { statusRef.current = callStatus; }, [callStatus]);
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
@@ -257,6 +265,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     }
   }, []);
 
+  // Émetteur vidéo : celui de la piste caméra (appel vidéo) ou celui du transceiver vidéo
+  // réservé dès le départ dans un appel audio (piste nulle tant que rien n'est partagé).
+  const getVideoSender = useCallback((): RTCRtpSender | null => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return null;
+    const tr = pc.getTransceivers().find((x) => x.receiver.track?.kind === 'video' && x.direction !== 'stopped' && x.direction !== 'inactive');
+    return tr ? tr.sender : null;
+  }, []);
+
+  // Prévient le pair qu'on envoie (ou non) de la vidéo, pour qu'il affiche l'image ou l'écran audio
+  const sendMediaState = useCallback(() => {
+    void emitSignal({ type: 'media-state', video: camOnRef.current || sharingRef.current });
+  }, [emitSignal]);
+
   // P1 : applique une description locale « mungée » (Opus FEC/DTX), avec repli sûr.
   const applyLocalDescription = useCallback(async (pc: RTCPeerConnection, desc: RTCSessionDescriptionInit) => {
     const sdp = desc.sdp || '';
@@ -271,8 +293,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const applyAdaptation = useCallback(async (level: Quality) => {
     const pc = peerConnectionRef.current;
     if (!pc) return;
-    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-    if (!sender) return;
+    const sender = getVideoSender();
+    if (!sender || !sender.track) return;
     try {
       const params = sender.getParameters();
       if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
@@ -281,35 +303,51 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       else { params.encodings[0].maxBitrate = 1200000; params.encodings[0].scaleResolutionDownBy = 1; }
       await sender.setParameters(params);
     } catch { /* ignore */ }
-  }, []);
+  }, [getVideoSender]);
 
+  // Fin du partage d'écran : retour à la caméra si elle est active, sinon plus de vidéo
   const restoreCamera = useCallback(async () => {
-    const pc = peerConnectionRef.current;
-    const sender = pc?.getSenders().find((s) => s.track && s.track.kind === 'video');
+    const sender = getVideoSender();
     const cam = cameraTrackRef.current;
-    if (sender && cam) { try { await sender.replaceTrack(cam); } catch { /* ignore */ } }
+    const camLive = cam && cam.readyState === 'live' ? cam : null;
+    if (sender) { try { await sender.replaceTrack(camLive); } catch { /* ignore */ } }
     if (screenTrackRef.current) { screenTrackRef.current.stop(); screenTrackRef.current = null; }
     if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
+    sharingRef.current = false;
     setSharingScreen(false);
-  }, []);
+    sendMediaState();
+  }, [getVideoSender, sendMediaState]);
 
-  // P1 : partage d'écran par simple remplacement de piste (pas de renégociation).
-  const toggleShare = useCallback(async () => {
+  // Envoie une piste vidéo : par remplacement sur l'émetteur existant (sans renégociation) ;
+  // à défaut (pair d'une ancienne version, sans transceiver vidéo), ajout + renégociation.
+  const sendVideoTrack = useCallback(async (track: MediaStreamTrack) => {
     const pc = peerConnectionRef.current;
-    if (!pc) return;
-    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-    if (!sender) return; // appel audio seul : pas de piste vidéo à remplacer
+    if (!pc) return false;
+    const sender = getVideoSender();
+    if (sender) {
+      await sender.replaceTrack(track);
+      return true;
+    }
+    pc.addTrack(track, localStreamRef.current || new MediaStream([track]));
+    return true;
+  }, [getVideoSender]);
+
+  // Partage d'écran (aussi possible depuis un appel audio).
+  const toggleShare = useCallback(async () => {
+    if (!peerConnectionRef.current) return;
     if (sharingScreen) { await restoreCamera(); return; }
     try {
       const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const screenTrack = display.getVideoTracks()[0];
       screenTrackRef.current = screenTrack;
-      await sender.replaceTrack(screenTrack);
+      await sendVideoTrack(screenTrack);
       if (localVideoRef.current) localVideoRef.current.srcObject = new MediaStream([screenTrack]);
+      sharingRef.current = true;
       setSharingScreen(true);
+      sendMediaState();
       screenTrack.onended = () => { restoreCamera(); }; // arrêt depuis l'UI du navigateur
     } catch { /* refusé */ }
-  }, [sharingScreen, restoreCamera]);
+  }, [sharingScreen, restoreCamera, sendVideoTrack, sendMediaState]);
 
   const tryRestartIce = useCallback(() => {
     const pc = peerConnectionRef.current;
@@ -370,6 +408,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       setMicOn(stream.getAudioTracks()[0]?.enabled ?? true);
       setCamOn(audioOnly ? false : (stream.getVideoTracks()[0]?.enabled ?? true));
+      camOnRef.current = audioOnly ? false : (stream.getVideoTracks()[0]?.enabled ?? true);
       cameraTrackRef.current = stream.getVideoTracks()[0] || null;
 
       const pc = new RTCPeerConnection(rtcConfig);
@@ -378,14 +417,27 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       pc.onicecandidate = (event) => { if (event.candidate) emitSignal({ type: 'ice-candidate', candidate: event.candidate }); };
 
       pc.ontrack = (event) => {
-        if (remoteVideoRef.current && event.streams[0]) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          remoteVideoRef.current.muted = false;
-          remoteVideoRef.current.volume = 1.0;
-          remoteVideoRef.current.play().catch(() => { /* autoplay bloqué */ });
-          restartCountRef.current = 0;
-          setCallStatus('connected');
+        const el = remoteVideoRef.current;
+        if (!el) return;
+        // Flux distant assemblé à la main : une piste vidéo ajoutée en cours d'appel (ou
+        // sans flux associé) rejoint ainsi l'élément déjà en lecture.
+        let rs = remoteStreamRef.current;
+        if (!rs) { rs = new MediaStream(); remoteStreamRef.current = rs; }
+        if (!rs.getTracks().includes(event.track)) rs.addTrack(event.track);
+        if (el.srcObject !== rs) el.srcObject = rs;
+        el.muted = false;
+        el.volume = 1.0;
+        el.play().catch(() => { /* autoplay bloqué */ });
+        if (event.track.kind === 'video') {
+          const track = event.track;
+          const upd = () => setRemoteVideoOn(track.readyState === 'live' && !track.muted);
+          track.onmute = upd;
+          track.onunmute = upd;
+          track.onended = upd;
+          if (!audioOnly) upd();
         }
+        restartCountRef.current = 0;
+        setCallStatus('connected');
       };
 
       const onConnState = () => {
@@ -423,12 +475,24 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       };
 
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      // Appel audio : on réserve un canal vidéo dès l'offre, pour pouvoir activer la caméra
+      // ou partager l'écran plus tard par simple remplacement de piste (sans renégociation).
+      if (audioOnly && !isReceivingCall) {
+        pc.addTransceiver('video', { direction: 'sendrecv', streams: [stream] });
+      }
 
       if (isReceivingCall && incomingSignal) {
         const offer = await decryptSignal(incomingSignal);
         if (!offer?.sdp) { console.error('[WebRTC] Offre entrante illisible'); finish(t.videoCall.genericError); return; }
         if (!(await verifyFingerprint(offer))) { console.error('[WebRTC] Empreinte DTLS invalide (offre)'); finish(t.videoCall.failed); return; }
         await pc.setRemoteDescription(new RTCSessionDescription({ type: offer.type as RTCSdpType, sdp: offer.sdp }));
+        // Canal vidéo proposé sans piste de notre côté (appel audio) : on le passe en
+        // émission/réception pour pouvoir y brancher la caméra ou l'écran plus tard.
+        pc.getTransceivers().forEach((tr) => {
+          if (tr.receiver.track?.kind === 'video' && !tr.sender.track && tr.direction === 'recvonly') {
+            tr.direction = 'sendrecv';
+          }
+        });
         const answer = await pc.createAnswer();
         await applyLocalDescription(pc, answer);
         await emitSignal({ type: 'answer', sdp: pc.localDescription?.sdp });
@@ -437,7 +501,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
           await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { /* ignore */ });
         }
         iceCandidatesQueue.current = [];
-        setCallStatus('connecting');
+        // `ontrack` a déjà pu passer l'appel à « connecté » pendant setRemoteDescription
+        setCallStatus((st) => (st === 'connected' ? st : 'connecting'));
       } else {
         const offer = await pc.createOffer();
         await applyLocalDescription(pc, offer);
@@ -554,11 +619,61 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     setMicOn(track.enabled);
   };
 
-  const toggleCam = () => {
+  const setCam = (on: boolean) => {
+    camOnRef.current = on;
+    setCamOn(on);
+    sendMediaState();
+  };
+
+  const toggleCam = async () => {
     const track = localStreamRef.current?.getVideoTracks()[0];
+    if (audioOnly) {
+      // Appel démarré en audio : la caméra est ouverte à la demande et vraiment libérée à l'arrêt
+      if (track && track.readyState === 'live') {
+        track.stop();
+        cameraTrackRef.current = null;
+        const prev = localStreamRef.current;
+        const ns = new MediaStream(prev ? prev.getAudioTracks() : []);
+        setLocalStream(ns);
+        if (!sharingRef.current) {
+          const sender = getVideoSender();
+          if (sender) { try { await sender.replaceTrack(null); } catch { /* ignore */ } }
+          if (localVideoRef.current) localVideoRef.current.srcObject = ns;
+        }
+        setCam(false);
+        return;
+      }
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: camId
+            ? { deviceId: { exact: camId }, width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24, max: 30 } }
+            : { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24, max: 30 } },
+        });
+        const camTrack = s.getVideoTracks()[0];
+        cameraTrackRef.current = camTrack;
+        const prev = localStreamRef.current;
+        const ns = new MediaStream([...(prev ? prev.getAudioTracks() : []), camTrack]);
+        setLocalStream(ns);
+        localStreamRef.current = ns;
+        // Pendant un partage d'écran, l'écran reste prioritaire : la caméra prendra le relais à la fin
+        if (!sharingRef.current) {
+          await sendVideoTrack(camTrack);
+          if (localVideoRef.current) localVideoRef.current.srcObject = ns;
+        }
+        setCam(true);
+        refreshDevices();
+      } catch (err) {
+        const name = err instanceof DOMException ? err.name : '';
+        if (name === 'NotAllowedError') alert(t.videoCall.permissionDenied);
+        else if (name === 'NotFoundError') alert(t.videoCall.noDevice);
+        else if (name === 'NotReadableError') alert(t.videoCall.deviceBusy);
+        else alert(t.videoCall.mediaError);
+      }
+      return;
+    }
     if (!track) return;
     track.enabled = !track.enabled;
-    setCamOn(track.enabled);
+    setCam(track.enabled);
   };
 
   const applyLocalTrack = (kind: 'audio' | 'video', newTrack: MediaStreamTrack) => {
@@ -578,8 +693,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         : { video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24 } } };
       const s = await navigator.mediaDevices.getUserMedia(cs);
       const newTrack = s.getTracks()[0];
-      const sender = pc?.getSenders().find((sd) => sd.track && sd.track.kind === kind);
+      const sender = kind === 'video'
+        ? (sharingRef.current ? null : getVideoSender())
+        : pc?.getSenders().find((sd) => sd.track && sd.track.kind === kind);
       if (sender) await sender.replaceTrack(newTrack);
+      if (kind === 'video') cameraTrackRef.current = newTrack;
       applyLocalTrack(kind, newTrack);
       if (kind === 'audio') setMicId(deviceId); else setCamId(deviceId);
     } catch { /* ignore */ }
@@ -637,9 +755,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         if (payload.type === 'answer') {
           if (pc && pc.signalingState === 'have-local-offer') {
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: payload.sdp }));
+            // Candidats ICE du pair arrivés AVANT la réponse (chiffrement plus rapide que
+            // celui de la réponse signée) : sans ce drainage, ils étaient perdus côté appelant.
+            for (const candidate of iceCandidatesQueue.current) {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { /* ignore */ });
+            }
+            iceCandidatesQueue.current = [];
             await applySenderCaps(pc);
             renegotiationReadyRef.current = true;
-            if (statusRef.current !== 'connected') setCallStatus('connecting');
+            // Mise à jour fonctionnelle : `ontrack` a pu passer l'appel à « connecté » pendant
+            // setRemoteDescription, alors que statusRef (synchronisé après rendu) l'ignore encore.
+            setCallStatus((st) => (st === 'connected' ? st : 'connecting'));
           }
         } else if (payload.type === 'offer') {
           // P1 : renégociation (perfect negotiation)
@@ -651,6 +777,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
           const answer = await pc.createAnswer();
           await applyLocalDescription(pc, answer);
           void emitSignal({ type: 'answer', sdp: pc.localDescription?.sdp });
+        } else if (payload.type === 'media-state') {
+          setRemoteVideoOn(!!payload.video);
         } else if (payload.type === 'ice-candidate' && payload.candidate) {
           if (pc && pc.remoteDescription) {
             await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => { /* ignore */ });
@@ -662,7 +790,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     };
 
     const onRinging = (d: { target: number }) => { if (d.target === activeChatId && !isReceivingCall) setCallStatus('remoteRinging'); };
-    const onAccepted = (d: { by: number }) => { if (d.by === activeChatId) setCallStatus('connecting'); };
+    const onAccepted = (d: { by: number }) => { if (d.by === activeChatId) setCallStatus((st) => (st === 'connected' ? st : 'connecting')); };
     const onRejected = (d: { by: number }) => { if (d.by === activeChatId) finish(t.videoCall.rejected); };
     const onBusy = (d: { target: number }) => { if (d.target === activeChatId) finish(t.videoCall.busy); };
     const onUnavailable = (d: { target: number }) => { if (d.target === activeChatId) finish(t.videoCall.unavailable); };
@@ -713,7 +841,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     }
   };
 
-  const showOverlay = callStatus !== 'connected' || audioOnly;
+  const localVideoOn = camOn || sharingScreen;
+  const isVideoCall = !audioOnly || localVideoOn || remoteVideoOn;
+  const canShareScreen = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
+  const showOverlay = callStatus !== 'connected' || !remoteVideoOn;
   const qualityLabel = quality === 'good' ? t.videoCall.qualityGood : quality === 'fair' ? t.videoCall.qualityFair : t.videoCall.qualityPoor;
 
   // Pendant la sonnerie, une décision immédiate est attendue : on garde une boîte
@@ -741,7 +872,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
           onPointerMove={isModalPhase ? undefined : onDragPointerMove}
           onPointerUp={isModalPhase ? undefined : onDragPointerUp}
         >
-          <span>{formatNickname(t.videoCall.conversationWith.replace('{type}', audioOnly ? t.videoCall.audio : t.videoCall.video).replace('{name}', contactName))}</span>
+          <span>{formatNickname(t.videoCall.conversationWith.replace('{type}', isVideoCall ? t.videoCall.video : t.videoCall.audio).replace('{name}', contactName))}</span>
           <span className="wlm-call-titlebar-actions">
             {!isModalPhase && (
               <button
@@ -784,12 +915,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         {/* La scène vidéo reste montée (jamais démontée) même réduite, pour ne pas
             interrompre les flux WebRTC : elle est seulement masquée via CSS. */}
         <div ref={containerRef} className="wlm-video-stage" style={effMinimized ? { display: 'none' } : undefined}>
-          <video ref={remoteVideoRef} autoPlay playsInline className={`wlm-video-remote${audioOnly ? ' wlm-video-remote-audio' : ''}`} />
-          <video ref={localVideoRef} autoPlay playsInline muted className="wlm-video-local" style={{ display: audioOnly ? 'none' : 'block' }} />
+          <video ref={remoteVideoRef} autoPlay playsInline className={`wlm-video-remote${remoteVideoOn ? '' : ' wlm-video-remote-audio'}`} />
+          <video ref={localVideoRef} autoPlay playsInline muted className="wlm-video-local" style={{ display: (!audioOnly || localVideoOn) ? 'block' : 'none' }} />
 
           {showOverlay && (
             <div className="wlm-video-status">
-              {audioOnly && callStatus === 'connected' ? t.videoCall.audioInProgress : callStatus === 'ringing' ? (
+              {callStatus === 'connected' ? (audioOnly ? t.videoCall.audioInProgress : formatNickname(t.videoCall.remoteCameraOff.replace('{name}', contactName))) : callStatus === 'ringing' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
                   <div>{formatNickname(t.videoCall.ringing.replace('{name}', contactName))}</div>
                   <div style={{ display: 'flex', gap: '30px' }}>
@@ -818,12 +949,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
           <button className={`wlm-call-btn${micOn ? '' : ' off'}`} onClick={toggleMic} title={micOn ? t.videoCall.mute : t.videoCall.unmute} aria-label={micOn ? t.videoCall.mute : t.videoCall.unmute}>
             {micOn ? '🎤' : '🔇'}
           </button>
-          {!audioOnly && (
+          {(
             <button className={`wlm-call-btn${camOn ? '' : ' off'}`} onClick={toggleCam} title={camOn ? t.videoCall.cameraOff : t.videoCall.cameraOn} aria-label={camOn ? t.videoCall.cameraOff : t.videoCall.cameraOn}>
               {camOn ? '📷' : '🚫'}
             </button>
           )}
-          {!audioOnly && (
+          {canShareScreen && (
             <button className={`wlm-call-btn${sharingScreen ? ' off' : ''}`} onClick={toggleShare} title={sharingScreen ? t.videoCall.stopShare : t.videoCall.shareScreen} aria-label={sharingScreen ? t.videoCall.stopShare : t.videoCall.shareScreen}>
               {sharingScreen ? '🛑' : '🖥️'}
             </button>
@@ -843,7 +974,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
                   {micList.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || `${t.videoCall.microphone} ${d.deviceId.slice(0, 4)}`}</option>)}
                 </select>
               </label>
-              {!audioOnly && (
+              {(!audioOnly || camOn) && (
                 <label>{t.videoCall.camera}
                   <select value={camId} onChange={(e) => switchDevice('video', e.target.value)}>
                     <option value="">{t.videoCall.defaultDevice}</option>

@@ -46,6 +46,7 @@ import { AllEmoticonsModal } from './components/AllEmoticonsModal';
 import { OptionsModal } from './components/OptionsModal';
 import { ContactRoster } from './components/ContactRoster';
 import { ChatTabsBar } from './components/ChatTabsBar';
+import { ChatToolbar } from './components/ChatToolbar';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -3763,90 +3764,27 @@ const App: React.FC = () => {
             />
 
             {/* Barre d'actions du chat (Haut) */}
-            <div className="chat-top-actions">
-              <span onClick={() => fileInputRef.current?.click()} style={{cursor:'pointer'}} title={t.chat.filesTooltip}>{t.chat.files}</span>
-              <span onClick={() => setShowBgModal(true)} style={{cursor:'pointer'}}>{t.chat.background}</span>
-              <span onClick={() => handleStartCall(false)} style={{cursor:'pointer'}}>{t.chat.video}</span>
-              <span onClick={() => handleStartCall(true)} style={{cursor:'pointer'}}>{t.chat.call}</span>
-              <div className="wlm-games-menu-wrapper">
-                <span 
-                  onClick={() => setShowGamesMenu(prev => !prev)} 
-                  style={{ cursor: 'pointer', fontWeight: showGamesMenu ? 'bold' : 'normal' }}
-                  title={t.chat.gamesMenuTooltip}
-                >
-                  {t.chat.gamesMenu}
-                </span>
-                {showGamesMenu && (
-                  <>
-                    <div 
-                      className="wlm-menu-backdrop" 
-                      onClick={(e) => { e.stopPropagation(); setShowGamesMenu(false); }} 
-                    />
-                    <div className="wlm-games-dropdown" onClick={e => e.stopPropagation()}>
-                      <div 
-                        className="wlm-game-menu-item" 
-                        onClick={() => handleInviteGame('puissance4')}
-                        title={t.games.puissance4Title.replace('{name}', activeContact.nickname || activeContact.username || '')}
-                      >
-                        <span className="msn-game-icon">🔴</span>
-                        <span>{t.games.puissance4}</span>
-                      </div>
-                      <div 
-                        className="wlm-game-menu-item" 
-                        onClick={() => handleInviteGame('checkers')}
-                        title={t.games.checkersTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
-                      >
-                        <span className="msn-game-icon">⚪</span>
-                        <span>{t.games.checkers}</span>
-                      </div>
-                      <div 
-                        className="wlm-game-menu-item" 
-                        onClick={() => handleInviteGame('morpion')}
-                        title={t.games.morpionTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}
-                      >
-                        <span className="msn-game-icon">🎮</span>
-                        <span>{t.games.morpion}</span>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              <span onClick={() => handleInviteGame('checkers')} style={{cursor:'pointer'}} title={t.games.checkersTitle.replace('{name}', activeContact.nickname || activeContact.username || '')}>{t.chat.activities}</span>
-              {activeGame && activeGame.opponentId === activeChatId && isGameMinimized && (
-                <span 
-                  onClick={() => setIsGameMinimized(false)} 
-                  style={{ cursor: 'pointer', color: '#0055aa', fontWeight: 'bold' }}
-                  title={t.chat.resumeTooltip}
-                >
-                  {activeGame.gameType === 'checkers' 
-                    ? t.chat.resumeCheckers 
-                    : (activeGame.gameType === 'puissance4' ? t.chat.resumePuissance4 : t.chat.resumeMorpion)}
-                </span>
-              )}
-
-              <span
-                onClick={() => {
-                  if (globalPrivateMode) {
-                    alert(t.chat.privateModeGlobalAlert);
-                  } else {
-                    togglePrivateMode(activeChatId);
-                  }
-                }}
-                style={{ cursor: 'pointer', fontWeight: (globalPrivateMode || isPrivateMode[activeChatId]) ? 'bold' : 'normal', color: (globalPrivateMode || isPrivateMode[activeChatId]) ? '#00FF00' : 'inherit' }}
-                title={t.chat.privateModeTooltip}
-              >
-                {t.chat.privateMode}
-              </span>
-              {activeChatId !== SYSTEM_BOT_ID && (
-                <span
-                  onClick={() => handleOpenSafetyModal(activeChatId)}
-                  style={{ cursor: 'pointer' }}
-                  title={t.chat.verifyIdentity}
-                >
-                  {t.chat.verifyIdentity}
-                </span>
-              )}
-              </div>
+            <ChatToolbar
+              activeChatId={activeChatId}
+              activeContact={activeContact}
+              globalPrivateMode={globalPrivateMode}
+              isPrivateMode={isPrivateMode}
+              showGamesMenu={showGamesMenu}
+              onToggleGamesMenu={() => setShowGamesMenu(prev => !prev)}
+              onOpenFiles={() => fileInputRef.current?.click()}
+              onOpenBackground={() => setShowBgModal(true)}
+              onStartVideo={() => handleStartCall(false)}
+              onStartCall={() => handleStartCall(true)}
+              onInviteGame={handleInviteGame}
+              onTogglePrivateMode={() => {
+                if (globalPrivateMode) {
+                  alert(t.chat.privateModeGlobalAlert);
+                } else {
+                  togglePrivateMode(activeChatId);
+                }
+              }}
+              onOpenSafetyModal={handleOpenSafetyModal}
+            />
 
             {/* Vue scindée : Chat à gauche, Jeu à droite */}
             <div className="conversation-split-view" onPaste={handlePaste}>

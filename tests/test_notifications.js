@@ -224,9 +224,10 @@ test('UI Logic: Permission request is strictly bound to user click without autom
 });
 
 test('UI Logic: Edge quiet prompt and pre-prompt states handling', () => {
-  // Rend JSX (App.tsx) + état/effets (hook) : les deux sources sont vérifiées ensemble.
+  // Rend JSX (App.tsx), état/effets (hook) et modale d'options : les trois sources sont vérifiées ensemble.
   const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8')
-    + '\n' + fs.readFileSync(path.join(process.cwd(), 'src/hooks/useNotifications.ts'), 'utf8');
+    + '\n' + fs.readFileSync(path.join(process.cwd(), 'src/hooks/useNotifications.ts'), 'utf8')
+    + '\n' + fs.readFileSync(path.join(process.cwd(), 'src/components/OptionsModal.tsx'), 'utf8');
 
   // 1. Pre-prompt encart with "Activer" and "Plus tard" buttons
   assert.strictEqual(appSrc.includes('options-preprompt-box'), true, 'Pre-prompt box must exist in App.tsx');

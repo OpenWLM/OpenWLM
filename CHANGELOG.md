@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.5.1] - 2026-10-16
+
+### Message signatures
+- **Unverifiable messages rejected before decryption**: when the sender's public key is unavailable, the message is now rejected right after the signature step, without using the private key (it was previously decrypted, checked, then rejected; its content was never exposed). Its unauthenticated `mid` is no longer returned, so a forged message cannot feed the replay protection. Visible behavior unchanged ("Message rejected" banner).
+
 ## [1.5.0] - 2026-10-16
 
 ### Interface

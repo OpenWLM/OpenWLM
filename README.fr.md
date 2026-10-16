@@ -191,8 +191,8 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ## Version & Référence
 
-- **Version actuelle** : `v1.5.0`
-- **Tag Git de référence** : `v1.5.0`
+- **Version actuelle** : `v1.5.1`
+- **Tag Git de référence** : `v1.5.1`
 - **Historique** : Voir le fichier [CHANGELOG.md](CHANGELOG.md).
 
 ---

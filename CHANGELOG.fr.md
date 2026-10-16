@@ -9,6 +9,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [1.5.1] - 2026-10-16
+
+### Signature des messages
+- **Messages invérifiables refusés avant déchiffrement** : quand la clé publique de l'expéditeur est indisponible, le message est désormais refusé dès l'étape de signature, sans utiliser la clé privée (il était auparavant déchiffré, contrôlé puis refusé ; son contenu n'était jamais exposé). Son `mid`, non authentifié, n'est plus renvoyé : un message forgé ne peut donc pas alimenter l'anti-rejeu. Comportement visible inchangé (bandeau « Message rejeté »).
+
 ## [1.5.0] - 2026-10-16
 
 ### Interface

@@ -1,7 +1,7 @@
 # Sécurité & chiffrement — état réel
 
 > ⚠️ Ce document décrit précisément ce qui est implémenté, ce qui ne l'est pas, et les limites.
-> Dernière mise à jour : 2026-10-16 (messages non signés ou invérifiables refusés).
+> Dernière mise à jour : 2026-10-16 (v1.5.1 : refus des messages invérifiables avant tout déchiffrement).
 
 ---
 
@@ -49,15 +49,16 @@ chiffré tel quel.
 |---|---|
 | Signé et valide | normal |
 | Ancien format non signé (antérieur aux signatures) | **contenu masqué**, bandeau « Message rejeté » (jamais déchiffré) |
-| Clé publique de l'expéditeur indisponible | **contenu masqué**, bandeau « Message rejeté » |
+| Clé publique de l'expéditeur indisponible | **contenu masqué**, bandeau « Message rejeté » (jamais déchiffré) |
 | Signature invalide / incohérente | **contenu masqué**, bandeau « Message rejeté » |
 | Message non chiffré | **contenu masqué**, bandeau « Message rejeté » |
 
 **Pas de rétrogradation possible** : seuls les messages signés et vérifiés sont affichés.
 Un message à l'ancien format non signé est refusé sans être déchiffré, y compris dans
 l'historique (les messages antérieurs aux signatures ne sont donc plus lisibles). Un message
-signé dont la clé publique de l'expéditeur est indisponible est aussi refusé : sinon, un
-serveur qui retiendrait cette clé pourrait faire passer un message fabriqué. La clé est
+signé dont la clé publique de l'expéditeur est indisponible est aussi refusé, avant tout
+déchiffrement : sinon, un serveur qui retiendrait cette clé pourrait faire passer un message
+fabriqué. Son `mid`, non authentifié, n'alimente pas l'anti‑rejeu. La clé est
 re‑demandée une fois (au plus toutes les 30 s) avant le refus, et un rechargement de
 l'historique revérifie le message.
 
@@ -242,3 +243,10 @@ l'authentification et l'abus côté serveur :
 - **Appels** : le signal `media-state` (vidéo activée/coupée) est chiffré comme le reste de la
   signalisation ; la vérification de l'empreinte DTLS reste obligatoire pour toute
   offre/réponse, y compris lors d'une renégociation.
+
+## 9. Version 1.5.1 (2026-10-16)
+
+- **Refus avant déchiffrement** : un message signé dont la clé publique de l'expéditeur est
+  indisponible est refusé dès l'étape de vérification, sans passer par la clé privée (il était
+  auparavant déchiffré puis refusé, sans que le contenu soit exposé). Son `mid`, non
+  authentifié, n'est plus renvoyé et n'alimente donc plus l'anti‑rejeu.

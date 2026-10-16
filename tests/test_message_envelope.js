@@ -168,6 +168,18 @@ test('clé publique de l\'émetteur indisponible → « non vérifiable », cont
   assert.equal(r.payload, null, 'contenu non vérifié jamais exposé');
 });
 
+test('clé publique de l\'émetteur indisponible → refusé AVANT tout déchiffrement', async () => {
+  const env = await seal(alice, bob, { text: 'x' });
+  // Clé privée inutilisable : si un déchiffrement était tenté, le verdict serait « undecryptable ».
+  const r = await openMessage(JSON.stringify(env), {
+    serverSenderId: alice.id, serverReceiverId: bob.id, myId: bob.id,
+    myPrivateKey: { kty: 'RSA', n: 'AA', e: 'AQAB', d: 'AA' }, senderPublicKeyJwk: null
+  });
+  assert.equal(r.status, 'unverifiable', 'aucun déchiffrement tenté');
+  assert.equal(r.payload, null);
+  assert.equal(r.mid, undefined, 'mid non authentifié non renvoyé (pas d\'effet sur l\'anti-rejeu)');
+});
+
 test('enveloppes malformées → invalides, sans exception', async () => {
   const env = await seal(alice, bob, { text: 'x' });
   for (const bad of [

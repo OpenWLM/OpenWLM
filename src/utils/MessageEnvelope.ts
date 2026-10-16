@@ -259,6 +259,14 @@ export const openMessage = async <T = Record<string, unknown>>(
     }
   }
 
+  // Signature non vérifiable (clé de l'émetteur indisponible) : un serveur qui retiendrait
+  // la clé publique pourrait sinon faire passer un message fabriqué → refusé AVANT tout
+  // déchiffrement (aucun contenu non authentifié ne passe par notre clé privée). Le `mid`
+  // n'étant pas authentifié, il n'est pas renvoyé (il ne doit pas alimenter l'anti-rejeu).
+  if (!signatureChecked) {
+    return { status: 'unverifiable', payload: null, reason: 'Clé publique de l\'émetteur indisponible : refusé' };
+  }
+
   // 4) Déchiffrement + cohérence interne (anti « signature stripping »)
   let inner: unknown;
   try {
@@ -271,11 +279,6 @@ export const openMessage = async <T = Record<string, unknown>>(
     return { status: 'invalid', payload: null, reason: 'Contenu chiffré incohérent avec l\'enveloppe signée' };
   }
 
-  // Signature non vérifiable (clé de l'émetteur indisponible) : un serveur qui retiendrait
-  // la clé publique pourrait sinon faire passer un message fabriqué → contenu refusé.
-  if (!signatureChecked) {
-    return { status: 'unverifiable', payload: null, mid: env.mid, ts: env.ts, reason: 'Clé publique de l\'émetteur indisponible : refusé' };
-  }
   return {
     status: 'verified',
     payload: (i.p ?? null) as T,

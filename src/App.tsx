@@ -39,6 +39,7 @@ import { SceneModal } from './components/SceneModal';
 import { AvatarModal } from './components/AvatarModal';
 import { WinksModal } from './components/WinksModal';
 import { BgModal } from './components/BgModal';
+import { PasswordModal } from './components/PasswordModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -4857,16 +4858,10 @@ const App: React.FC = () => {
 
       {/* Modale: Changement de mot de passe */}
       {showPasswordModal && (
-        <div className="modal-bg" onClick={() => setShowPasswordModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: '300px' }}>
-            <div className="win-modal-header"><span>{t.modals.changePasswordTitle}</span><button className="win-close-btn" onClick={() => setShowPasswordModal(false)}>✕</button></div>
-            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px' }}>
-              <input id="old-password" type="password" placeholder={t.modals.oldPasswordPlaceholder} required className="user-name-input" style={{ width: '100%', padding: '5px' }} />
-              <input id="new-password" type="password" placeholder={t.modals.newPasswordPlaceholder} required className="user-name-input" style={{ width: '100%', padding: '5px' }} />
-              <button type="submit" className="win-btn" style={{ marginTop: '10px' }}>{t.modals.validateBtn}</button>
-            </form>
-          </div>
-        </div>
+        <PasswordModal
+          onClose={() => setShowPasswordModal(false)}
+          onSubmit={handleChangePassword}
+        />
       )}
 
       {/* Modale: Réinitialisation des clés de chiffrement E2E */}

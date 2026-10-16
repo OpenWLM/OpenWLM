@@ -35,6 +35,7 @@ import MorpionGame from './components/MorpionGame';
 import CheckersGame from './components/CheckersGame';
 import Puissance4Game from './components/Puissance4Game';
 import CustomEmoticonsModal from './components/CustomEmoticonsModal';
+import { SceneModal } from './components/SceneModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -147,16 +148,6 @@ const WLM_COLORS = [
 ];
 
 
-
-const SCENES = [
-  { id: '1', file: '0001.png', name: 'Marguerites' },
-  { id: '2', file: '0002.jpg', name: 'Bambou' },
-  { id: '3', file: '0003.jpg', name: 'Cerisiers' },
-  { id: '4', file: '0004.png', name: 'Fleur Violette' },
-  { id: '6', file: '0006.png', name: 'Aurore' },
-  { id: '10', file: 'CarbonFiber.jpg', name: 'Carbone' },
-  { id: '16', file: 'ButterflyPattern.png', name: 'Papillon' },
-];
 
 const STATUS_OPTIONS = [
   { id: 'online', label: 'Disponible', color: '#5ec300' },
@@ -4710,19 +4701,14 @@ const App: React.FC = () => {
 
       {/* Modale: Choix du décor (Scène) */}
       {showSceneModal && (
-        <div className="modal-bg" onClick={() => setShowSceneModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="win-modal-header"><span>{t.modals.changeSceneTitle}</span><button className="win-close-btn" onClick={() => setShowSceneModal(false)}>✕</button></div>
-            <div className="scene-grid">
-              {SCENES.map(s => (
-                <div key={s.id} className="scene-thumb" onClick={() => { setMyScene(`/assets/scenes/${s.file}`); setShowSceneModal(false); syncProfile({ scene: `/assets/scenes/${s.file}` }); }}>
-                  <img src={`/assets/scenes/${s.file}`} alt={s.name} />
-                  <div className="scene-name">{s.name}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <SceneModal
+          onClose={() => setShowSceneModal(false)}
+          onSelect={(file) => {
+            setMyScene(`/assets/scenes/${file}`);
+            setShowSceneModal(false);
+            syncProfile({ scene: `/assets/scenes/${file}` });
+          }}
+        />
       )}
 
       {/* Modale: Ajouter un contact */}

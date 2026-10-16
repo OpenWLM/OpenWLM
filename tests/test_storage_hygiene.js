@@ -69,17 +69,20 @@ test('Security Rule: sanitizeUserForStorage restricts wlm_user strictly to autho
 });
 
 test('Codebase Audit: Zero localStorage.setItem/getItem for token', () => {
-  const appTsx = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+  // Le profil utilisateur (et son écriture wlm_user) vit désormais dans App.tsx ET
+  // src/hooks/useProfile.ts : on concatène les deux sources pour ne pas perdre la couverture.
+  const appTsx = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8')
+    + '\n' + fs.readFileSync(path.join(process.cwd(), 'src/hooks/useProfile.ts'), 'utf8');
 
   // Verify NO localStorage.setItem('token', ...)
   const setTokenRegex = /localStorage\.setItem\s*\(\s*['"`]token['"`]/;
-  assert.strictEqual(setTokenRegex.test(appTsx), false, 'Found localStorage.setItem for token in App.tsx');
+  assert.strictEqual(setTokenRegex.test(appTsx), false, 'Found localStorage.setItem for token');
 
   // Verify NO localStorage.getItem('token')
   const getTokenRegex = /localStorage\.getItem\s*\(\s*['"`]token['"`]/;
-  assert.strictEqual(getTokenRegex.test(appTsx), false, 'Found localStorage.getItem for token in App.tsx');
+  assert.strictEqual(getTokenRegex.test(appTsx), false, 'Found localStorage.getItem for token');
 
-  // Verify all setItem('wlm_user') calls use sanitizeUserForStorage
+  // Verify all setItem('wlm_user') calls use sanitizeUserForStorage (App.tsx + useProfile.ts)
   const lines = appTsx.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];

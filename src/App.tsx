@@ -30,7 +30,7 @@ import { useNotifications } from './hooks/useNotifications';
 import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/VerifiedContactsStorage';
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
-import FileTransferCard, { type FileDataPayload, isImageFile } from './components/FileTransferCard';
+import { type FileDataPayload } from './components/FileTransferCard';
 import MorpionGame from './components/MorpionGame';
 import CheckersGame from './components/CheckersGame';
 import Puissance4Game from './components/Puissance4Game';
@@ -47,6 +47,7 @@ import { OptionsModal } from './components/OptionsModal';
 import { ContactRoster } from './components/ContactRoster';
 import { ChatTabsBar } from './components/ChatTabsBar';
 import { ChatToolbar } from './components/ChatToolbar';
+import { ChatMessageLog } from './components/ChatMessageLog';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -388,78 +389,6 @@ function renderRichTokens(root: HTMLElement, tokens: RichToken[]): void {
 /**
  * COMPOSANTS AUXILIAIRES
  */
-
-/**
- * Lecteur de clip vocal simple avec icône play/pause et barre de progression texte.
- */
-const VoiceClipPlayer: React.FC<{ src: string }> = ({ src }) => {
-  const { t } = useI18n();
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const formatTime = (time: number) => {
-    const mins = Math.floor(time / 60);
-    const secs = Math.floor(time % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-      setIsPlaying(false);
-      setCurrentTime(0);
-    }
-  }, [src]);
-
-  const togglePlay = () => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio(src);
-      audioRef.current.onended = () => {
-        setIsPlaying(false);
-        setCurrentTime(0);
-      };
-      audioRef.current.ontimeupdate = () => {
-        setCurrentTime(audioRef.current?.currentTime || 0);
-      };
-      audioRef.current.onloadedmetadata = () => {
-        setDuration(audioRef.current?.duration || 0);
-      };
-    }
-
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play().catch(err => console.error("Erreur lecture audio:", err));
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  return (
-    <div className="wlm-voice-clip-player" onClick={togglePlay} title={t.chat.voiceClipClickToListen}>
-      <div className={`play-pause-icon ${isPlaying ? 'pause' : 'play'}`}></div>
-      <div className="voice-clip-info">
-        <span className="voice-clip-text">{isPlaying ? t.chat.voiceClipPlaying : t.chat.voiceClipPlay}</span>
-        {duration > 0 && (
-          <span className="voice-clip-timer">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-};
 
 const App: React.FC = () => {
   const { t, language, setLanguage } = useI18n();
@@ -3950,128 +3879,19 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-               {/* Historique des messages (Scrollable) */}
-               <div className="chat-log-scroll">
-                  {(messages[activeChatId] || []).map((m, i) => {
-                    const messageSide = resolveMessageSide(m, user?.id);
-                    const isSender = messageSide === 'self';
-                    const activeContact = activeChatId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === activeChatId);
-                    const senderDisplayName = isSender
-                      ? (myNickname || user?.nickname || user?.username || 'Moi')
-                      : (messageSide === 'unknown'
-                          ? t.chat.unknownSender
-                          : (m.sender && m.sender !== 'Contact' ? m.sender : (activeContact?.nickname || activeContact?.username || m.sender || 'Contact')));
-
-                    const isImage = isImageFile(m.fileData);
-                    const fileHeaderLabel = isSender
-                      ? (isImage ? t.chat.youSentImage : t.chat.youSentFile)
-                      : (isImage ? t.chat.contactSentImage.replace('{name}', senderDisplayName) : t.chat.contactSentFile.replace('{name}', senderDisplayName));
-
-                    return (
-                    <div key={i} className="msg-line">
-                       {m.sender === 'Système' ? (
-                         <div className="msg-system">{m.text}</div>
-                       ) : (
-                         <>
-                           <div className={`msg-name ${isSender ? 'me' : ''}`}>
-                             <span>{m.fileData ? formatNickname(fileHeaderLabel) : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}</span>
-                             {m.time && <span className="msg-time">{m.time}</span>}
-                             {(m._auth === 'unsigned-legacy' || m._auth === 'unverifiable') && (
-                               <span
-                                 className="msg-auth-badge"
-                                 role="img"
-                                 aria-label={m._auth === 'unsigned-legacy' ? t.chat.authUnsignedLegacy : t.chat.authUnverifiable}
-                                 title={m._auth === 'unsigned-legacy' ? t.chat.authUnsignedLegacy : t.chat.authUnverifiable}
-                               >
-                                 ⚠
-                               </span>
-                             )}
-                             {isSender && activeChatId !== SYSTEM_BOT_ID && m._failed && (
-                               <span className="msg-send-failed" role="alert">
-                                 <span
-                                   title={
-                                     m._failed === 'offline_private' ? t.chat.sendFailedOfflinePrivate :
-                                     m._failed === 'too_large' ? t.chat.sendFailedTooLarge :
-                                     (m._failReason || t.chat.sendFailedGeneric)
-                                   }
-                                 >
-                                   ⚠ {t.chat.notSent}
-                                 </span>
-                                 {m._failed !== 'too_large' && m.clientMsgId && (
-                                   <button
-                                     type="button"
-                                     className="msg-resend-btn"
-                                     onClick={() => handleResendMessage(activeChatId, m.clientMsgId as string)}
-                                   >
-                                     {t.chat.resend}
-                                   </button>
-                                 )}
-                               </span>
-                             )}
-                             {isSender && activeChatId !== SYSTEM_BOT_ID && !m._failed && (
-                               <span 
-                                 className={`msg-status-badge status-${m.delivery_status || (m._isPending ? 'pending' : 'sent')}`}
-                                 title={
-                                   m.delivery_status === 'read' ? t.chat.statusRead :
-                                   m.delivery_status === 'delivered' ? t.chat.statusDelivered :
-                                   t.chat.statusSent
-                                 }
-                               >
-                                 {m.delivery_status === 'read' ? '✓✓' : (m.delivery_status === 'delivered' ? '✓✓' : '✓')}
-                               </span>
-                             )}
-                           </div>
-                           {isSender && (m._failed === 'offline_private' || m._failed === 'too_large') && (
-                             <div className="msg-send-failed-detail">
-                               {m._failed === 'offline_private' ? t.chat.sendFailedOfflinePrivate : t.chat.sendFailedTooLarge}
-                             </div>
-                           )}
-                           {(m._auth === 'invalid' || m._auth === 'plaintext') ? (
-                             <div className="msg-rejected" role="alert">
-                               ⛔ {m._auth === 'plaintext' ? t.chat.authRejectedPlaintext : t.chat.authRejectedInvalid}
-                             </div>
-                           ) : m.fileData ? (
-                             <FileTransferCard 
-                               fileData={m.fileData} 
-                               myPrivateKey={myKeys?.privateKeyJwk} 
-                               isSender={isSender} 
-                             />
-                           ) : m.audio ? (
-                             <VoiceClipPlayer src={m.audio} />
-                           ) : (
-                             renderMessageContent(m.text, m.style)
-                           )}
-                         </>
-                       )}
-                    </div>
-                  );
-                  })}
-                  <div ref={chatEndRef} />
-               </div>
-
-               {/* Actions rapides de test pour OpenWLM */}
-               {activeChatId === SYSTEM_BOT_ID && (
-                 <div className="wlm-bot-quick-actions">
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('emo')} title={t.bot.chipEmoticons}>
-                     {t.bot.chipEmoticons}
-                   </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('wizz')} title={t.bot.chipWizz}>
-                     {t.bot.chipWizz}
-                   </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('sons')} title={t.bot.chipSounds}>
-                     {t.bot.chipSounds}
-                   </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('morpion')} title={t.bot.chipMorpion}>
-                     {t.bot.chipMorpion}
-                   </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('puissance4')} title={t.bot.chipPuissance4}>
-                     {t.bot.chipPuissance4}
-                   </button>
-                   <button type="button" className="wlm-chip-btn" onClick={() => handleAssistantAction('help')} title={t.bot.chipHelp}>
-                     {t.bot.chipHelp}
-                   </button>
-                 </div>
-               )}
+               {/* Historique des messages + actions rapides de l'assistant */}
+               <ChatMessageLog
+                 messages={messages[activeChatId] || []}
+                 activeChatId={activeChatId}
+                 contacts={contacts}
+                 myId={user?.id}
+                 selfDisplayName={myNickname || user?.nickname || user?.username || 'Moi'}
+                 myPrivateKeyJwk={myKeys?.privateKeyJwk}
+                 chatEndRef={chatEndRef}
+                 onResend={handleResendMessage}
+                 onAssistantAction={handleAssistantAction}
+                 renderMessageContent={renderMessageContent}
+               />
 
                {/* Pied de page (Saisie du message) */}
                <div className="chat-footer">

@@ -391,6 +391,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
             </span>
           </div>
         </form>
+        <div className="auth-footer">
+          OpenWLM v{__APP_VERSION__} ·{' '}
+          <a href="https://github.com/OpenWLM/OpenWLM" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
       </div>
     </div>
   );

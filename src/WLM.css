@@ -1185,6 +1185,9 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .auth-error { color: #ef3100; font-size: 11px; margin-bottom: 15px; }
 .wlm-btn-auth { width: 100%; padding: 8px; background: linear-gradient(to bottom, #74c2e6, #0099d6); color: white; border: 1px solid #0078d7; border-radius: 4px; font-weight: bold; cursor: pointer; }
 .auth-toggle { display: block; text-align: center; margin-top: 15px; font-size: 11px; color: #0078d7; cursor: pointer; }
+.auth-footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #eee; text-align: center; font-size: 10px; color: #8a8a8a; }
+.auth-footer a { color: #0078d7; text-decoration: none; }
+.auth-footer a:hover { text-decoration: underline; }
 
 /* --- MOT DE PASSE & ROBUSTESSE INSCRIPTION --- */
 .auth-password-guidance {

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
 
 /**
  * E2E — parcours d'authentification réel (navigateur).
@@ -14,6 +15,11 @@ test('auth : inscription puis connexion → l’application se charge', async ({
 
   await page.goto('/');
   await expect(page.locator('.wlm-auth-form')).toBeVisible();
+
+  // Version (depuis package.json) et lien vers le dépôt en pied de page
+  const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  await expect(page.locator('.auth-footer')).toContainText(`OpenWLM v${version}`);
+  await expect(page.locator('.auth-footer a')).toHaveAttribute('href', 'https://github.com/OpenWLM/OpenWLM');
 
   // Basculer en inscription si on est sur le login (le captcha n'existe qu'à l'inscription)
   if ((await page.locator('.auth-captcha-container').count()) === 0) {

@@ -9,6 +9,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [Non publié]
+
+### Interface
+- **Version sur la page de connexion** : pied de page « OpenWLM v1.5.0 · GitHub », avec un lien vers le dépôt. La version est lue dans `package.json` au build (`__APP_VERSION__`).
+
 ## [1.5.0] - 2026-10-16
 
 ### Mode privé par conversation (côté serveur)

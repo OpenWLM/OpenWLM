@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Interface
+- **Version on the sign-in page**: "OpenWLM v1.5.0 · GitHub" footer, with a link to the repository. The version is read from `package.json` at build time (`__APP_VERSION__`).
+
 ## [1.5.0] - 2026-10-16
 
 ### Private mode per conversation (server-side)

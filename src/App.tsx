@@ -100,7 +100,8 @@ const VOICE_CLIP_BITRATE = 32_000;
 const VOICE_CLIP_MAX_MS = 90_000;
 
 /** Verdicts pour lesquels un contenu est affiché (les deux derniers avec avertissement). */
-const DISPLAYABLE_AUTH: ReadonlySet<EnvelopeStatus> = new Set<EnvelopeStatus>(['verified', 'unsigned-legacy', 'unverifiable']);
+// Seuls les messages signés et vérifiés sont affichés ; tout le reste est refusé.
+const DISPLAYABLE_AUTH: ReadonlySet<EnvelopeStatus> = new Set<EnvelopeStatus>(['verified']);
 
 
 const formatMessageTime = (rawTimestamp: string | number | undefined, fallbackTime?: string): string => {
@@ -621,8 +622,6 @@ const App: React.FC = () => {
   // Extraites dans un hook dédié ; les références sont injectées pour rester à jour.
   const {
     seenMidsRef,
-    getSignedContacts,
-    rememberSignedContact,
     authenticateIncoming,
     sealForContact
   } = useMessageCrypto({
@@ -1540,13 +1539,12 @@ const App: React.FC = () => {
         const cached = await LocalDB.getMessages<Message>(`${user.id}_${chatId}`, keys.privateKeyJwk);
         if (cached && cached.length > 0) {
           // Le cache local contient des messages DÉJÀ authentifiés et déchiffrés (chiffrés
-          // localement) : on ne les ré-ouvre pas. Les entrées écrites par un ancien client
-          // n'ont pas de verdict → « non vérifiées » jusqu'à la synchro serveur ci-dessous.
-          const decryptedCached: Message[] = cached.map(m => ({
-            ...m,
-            time: formatMessageTime(m.timestamp, m.time),
-            _auth: m._auth ?? 'unsigned-legacy'
-          }));
+          // localement) : on ne les ré-ouvre pas. Seules les entrées vérifiées sont reprises ;
+          // celles d'un ancien client (sans verdict, ou non signées) attendent la synchro
+          // serveur ci-dessous, qui les refusera si elles ne sont pas signées.
+          const decryptedCached: Message[] = cached
+            .filter(m => m._auth === 'verified')
+            .map(m => ({ ...m, time: formatMessageTime(m.timestamp, m.time) }));
           setMessages(prev => {
             if (!prev[chatId] || prev[chatId].length === 0) {
               return { ...prev, [chatId]: decryptedCached };
@@ -1733,13 +1731,7 @@ const App: React.FC = () => {
         const myIdNum = Number(user.id);
         const senderIdNum = Number(senderId);
         const opened = await authenticateIncoming(data.text, senderIdNum, Number(data.receiverId ?? data.receiver_id), myIdNum);
-        let authStatus: EnvelopeStatus = opened.status;
-        // Anti-rétrogradation (direct uniquement) : un contact qui a déjà signé signe toujours.
-        if (authStatus === 'unsigned-legacy' && !isSender && getSignedContacts(myIdNum).has(senderIdNum)) {
-          console.warn(`[Security] Message non signé reçu de ${senderIdNum} alors que ce contact signe ses messages : rejeté.`);
-          authStatus = 'invalid';
-        }
-        if (authStatus === 'verified' && !isSender) rememberSignedContact(myIdNum, senderIdNum);
+        const authStatus: EnvelopeStatus = opened.status;
         if (authStatus !== 'verified') {
           console.warn(`[Security] Message ${data.id ?? ''} de ${senderIdNum} : ${authStatus}${opened.reason ? ' (' + opened.reason + ')' : ''}`);
         }

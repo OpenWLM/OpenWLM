@@ -111,10 +111,11 @@ test('ATTAQUE : le serveur fabrique un message v2 signé avec une autre clé →
   assert.equal(r.payload, null, 'aucun contenu exposé');
 });
 
-test('ATTAQUE : le serveur fabrique un message à l\'ancien format v1 → signalé non signé', async () => {
+test('ATTAQUE : le serveur fabrique un message à l\'ancien format v1 → refusé', async () => {
   const forgedV1 = await sealV1({ type: 'text', text: 'faux' }, bob.publicKeyJwk, mallory.publicKeyJwk);
   const r = await openAs(bob, forgedV1, { serverFrom: alice.id, serverTo: bob.id });
   assert.equal(r.status, 'unsigned-legacy', 'jamais présenté comme vérifié');
+  assert.equal(r.payload, null, 'contenu non signé jamais exposé');
 });
 
 test('ATTAQUE : le serveur envoie du texte en clair → rejeté', async () => {
@@ -160,11 +161,11 @@ test('message qui ne concerne pas l\'utilisateur courant → invalide', async ()
   assert.equal(r.status, 'invalid');
 });
 
-test('clé publique de l\'émetteur indisponible → déchiffré mais « non vérifiable »', async () => {
+test('clé publique de l\'émetteur indisponible → « non vérifiable », contenu refusé', async () => {
   const env = await seal(alice, bob, { text: 'x' });
   const r = await openAs(bob, env, { senderPub: null });
   assert.equal(r.status, 'unverifiable');
-  assert.equal(r.payload.text, 'x');
+  assert.equal(r.payload, null, 'contenu non vérifié jamais exposé');
 });
 
 test('enveloppes malformées → invalides, sans exception', async () => {

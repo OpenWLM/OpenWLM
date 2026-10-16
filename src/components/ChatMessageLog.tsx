@@ -69,16 +69,6 @@ export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
                  <div className={`msg-name ${isSender ? 'me' : ''}`}>
                    <span>{m.fileData ? formatNickname(fileHeaderLabel) : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}</span>
                    {m.time && <span className="msg-time">{m.time}</span>}
-                   {(m._auth === 'unsigned-legacy' || m._auth === 'unverifiable') && (
-                     <span
-                       className="msg-auth-badge"
-                       role="img"
-                       aria-label={m._auth === 'unsigned-legacy' ? t.chat.authUnsignedLegacy : t.chat.authUnverifiable}
-                       title={m._auth === 'unsigned-legacy' ? t.chat.authUnsignedLegacy : t.chat.authUnverifiable}
-                     >
-                       ⚠
-                     </span>
-                   )}
                    {isSender && activeChatId !== SYSTEM_BOT_ID && m._failed && (
                      <span className="msg-send-failed" role="alert">
                        <span
@@ -119,9 +109,12 @@ export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
                      {m._failed === 'offline_private' ? t.chat.sendFailedOfflinePrivate : t.chat.sendFailedTooLarge}
                    </div>
                  )}
-                 {(m._auth === 'invalid' || m._auth === 'plaintext') ? (
+                 {(m._auth === 'invalid' || m._auth === 'plaintext' || m._auth === 'unsigned-legacy' || m._auth === 'unverifiable') ? (
                    <div className="msg-rejected" role="alert">
-                     ⛔ {m._auth === 'plaintext' ? t.chat.authRejectedPlaintext : t.chat.authRejectedInvalid}
+                     ⛔ {m._auth === 'plaintext' ? t.chat.authRejectedPlaintext
+                       : m._auth === 'unsigned-legacy' ? t.chat.authUnsignedLegacy
+                       : m._auth === 'unverifiable' ? t.chat.authUnverifiable
+                       : t.chat.authRejectedInvalid}
                    </div>
                  ) : m.fileData ? (
                    <FileTransferCard

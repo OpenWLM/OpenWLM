@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   sealMessage,
   openMessage,
@@ -15,8 +15,6 @@ import {
  * - `sealForContact` : chiffre ET signe une enveloppe v2 pour un contact (jamais non signée).
  * - `authenticateIncoming` : ouvre et authentifie un message entrant (direct ou historique).
  * - `seenMidsRef` : identifiants de messages déjà vus (anti-rejeu de session).
- * - `getSignedContacts` / `rememberSignedContact` : contacts connus pour signer leurs
- *   messages (anti-rétrogradation « message non signé après signature »).
  *
  * Les dépendances externes sont injectées par référence (`myKeysRef`, `getPublicKeyRef`) :
  * le hook ne capture jamais un cache figé, si bien que les handlers socket enregistrés une
@@ -48,8 +46,6 @@ export interface UseMessageCryptoOptions {
 
 export interface MessageCryptoApi {
   seenMidsRef: { current: Set<string> };
-  getSignedContacts: (uid: number) => Set<number>;
-  rememberSignedContact: (uid: number, contactId: number) => void;
   authenticateIncoming: (
     rawText: unknown,
     senderId: number,
@@ -64,7 +60,7 @@ export interface MessageCryptoApi {
   ) => Promise<SignedEnvelope>;
 }
 
-const signedContactsKey = (uid: number) => `wlm_signed_contacts_${uid}`;
+const legacySignedContactsKey = (uid: number) => `wlm_signed_contacts_${uid}`;
 
 export function useMessageCrypto({
   myKeysRef,
@@ -77,28 +73,12 @@ export function useMessageCrypto({
   // Dernier rafraîchissement forcé de clé publique par contact (borne les requêtes si
   // beaucoup de messages invalides arrivent, ex. historique falsifié par le serveur).
   const keyRefreshAtRef = useRef<Map<number, number>>(new Map());
-  // Contacts dont on a déjà reçu un message signé valide. Leur client signe toujours :
-  // un message NON signé reçu en direct de leur part est une rétrogradation forcée.
-  const signedContactsRef = useRef<{ userId: number | null; ids: Set<number> }>({
-    userId: null,
-    ids: new Set()
-  });
-
-  const getSignedContacts = useCallback((uid: number): Set<number> => {
-    if (signedContactsRef.current.userId !== uid) {
-      let ids: number[] = [];
-      try { ids = JSON.parse(localStorage.getItem(signedContactsKey(uid)) || '[]'); } catch { /* ignore */ }
-      signedContactsRef.current = { userId: uid, ids: new Set(Array.isArray(ids) ? ids.filter(Number.isInteger) : []) };
-    }
-    return signedContactsRef.current.ids;
-  }, []);
-
-  const rememberSignedContact = useCallback((uid: number, contactId: number) => {
-    const ids = getSignedContacts(uid);
-    if (ids.has(contactId)) return;
-    ids.add(contactId);
-    try { localStorage.setItem(signedContactsKey(uid), JSON.stringify([...ids])); } catch { /* ignore */ }
-  }, [getSignedContacts]);
+  // Les messages non signés étant désormais refusés, la liste « contacts qui signent »
+  // (anti-rétrogradation) n'a plus d'usage : on purge l'ancienne entrée locale.
+  useEffect(() => {
+    if (!userId) return;
+    try { localStorage.removeItem(legacySignedContactsKey(userId)); } catch { /* ignore */ }
+  }, [userId]);
 
   const authenticateIncoming = useCallback(async (
     rawText: unknown, senderId: number, receiverId: number, myId: number
@@ -146,8 +126,6 @@ export function useMessageCrypto({
 
   return {
     seenMidsRef,
-    getSignedContacts,
-    rememberSignedContact,
     authenticateIncoming,
     sealForContact
   };

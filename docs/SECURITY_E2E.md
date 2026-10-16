@@ -1,7 +1,7 @@
 # Sécurité & chiffrement — état réel
 
 > ⚠️ Ce document décrit précisément ce qui est implémenté, ce qui ne l'est pas, et les limites.
-> Dernière mise à jour : 2026-10-12 (signatures des messages, vérification stricte des appels).
+> Dernière mise à jour : 2026-10-16 (messages non signés ou invérifiables refusés).
 
 ---
 
@@ -48,14 +48,18 @@ chiffré tel quel.
 | Verdict | Affichage |
 |---|---|
 | Signé et valide | normal |
-| Ancien format non signé (antérieur aux signatures) | contenu affiché avec **⚠ « non vérifié »** |
-| Clé publique de l'expéditeur indisponible | contenu affiché avec **⚠ « non vérifié »** |
+| Ancien format non signé (antérieur aux signatures) | **contenu masqué**, bandeau « Message rejeté » (jamais déchiffré) |
+| Clé publique de l'expéditeur indisponible | **contenu masqué**, bandeau « Message rejeté » |
 | Signature invalide / incohérente | **contenu masqué**, bandeau « Message rejeté » |
 | Message non chiffré | **contenu masqué**, bandeau « Message rejeté » |
 
-**Anti‑rétrogradation** : dès qu'un contact a envoyé un message signé valide, un message
-**non signé** reçu en direct de sa part est rejeté (son client signe toujours). Les anciens
-messages de l'historique restent lisibles, avec l'avertissement.
+**Pas de rétrogradation possible** : seuls les messages signés et vérifiés sont affichés.
+Un message à l'ancien format non signé est refusé sans être déchiffré, y compris dans
+l'historique (les messages antérieurs aux signatures ne sont donc plus lisibles). Un message
+signé dont la clé publique de l'expéditeur est indisponible est aussi refusé : sinon, un
+serveur qui retiendrait cette clé pourrait faire passer un message fabriqué. La clé est
+re‑demandée une fois (au plus toutes les 30 s) avant le refus, et un rechargement de
+l'historique revérifie le message.
 
 **Limites :**
 

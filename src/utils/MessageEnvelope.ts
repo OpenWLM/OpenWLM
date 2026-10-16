@@ -43,8 +43,8 @@ export interface SignedEnvelope {
 
 export type EnvelopeStatus =
   | 'verified'          // v2, signature valide et cohérente
-  | 'unsigned-legacy'   // v1 (avant ce correctif) : déchiffré mais NON authentifié
-  | 'unverifiable'      // v2 mais clé publique de l'émetteur indisponible
+  | 'unsigned-legacy'   // v1 (ancien format non signé) : REFUSÉ, jamais déchiffré
+  | 'unverifiable'      // v2 mais clé publique de l'émetteur indisponible : REFUSÉ
   | 'invalid'           // signature fausse, métadonnées incohérentes : contenu rejeté
   | 'plaintext'         // message non chiffré : contenu rejeté
   | 'undecryptable';    // chiffré mais impossible à déchiffrer
@@ -203,8 +203,9 @@ const decryptHybrid = async (
 
 /**
  * Ouvre un message reçu (direct ou historique) et renvoie un verdict.
- * Seuls 'verified', 'unsigned-legacy' et 'unverifiable' renvoient un payload ;
- * l'interface DOIT signaler les deux derniers comme non authentifiés.
+ * Seul 'verified' renvoie un payload : un message non signé (ancien format v1) ou dont
+ * la signature ne peut pas être vérifiée (clé de l'émetteur indisponible) est refusé,
+ * au même titre qu'une signature invalide — son contenu n'est jamais exposé.
  */
 export const openMessage = async <T = Record<string, unknown>>(
   rawText: unknown,
@@ -221,13 +222,10 @@ export const openMessage = async <T = Record<string, unknown>>(
     return { status: 'invalid', payload: null, reason: 'Message non destiné à cet utilisateur' };
   }
 
+  // Ancien format non signé : son authenticité ne peut pas être établie (le serveur
+  // connaît nos clés publiques et pourrait en fabriquer un) → refusé sans déchiffrement.
   if (parsed.kind === 'v1') {
-    try {
-      const payload = await decryptHybrid(parsed.env as { iv: string; payload: string }, ctx.myPrivateKey, isSender);
-      return { status: 'unsigned-legacy', payload: payload as T, reason: 'Ancien format non signé' };
-    } catch {
-      return { status: 'undecryptable', payload: null };
-    }
+    return { status: 'unsigned-legacy', payload: null, reason: 'Ancien format non signé : refusé' };
   }
 
   const env = parsed.env;
@@ -273,12 +271,16 @@ export const openMessage = async <T = Record<string, unknown>>(
     return { status: 'invalid', payload: null, reason: 'Contenu chiffré incohérent avec l\'enveloppe signée' };
   }
 
+  // Signature non vérifiable (clé de l'émetteur indisponible) : un serveur qui retiendrait
+  // la clé publique pourrait sinon faire passer un message fabriqué → contenu refusé.
+  if (!signatureChecked) {
+    return { status: 'unverifiable', payload: null, mid: env.mid, ts: env.ts, reason: 'Clé publique de l\'émetteur indisponible : refusé' };
+  }
   return {
-    status: signatureChecked ? 'verified' : 'unverifiable',
+    status: 'verified',
     payload: (i.p ?? null) as T,
     mid: env.mid,
-    ts: env.ts,
-    reason: signatureChecked ? undefined : 'Clé publique de l\'émetteur indisponible'
+    ts: env.ts
   };
 };
 

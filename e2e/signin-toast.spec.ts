@@ -32,8 +32,12 @@ const registerAndLogin = async (page: Page, username: string) => {
   await expect(page.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
 };
 
+// IP fictive par navigateur (cf. e2e/start-server.mjs) : les limiteurs par IP restent actifs,
+// mais chaque compte de test a la sienne.
+const fakeClientIp = () => `10.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}`;
+
 const newUserPage = async (browser: Browser, username: string) => {
-  const ctx = await browser.newContext({ locale: 'en-US' });
+  const ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
   const page = await ctx.newPage();
   await registerAndLogin(page, username);
   return page;
@@ -75,4 +79,15 @@ test('connexion d\'un contact → toast « has just signed in »', async ({ brow
   await expect(toast).toBeVisible({ timeout: 20000 });
   await expect(toast).toContainText('has just signed in');
   await expect(toast.locator('.wlm-desktop-toast-message')).toHaveCount(0);
+  await toast.locator('.wlm-desktop-toast-close-btn').click();
+  await expect(a.locator('.wlm-desktop-toast')).toHaveCount(0);
+
+  // « Apparaître hors ligne » puis « Disponible » : même notification (comme sur MSN)
+  await b.locator('.status-trigger').click();
+  await b.locator('.dropdown-item', { hasText: 'Appear offline' }).click();
+  await a.waitForTimeout(1500);
+  await expect(a.locator('.wlm-desktop-toast')).toHaveCount(0);
+  await b.locator('.status-trigger').click();
+  await b.locator('.dropdown-item', { hasText: 'Available' }).click();
+  await expect(a.locator('.wlm-desktop-toast', { hasText: nameB })).toBeVisible({ timeout: 20000 });
 });

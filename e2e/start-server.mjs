@@ -16,7 +16,10 @@ const JWT_SECRET = 'e2e-secret-'.repeat(6);
 
 const child = spawn(process.execPath, [path.join(root, 'server', 'index.js')], {
   cwd: tmp,
-  env: { ...process.env, PORT, JWT_SECRET, NODE_ENV: 'test' },
+  // CLOUDFLARE_IP_RANGES = localhost : le serveur de test fait confiance à CF-Connecting-IP,
+  // ce qui donne à chaque navigateur de test sa propre IP (en-tête posé par les specs).
+  // Sans cela, toute la suite partage 127.0.0.1 et sature le limiteur d'auth (10/min/IP).
+  env: { ...process.env, PORT, JWT_SECRET, NODE_ENV: 'test', CLOUDFLARE_IP_RANGES: '127.0.0.1/32,::1/128' },
   stdio: 'inherit'
 });
 

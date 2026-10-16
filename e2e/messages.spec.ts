@@ -32,8 +32,12 @@ const registerAndLogin = async (page: Page, username: string) => {
   await expect(page.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
 };
 
+// IP fictive par navigateur (cf. e2e/start-server.mjs) : les limiteurs par IP restent actifs,
+// mais chaque compte de test a la sienne.
+const fakeClientIp = () => `10.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}`;
+
 const newUserPage = async (browser: Browser, username: string) => {
-  const ctx = await browser.newContext({ locale: 'en-US' });
+  const ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
   const page = await ctx.newPage();
   await registerAndLogin(page, username);
   return page;

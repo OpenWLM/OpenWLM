@@ -84,11 +84,12 @@ test('Bug 2 Desktop: Desktop styles maintain original multi-column layout', () =
 });
 
 test('Bug 2 JSX: Font modal does not contain hardcoded inline width', () => {
-  const appTsx = fs.readFileSync(path.join(rootDir, 'src/App.tsx'), 'utf8');
+  // Le JSX de la modale police vit désormais dans src/components/FontModal.tsx.
+  const fontModal = fs.readFileSync(path.join(rootDir, 'src/components/FontModal.tsx'), 'utf8');
 
-  assert.doesNotMatch(appTsx, /<div className="modal-box font-modal win-style-modal"[^>]*style=\{\{\s*width:\s*['"]550px['"]/);
-  assert.doesNotMatch(appTsx, /className="win-input-preview"[^>]*style=\{\{\s*width:\s*['"]60px['"]/);
-  assert.doesNotMatch(appTsx, /className="win-list-box"[^>]*style=\{\{\s*width:\s*['"]80px['"]/);
+  assert.doesNotMatch(fontModal, /<div className="modal-box font-modal win-style-modal"[^>]*style=\{\{\s*width:\s*['"]550px['"]/);
+  assert.doesNotMatch(fontModal, /className="win-input-preview"[^>]*style=\{\{\s*width:\s*['"]60px['"]/);
+  assert.doesNotMatch(fontModal, /className="win-list-box"[^>]*style=\{\{\s*width:\s*['"]80px['"]/);
 });
 
 test('Viewport calculations: Components fit without horizontal scroll on 320px, 375px, 390px, 412px, 1920px', () => {

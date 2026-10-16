@@ -44,6 +44,7 @@ import { AddContactModal } from './components/AddContactModal';
 import { FontModal, type FontSettings } from './components/FontModal';
 import { AllEmoticonsModal } from './components/AllEmoticonsModal';
 import { OptionsModal } from './components/OptionsModal';
+import { ContactRoster } from './components/ContactRoster';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -3698,85 +3699,22 @@ const App: React.FC = () => {
         </div>
 
         {/* Liste des Contacts (Roster) */}
-        <div className="contact-roster">
-          {/* Invitations en attente */}
-          {pendingInvites.length > 0 && (
-            <div className="pending-section">
-               <div className="group-header">{t.roster.pendingInvites} ({pendingInvites.length})</div>
-               {pendingInvites.map(invite => (
-                 <div key={invite.id} className="contact-row pending">
-                    <div className="status-square offline"></div>
-                    <div className="contact-name-txt" style={{flex: 1, marginLeft: '10px'}}>{formatNickname(invite.nickname || invite.username)}</div>
-                    <div style={{display:'flex', gap:'5px', marginRight: '10px'}}>
-                      <button className="win-btn mini" onClick={() => handleAcceptInvite(invite.id)}>{t.roster.accept}</button>
-                      <button className="win-btn mini secondary" onClick={() => handleDeclineInvite(invite.id)}>{t.roster.decline}</button>
-                    </div>
-                 </div>
-               ))}
-            </div>
-          )}
-
-          {/* Contacts en ligne */}
-          <div className="group-header" onClick={() => setIsGroupOpen(!isGroupOpen)}>
-            <span style={{ transform: isGroupOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
-            {t.roster.onlineGroup} ({onlineContacts.length})
-          </div>
-          {isGroupOpen && onlineContacts.map(contact => (
-            <div 
-              key={contact.id} 
-              className={`contact-row ${activeChatId === contact.id ? 'active' : ''}`} 
-              onClick={() => openChat(contact.id)} 
-              onContextMenu={(e) => handleContextMenu(e, contact.id)}
-            >
-              <div className={`status-square ${contact.status || 'online'}`}></div>
-              <div className="contact-name-txt">
-                {formatNickname(contact.nickname || contact.username)} 
-                {contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>}
-              </div>
-            </div>
-          ))}
-
-          {/* Contacts hors ligne ou bloqués */}
-          <div className="group-header" onClick={() => setIsOfflineGroupOpen(!isOfflineGroupOpen)}>
-            <span style={{ transform: isOfflineGroupOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
-            {t.roster.offlineGroup} ({offlineContacts.length})
-          </div>
-          {isOfflineGroupOpen && offlineContacts.map(contact => (
-            <div 
-              key={contact.id} 
-              className={`contact-row ${activeChatId === contact.id ? 'active' : ''}`} 
-              onClick={() => openChat(contact.id)} 
-              onContextMenu={(e) => handleContextMenu(e, contact.id)}
-            >
-              <div className={`status-square offline`}></div>
-              <div className="contact-name-txt" style={{color: contact.blocked ? '#f44336' : '#999'}}>
-                {formatNickname(contact.nickname || contact.username)} 
-                {contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>} 
-                {contact.blocked ? <span style={{fontSize:'10px', marginLeft: '5px'}}>{t.roster.blockedSuffix}</span> : ''}
-              </div>
-            </div>
-          ))}
-
-          {/* Bot (Repliable, sobre et fidèle à WLM) */}
-          <div className="group-header" onClick={() => setIsServicesGroupOpen(!isServicesGroupOpen)}>
-            <span style={{ transform: isServicesGroupOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
-            {t.roster.botSection} (1)
-          </div>
-          {isServicesGroupOpen && (
-            <div 
-              className={`contact-row ${activeChatId === SYSTEM_BOT_ID ? 'active' : ''}`}
-              onClick={() => openChat(SYSTEM_BOT_ID)}
-              title={t.bot.tooltip}
-            >
-              <div className="status-square online"></div>
-              <div className="contact-name-txt" style={{ display: 'flex', alignItems: 'center', gap: '3px', overflow: 'hidden' }}>
-                <span style={{ fontWeight: 600 }}>{t.bot.name}</span>
-                <span className="wlm-bot-badge">{t.bot.badge}</span>
-                <span className="contact-psm-txt"> - {t.bot.status}</span>
-              </div>
-            </div>
-          )}
-        </div>
+        <ContactRoster
+          pendingInvites={pendingInvites}
+          onlineContacts={onlineContacts}
+          offlineContacts={offlineContacts}
+          activeChatId={activeChatId}
+          isGroupOpen={isGroupOpen}
+          onToggleOnlineGroup={() => setIsGroupOpen(!isGroupOpen)}
+          isOfflineGroupOpen={isOfflineGroupOpen}
+          onToggleOfflineGroup={() => setIsOfflineGroupOpen(!isOfflineGroupOpen)}
+          isServicesGroupOpen={isServicesGroupOpen}
+          onToggleServicesGroup={() => setIsServicesGroupOpen(!isServicesGroupOpen)}
+          onOpenChat={openChat}
+          onAcceptInvite={handleAcceptInvite}
+          onDeclineInvite={handleDeclineInvite}
+          onContextMenu={handleContextMenu}
+        />
       </div>
 
       {/* --- FENÊTRE DE CONVERSATION --- */}

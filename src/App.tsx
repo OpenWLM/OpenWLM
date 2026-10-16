@@ -1715,7 +1715,11 @@ const App: React.FC = () => {
       const newSocket = io({ auth: { token: user.token } });
 
       let hasConnectedOnce = false;
+      // Fenêtre de silence après notre propre (re)connexion : les contacts qui se
+      // reconnectent en masse (ex. redémarrage du serveur) ne déclenchent pas une rafale.
+      let signInQuietUntil = Date.now() + 10000;
       newSocket.on('connect', () => {
+        signInQuietUntil = Date.now() + 10000;
         newSocket.emit('identify', user.id);
         refreshResumableGames();
         // Reconnexion : récupérer ce qui a été reçu pendant la coupure
@@ -2052,6 +2056,43 @@ const App: React.FC = () => {
             });
           } catch (e) {
             console.warn('[Security] Impossible de parser la clé publique reçue:', e);
+          }
+        }
+
+        // NOTIFICATION DE CONNEXION : « Pseudo vient de se connecter » (même mécanique que
+        // les messages : toast Aero au premier plan sur PC, notification système sinon).
+        const knownContact = contactsRef.current.find(c => c.id === contactId);
+        const isSignIn = !!knownContact && knownContact.status === 'offline' && !!data.status && data.status !== 'offline';
+        if (isSignIn && Date.now() > signInQuietUntil) {
+          const signInName = knownContact.nickname || knownContact.username;
+          const signInAvatar = data.avatar || knownContact.avatar || '/assets/usertiles/chess.png';
+          const signInDecision = decideNotificationType({
+            isSender: false,
+            senderId: contactId,
+            activeChatId: activeChatIdRef.current,
+            isAppVisible: typeof document !== 'undefined' && document.visibilityState === 'visible' && document.hasFocus(),
+            isDesktop: typeof window !== 'undefined' && window.innerWidth > 768,
+            hasSystemPermission: typeof Notification !== 'undefined' && Notification.permission === 'granted'
+          });
+          if (signInDecision === 'system') {
+            showSystemNotification({
+              title: 'OpenWLM',
+              body: `${signInName} ${t.settings.toastSignedIn}`,
+              icon: signInAvatar,
+              tag: `openwlm-signin-${contactId}`,
+              onClick: () => {
+                setOpenChatIds(prev => prev.includes(contactId) ? prev : [...prev, contactId]);
+                setActiveChatId(contactId);
+              }
+            });
+          } else if (signInDecision === 'in-app') {
+            addToast({
+              senderId: contactId,
+              senderName: signInName,
+              avatar: signInAvatar,
+              text: '',
+              actionText: t.settings.toastSignedIn
+            });
           }
         }
 

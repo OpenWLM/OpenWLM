@@ -391,6 +391,7 @@
     "testAlertDenied": "Alerte système non envoyée : les notifications sont bloquées dans votre navigateur.",
     "testAlertUnsupported": "Alerte système non envoyée : non pris en charge par ce navigateur.",
     "toastAction": "a envoyé un message :",
+    "toastSignedIn": "vient de se connecter",
     "androidSectionTitle": "Fonctionnement mobile & arrière-plan (Android)",
     "androidBgDesc": "Sur Android, le système suspend les applications et coupe les connexions temps réel dès que l'écran s'éteint ou que vous quittez l'application. Les alertes en arrière-plan sont assurées par le Service Worker et le protocole Web Push.",
     "androidForegroundHint": "Au premier plan : Réception instantanée des messages, sons et alertes.",

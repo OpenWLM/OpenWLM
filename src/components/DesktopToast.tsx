@@ -110,7 +110,7 @@ export const DesktopToastCard: React.FC<DesktopToastCardProps> = ({
         <div className="wlm-desktop-toast-content">
           <div className="wlm-desktop-toast-sender">{toast.senderName}</div>
           <div className="wlm-desktop-toast-action">{toast.actionText || 'a envoyé un message :'}</div>
-          <div className="wlm-desktop-toast-message">{toast.text}</div>
+          {toast.text && <div className="wlm-desktop-toast-message">{toast.text}</div>}
         </div>
       </div>
     </div>

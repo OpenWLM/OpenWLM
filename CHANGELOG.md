@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Notifications
+- **Contact sign-in notification**: when a contact signs in, an Aero toast "<name> has just signed in" is shown (desktop, app in the foreground), or a system notification when the app is in the background and notifications are allowed — same rules as message notifications. Clicking it opens the conversation. Silent for 10 s after your own (re)connection, so a server restart does not trigger a burst.
+
 ## [1.5.1] - 2026-10-16
 
 ### Message signatures

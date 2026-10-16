@@ -9,6 +9,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [Non publié]
+
+### Notifications
+- **Notification de connexion d'un contact** : quand un contact se connecte, un toast Aero « <pseudo> vient de se connecter » s'affiche (PC, app au premier plan), ou une notification système quand l'app est en arrière-plan et que les notifications sont autorisées — mêmes règles que pour les messages. Un clic ouvre la conversation. Silence pendant 10 s après votre propre (re)connexion, pour éviter une rafale au redémarrage du serveur.
+
 ## [1.5.1] - 2026-10-16
 
 ### Signature des messages

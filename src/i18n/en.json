@@ -391,6 +391,7 @@
     "testAlertDenied": "System alert not sent: notifications are blocked in your browser.",
     "testAlertUnsupported": "System alert not sent: unsupported by this browser.",
     "toastAction": "sent a message:",
+    "toastSignedIn": "has just signed in",
     "androidSectionTitle": "Mobile & background operation (Android)",
     "androidBgDesc": "On Android, the OS suspends apps and cuts real-time connections as soon as the screen is locked or you leave the app. Background alerts are handled by the Service Worker and the Web Push protocol.",
     "androidForegroundHint": "Foreground: Instant reception of messages, sounds and alerts.",

@@ -45,7 +45,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       
       // 2. Récupérer les métadonnées serveur pour synchroniser
       const res = await axios.get('/api/emoticons/custom/my', {
-        headers: { Authorization: `Bearer ${userToken}` }
+        headers: userToken ? { Authorization: `Bearer ${userToken}` } : undefined
       });
 
       if (res.data.success && Array.isArray(res.data.emoticons)) {
@@ -95,7 +95,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen && userToken) {
+    if (isOpen) {
       loadEmoticons();
       setErrorMessage(null);
       setSuccessMessage(null);
@@ -306,7 +306,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
       const res = await axios.post('/api/emoticons/custom/upload', formData, {
         headers: {
-          Authorization: `Bearer ${userToken}`,
+          ...(userToken ? { Authorization: `Bearer ${userToken}` } : {}),
           'Content-Type': 'multipart/form-data'
         }
       });
@@ -355,7 +355,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
     try {
       await axios.delete(`/api/emoticons/custom/${id}`, {
-        headers: { Authorization: `Bearer ${userToken}` }
+        headers: userToken ? { Authorization: `Bearer ${userToken}` } : undefined
       });
 
       await CustomEmoticonsDB.deleteMyEmoticon(id);

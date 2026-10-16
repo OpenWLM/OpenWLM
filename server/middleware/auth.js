@@ -66,6 +66,9 @@ export const parseCookies = (cookieHeader) => {
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.split(' ')[1];
+  // Un client qui n'a pas le JWT en mémoire peut envoyer « Bearer undefined » :
+  // on l'ignore pour retomber sur le cookie HttpOnly au lieu de répondre 403.
+  if (token === 'undefined' || token === 'null') token = undefined;
 
   // Fallback sécurisé : Cookie HttpOnly (SameSite=Strict)
   if (!token && req.headers.cookie) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import Auth from './components/Auth';
@@ -563,6 +563,11 @@ const App: React.FC = () => {
   // --- ÉTAT DES MESSAGES & CONVERSATIONS ---
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
   const [inputText, setInputText] = useState('');
+  // Brouillons non envoyés, un par conversation (le champ de saisie est partagé entre onglets)
+  const draftsRef = useRef<Record<number, string>>({});
+  // Conversation à laquelle appartient le contenu actuel du champ (null = ne pas sauvegarder)
+  const draftChatIdRef = useRef<number | null>(activeChatId);
+  const inputTextRef = useRef(inputText);
   const [isGroupOpen, setIsGroupOpen] = useState(true);
   const [isOfflineGroupOpen, setIsOfflineGroupOpen] = useState(true);
   const [isServicesGroupOpen, setIsServicesGroupOpen] = useState(true);
@@ -1277,18 +1282,16 @@ const App: React.FC = () => {
       const localRecords = await CustomEmoticonsDB.getMyEmoticons();
       
       let serverRecords: any[] | null = null;
+      // Le cookie HttpOnly suffit : user.token est souvent absent
       const token = user.token;
-      if (token) {
-        try {
-          const res = await axios.get('/api/emoticons/custom/my', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          if (res.data && res.data.success && Array.isArray(res.data.emoticons)) {
-            serverRecords = res.data.emoticons;
-          }
-        } catch (err) {
-          console.warn("Erreur chargement serveur émoticônes custom:", err);
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
+      try {
+        const res = await axios.get('/api/emoticons/custom/my', { headers: authHeaders });
+        if (res.data && res.data.success && Array.isArray(res.data.emoticons)) {
+          serverRecords = res.data.emoticons;
         }
+      } catch (err) {
+        console.warn("Erreur chargement serveur émoticônes custom:", err);
       }
 
       // Si la synchronisation serveur a réussi, purger localement les clés supprimées
@@ -1321,11 +1324,11 @@ const App: React.FC = () => {
         merged.push(record);
 
         let cachedBlob = await CustomEmoticonsDB.getCachedAsset(item.id);
-        if (!cachedBlob && keyBase64 && token) {
+        if (!cachedBlob && keyBase64) {
           try {
             const assetRes = await axios.get(`/api/emoticons/custom/asset/${item.id}`, {
               responseType: 'arraybuffer',
-              headers: { Authorization: `Bearer ${token}` }
+              headers: authHeaders
             });
             if (assetRes.data) {
               const decrypted = await decryptCustomEmoticon(assetRes.data, keyBase64, record.mimeType);
@@ -2536,9 +2539,11 @@ const App: React.FC = () => {
       formData.append('originalName', file.name);
       formData.append('fileType', file.type || 'application/octet-stream');
 
+      // Auth via le cookie HttpOnly (user.token est souvent absent : le login ne renvoie
+      // le JWT qu'en cookie). Ne jamais envoyer « Bearer undefined » → 403 côté serveur.
       const res = await axios.post('/api/files/upload', formData, {
         headers: {
-          Authorization: `Bearer ${user?.token}`,
+          ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}),
           'Content-Type': 'multipart/form-data'
         }
       });
@@ -3047,6 +3052,7 @@ const App: React.FC = () => {
     } catch (e) {
       console.warn('[Logout] Erreur appel /api/logout:', e);
     }
+    draftsRef.current = {};
     // SÉCURITÉ : Purge complète du stockage JS
     try {
       localStorage.removeItem('token');
@@ -3161,7 +3167,9 @@ const App: React.FC = () => {
     e.stopPropagation();
     const newIds = openChatIds.filter(cid => cid !== id);
     setOpenChatIds(newIds);
+    delete draftsRef.current[id];
     if (activeChatId === id) {
+      draftChatIdRef.current = null; // l'onglet fermé ne garde pas de brouillon
       setActiveChatId(newIds.length > 0 ? newIds[0] : 0);
     }
   };
@@ -3416,11 +3424,34 @@ const App: React.FC = () => {
 
   // Vide le champ lorsque son contenu a été consommé (envoi) ailleurs
   useEffect(() => {
+    inputTextRef.current = inputText;
     const root = chatInputRef.current;
     if (root && inputText === '' && serializeRich(root) !== '') {
       root.replaceChildren();
     }
   }, [inputText]);
+
+  // Changement d'onglet : on range le brouillon de la conversation quittée et on
+  // restaure celui de la conversation affichée (sinon le texte suivait partout).
+  useLayoutEffect(() => {
+    const prevId = draftChatIdRef.current;
+    if (prevId === activeChatId) return;
+    if (prevId !== null) {
+      const text = inputTextRef.current;
+      if (text) draftsRef.current[prevId] = text;
+      else delete draftsRef.current[prevId];
+    }
+    draftChatIdRef.current = activeChatId;
+    const draft = draftsRef.current[activeChatId] || '';
+    inputTextRef.current = draft;
+    setInputText(draft);
+    const root = chatInputRef.current;
+    if (root) {
+      root.replaceChildren();
+      if (draft) renderRichTokens(root, buildRichTokens(draft, emoticonShortcuts));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId]);
 
   /**
    * RENDU DU COMPOSANT

@@ -9,9 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] - 2026-10-12
+## [1.5.0] - 2026-10-16
+
+### Private mode per conversation (server-side)
+- **Persisted state**: new `conversation_privacy` table (one row per direction). `toggle_private_mode` writes only the authenticated user's own row (`socket.user.id`), never one named in the payload; the contact and the user's other sessions are notified (`private_mode_changed`, `private_mode_self_sync`).
+- **Server decides**: `send_message` ignores the client's `isPrivate` flag and computes privacy from both users' global flag and both conversation rows; either side can impose privacy, nobody can remove the other's.
+- **Resync**: `/api/contacts/:userId` returns `my_private` / `their_private`, so the state is correct after a reconnection without toggling again. The toggle is refused with an explanation when the contact has enabled it.
 
 ### Server hardening & anti-abuse
+- **Bearer fallback**: an `Authorization: Bearer undefined` / `null` header is ignored and the `HttpOnly` cookie is used instead (fixes intermittent "invalid token" errors when sending a file or a custom emoticon).
 - **Asynchronous hashing**: `crypto.pbkdf2` (libuv pool) instead of `pbkdf2Sync` — every login attempt blocked the whole event loop (~113 ms); PBKDF2 parameters are unchanged (existing hashes stay valid).
 - **Constant-time login**: a full PBKDF2 is computed even for a non-existent account (anti account-enumeration).
 - **Signup**: hashcash proof-of-work bound to the captcha and single-use (`POW_DIFFICULTY`, default 17) + per-IP cap on successful signups over a sliding 24 h (`SIGNUP_IP_DAILY_LIMIT`, default 10).
@@ -22,6 +28,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Removed the unused `sqlite3` dependency (−18 packages).
 
 ### Calls (WebRTC) — reliability & end-to-end
+- **Camera or screen share during an audio call**: audio calls reserve a video transceiver in the offer, so either side can turn on their camera or share their screen with `replaceTrack` (no renegotiation; fallback to renegotiation with an older peer). A camera opened mid-call is released when turned off. An encrypted `media-state` signal tells the peer when video starts or stops ("X turned their camera off").
+- **Call setup fixes**: the "connected" state set when the peer's tracks arrive was overwritten by a later "connecting" (call stuck on "Connecting..."), and ICE candidates received before the answer were never applied on the caller side.
 - **E2EE**: signaling (SDP/ICE) is encrypted with the existing E2EE (the server becomes a blind relay), and the DTLS fingerprint is signed (RSA-PSS) and verified on receipt (anti-MITM).
 - **Network**: configurable ICE servers via `GET /api/rtc-config` (STUN/TURN — static or ephemeral TURN credentials); ICE restart on `disconnected`/`failed` and on socket reconnect; bounded bitrate budgets.
 - **UI**: mic/camera on-off, timer, quality indicator, mic/camera/speaker pickers, fullscreen/PiP, screen sharing, responsive layout; looping ring and system notification on incoming call.
@@ -29,6 +37,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Dynamic adaptation** of bitrate/resolution (`getStats`) and *perfect negotiation*.
 
 ### Messaging
+- **Catch-up after a disconnection**: open conversations resync incrementally on socket reconnect and when the app returns to the foreground; messages received while offline from a contact whose tab is closed reopen that tab (new `GET /api/conversations/pending`). Local-only messages (private mode, system lines) are kept.
+- **Drafts per conversation**: unsent text stays with its tab instead of following you into every conversation.
+- **History auto-load**: opening a tab only loads that tab (it used to reload every open tab and drop their local-only messages).
 - **Rich input**: typed emoticons (`:)`, `:D`, `(L)`, custom) render as inline images while typing and push the text (no more overlap).
 - **Rate limiting**: Wizz and Winks counters are now separate (independent 3/min and 7/min); cleanup window aligned with the handlers.
 - **"Not sent" + Resend**: sending (text, file, voice) now waits for the server ack (15 s timeout). On refusal, timeout or disconnection the message is marked "⚠ Not sent" (reason as tooltip) with a Resend button instead of staying "pending" forever. Resending re-signs the message with the original `mid` and the current private-mode setting; the plaintext is kept in memory only.
@@ -38,6 +49,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Idempotent resend (no duplicate)**: the 15 s ack timeout is client-side only, so a late ack means the message was actually accepted. The resend now reuses the original `mid` and the server deduplicates by `(sender_id, mid)` (partial unique index), answering "success" with the existing id without re-delivering or re-notifying — a resend no longer produces a second copy. Private mode has nothing to compare (not persisted); there, the recipient's replay protection (unique `mid`) drops any second live copy. See `docs/SECURITY_E2E.md`.
 
 ### Message signatures (authenticated E2EE)
+- **Unsigned or unverifiable messages rejected**: only signed and verified messages are displayed. Legacy unsigned (v1) messages are rejected without being decrypted, and signed messages whose sender key is unavailable are rejected too (shown with the "Message rejected" banner). The "contacts who sign" anti-downgrade list is removed.
 - Messages are now **signed (RSA-PSS)** in addition to being encrypted: the server can no longer forge a message "from" a contact. New v2 envelope (encrypt-then-sign): signature over a domain-separated canonical string (`openwlm-msg-v2`), `from`/`to`/`mid` duplicated inside the ciphertext (anti-stripping), verification before decryption, content-field allowlist.
 - **Display**: valid signature = normal; legacy format / sender key unavailable = "⚠ unverified"; invalid signature or plaintext = "⛔ rejected". Replay protection by message id, anti-downgrade.
 - **Calls**: the DTLS fingerprint signature is now mandatory (the cases previously tolerated now reject the signaling).
@@ -46,10 +58,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Pre-render**: the trailing SWF loop (restart) is removed; audio re-aligned (recomputed offsets); added the missing `bow` thumbnail.
 
 ### Documentation
+- Tone and formatting cleanup of the README, changelog and docs; docs updated for this release.
 - New docs: `docs/SECURITY_E2E.md` (real E2E scope and limits), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
 - **WAF rule generator** (`npm run waf:gen` / `waf:check`) driven by route auditing, with a "don't open wide" self-check and a CI guard.
 
-## [Unreleased] - 2026-10-08
+### Internal
+- `src/App.tsx` split into components (`ChatWindow`, `ChatMessageLog`, `ChatToolbar`, `ChatTabsBar`, `ContactRoster`, modals) and hooks (`useMessageCrypto`, `useContacts`, `useGames`, `useCalls`, `useWinksAndNudge`, `useProfile`, `useNotifications`); no functional change.
+- npm package renamed `openwlm`.
+- Tests: isolated suites `tests/test_conversation_privacy.js` and `tests/test_pending_conversations.js`; Playwright E2E `e2e/calls.spec.ts` (two browsers, audio call → camera → screen share) and `e2e/messages.spec.ts`.
 
 ### Desktop client (Electron) renderer hardening
 - **Renderer isolation**: `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` and `webSecurity: true` (previously `nodeIntegration: true` / `contextIsolation: false`, which let any injected or remotely loaded content execute arbitrary Node code on the host machine).

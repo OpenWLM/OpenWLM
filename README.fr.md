@@ -27,7 +27,7 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage aux logi
 - **Contact de test intégré ("OpenWLM")** : contact système virtuel (ID `-1`) avec un bouton de démarrage rapide dans l'écran d'accueil, pour tester le chat, les émoticônes, les sons, le Wizz, le Morpion et le Puissance 4 (`/p4`) sans second compte.
 - **Messagerie** : texte riche, émoticônes classiques et émoticônes personnalisées chiffrées de bout en bout.
 - **Émoticônes dans les pseudos et statuts** : les émoticônes classiques peuvent être utilisées dans les noms d'affichage et les messages de statut personnel (PSM) ; elles s'affichent dans la liste de contacts, les onglets, les en-têtes de conversation et les tableaux des scores, avec des assets PNG et APNG à transparence alpha.
-- **Audio & vidéo (WebRTC)** : appels vocaux et vidéo en pair-à-pair, avec signalisation chiffrée.
+- **Audio & vidéo (WebRTC)** : appels vocaux et vidéo en pair-à-pair, avec signalisation chiffrée ; pendant un appel audio, chacun peut activer sa caméra ou partager son écran.
 - **Messages vocaux** : enregistrement et lecture de clips vocaux chiffrés.
 - **Winks & Wizz** : clins d'œil animés et Wizz qui secoue la fenêtre.
 - **Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers) et Puissance 4 (Connect Four, grille 7x6) en temps réel, avec validation des coups côté serveur contre la triche, animations de gravité et panneau de jeu réductible.
@@ -47,6 +47,7 @@ OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées pa
    - Chiffrement asymétrique RSA-OAEP 2048 bits pour l'échange de clés de session.
    - Chiffrement symétrique AES-256-GCM pour les messages, fichiers et émoticônes.
    - Le serveur ne voit jamais le texte en clair ni les clés de déchiffrement (Zero-Knowledge).
+   - Les messages sont signés (RSA-PSS) par l'expéditeur ; seuls les messages signés et vérifiés sont affichés (les messages non signés ou invérifiables sont rejetés).
 2. **Stockage client et coffre local (`IndexedDB + Web Crypto`)** :
    - Aucun jeton JWT, clé privée RSA brute, JWK ou blob cryptographique n'est conservé dans `localStorage` ni `sessionStorage`.
    - Le coffre local (`WLM_DeviceVault_v1`) persiste la clé privée sous forme de `CryptoKey` native avec `extractable: false` via le clonage structuré IndexedDB. Le matériel cryptographique de la clé privée est conçu pour ne pas être exportable via les API Web Crypto standard (`crypto.subtle.exportKey()`), ce qui réduit significativement le risque d'exfiltration directe par rapport à un stockage classique et aide à maintenir les données sensibles à l'écart du Web Storage.
@@ -61,7 +62,7 @@ OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées pa
    - L'identité de l'émetteur est vérifiée à partir du token JWT (`socket.user.id === senderId`).
    - Les pseudonymes affichés sont recalculés depuis la base de données SQL côté serveur.
 6. **Mode Privé (Off-The-Record) appliqué côté serveur** :
-   - Aucune persistance : si un contact a activé le mode privé global (`global_private = 1`), les messages ne sont jamais écrits sur disque, quelle que soit la manipulation tentée côté client.
+   - Aucune persistance : si l'un des deux a activé le mode privé — global (`global_private = 1`) ou pour cette conversation (`conversation_privacy`) — les messages ne sont jamais écrits sur disque. Le serveur décide à partir de cet état persisté et ignore le drapeau `isPrivate` du client ; chacun ne peut modifier que son propre réglage.
 7. **Protection contre les abus & déni de service** :
    - Quota de stockage de **1 Go** par compte utilisateur pour les fichiers partagés.
    - Rate limiting étagé : authentification (10 req/min), uploads (5 req/min), wizz (3/min), winks (7/min), messages (20 / 10s).
@@ -164,6 +165,12 @@ Elle envoie des requêtes API et WebSocket directes (sans passer par l'interface
 - Téléchargement de fichiers sans token cryptographique d'accès (rejet HTTP 401/403)
 - Injection de chemin (Path Traversal) sur les avatars/scènes (rejet HTTP 400)
 
+Des tests de bout en bout dans le navigateur (Playwright, base temporaire) couvrent l'inscription/connexion, un message chiffré entre deux comptes, et un appel audio qui passe à la caméra et au partage d'écran :
+
+```bash
+npm run test:e2e
+```
+
 > Ces tests détectent des régressions sur des cas connus ; c'est un filet de sécurité, pas une preuve de sécurité.
 
 ---
@@ -184,8 +191,8 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ## Version & Référence
 
-- **Version actuelle** : `v1.0.0`
-- **Tag Git de référence** : `v1.0.0`
+- **Version actuelle** : `v1.5.0`
+- **Tag Git de référence** : `v1.5.0`
 - **Historique** : Voir le fichier [CHANGELOG.md](CHANGELOG.md).
 
 ---

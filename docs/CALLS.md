@@ -1,8 +1,8 @@
 # Appels audio/vidéo (WebRTC) — configuration & feuille de route
 
-> ⚠️ **NON TESTÉ sur Cloudflare / WIP** : les changements P0 sont dans le code
-> mais n'ont pas encore été validés en conditions réelles (réseaux variés).
-> **Aucun TURN n'est configuré pour l'instant** (STUN seul).
+> Appels audio/vidéo testés en conditions réelles derrière Cloudflare (2026-10-16).
+> **Aucun TURN n'est configuré par défaut** (STUN seul) : à renseigner par déploiement (§1) ;
+> sans TURN, certains réseaux (NAT symétrique, CGNAT, 4G/5G) peuvent empêcher l'appel.
 
 ## 1. Configuration ICE (STUN / TURN)
 
@@ -41,7 +41,7 @@ il faudrait de l'UDP et une plage de ports). Options :
 ### Où mettre les secrets
 Les identifiants TURN (et éventuels secrets) vont dans le fichier **`.env`** à la racine
 du projet — **non versionné** (`.gitignore`), chargé automatiquement par le serveur au
-démarrage (`process.loadEnvFile`). Ne **jamais** commiter `.env`.
+démarrage par `server/loadEnv.js` (`process.loadEnvFile`, importé avant tout autre module). Ne **jamais** commiter `.env`.
 
 Exemple (Metered.ca, identifiants statiques) :
 ```
@@ -61,10 +61,19 @@ TURN_PASSWORD=<credential>
 - **Timeout « pas de réponse »** (45 s) côté appelant.
 - **Erreurs média explicites** (permission refusée / aucun périphérique / déjà utilisé).
 - **Signalisation WebRTC centralisée** dans `<VideoCall/>` (fin du buffer ICE global fuyant).
-- **État « connecté » affiché seulement à la connexion réelle** (plus de faux « connecté »).
+- **État « connecté »** posé à la réception des pistes du pair ou à la connexion ICE, sans être écrasé ensuite par un « connexion » arrivé plus tard (correctif 1.5.0).
+- **Candidats ICE reçus avant la réponse** : mis en file puis appliqués des deux côtés, y compris chez l'appelant (correctif 1.5.0).
 
 ## 3. P2 — implémenté (interface)
-- **Boutons micro et caméra** on/off (bascule `track.enabled`).
+- **Boutons micro et caméra** on/off (bascule `track.enabled` en appel vidéo).
+- **Passage en vidéo depuis un appel audio** : un appel audio réserve dès l'offre un
+  transceiver vidéo (l'appelé le passe en `sendrecv` avant de répondre). Activer la caméra
+  ou partager l'écran branche la piste par `replaceTrack`, sans renégociation ; une caméra
+  ouverte en cours d'appel audio est libérée (piste arrêtée) quand on la coupe. Avec un pair
+  d'une version antérieure (pas de transceiver vidéo), repli sur `addTrack` + renégociation.
+- **Signal `media-state`** (chiffré comme le reste de la signalisation) : indique au pair si
+  l'on envoie de la vidéo ; la fenêtre bascule entre l'écran audio et la vidéo, et affiche
+  « X a coupé sa caméra » en appel vidéo.
 - **Minuteur d'appel** et indicateur de qualité (RTT/perte lus via `getStats`, en lecture seule).
 - **Sélecteur de périphériques** : micro / caméra / haut-parleur (`enumerateDevices`, `RTCRtpSender.replaceTrack`, `setSinkId`).
 - **Plein écran** et image dans l'image (PiP).
@@ -81,12 +90,15 @@ TURN_PASSWORD=<credential>
   `offer` entrants (avec gestion du *glare* polite/impolite). Actif une fois la
   négociation initiale terminée.
 - **Partage d'écran** (`getDisplayMedia`) via `RTCRtpSender.replaceTrack` (donc sans
-  renégociation) ; retour caméra automatique à l'arrêt ; bouton d'arrêt.
+  renégociation), aussi depuis un appel audio ; à l'arrêt, retour à la caméra si elle est
+  active, sinon plus de vidéo envoyée ; bouton masqué si le navigateur ne le permet pas.
 - **Opus FEC/DTX** : `useinbandfec=1` / `usedtx=1` posés par *SDP munging* sur la ligne
   `fmtp` d'Opus, avec repli si le SDP modifié est refusé.
 
-> Ces fonctions restent à **valider par un appel réel à 2 pairs** (le partage d'écran
-> et la renégociation ne sont pas couverts par les tests automatisés).
+> Le test E2E `e2e/calls.spec.ts` couvre, entre deux navigateurs Chromium avec médias
+> factices : appel audio, caméra activée/coupée dans les deux sens, partage d'écran.
+> Non couverts par les tests automatisés : Safari/iOS et le repli par renégociation (pair
+> d'une version antérieure).
 
 ## 5. Sécurité des appels (E2E)
 - **Média** : chiffré de bout en bout par DTLS-SRTP (natif WebRTC). Le TURN et le Tunnel
@@ -100,8 +112,10 @@ TURN_PASSWORD=<credential>
   Vérifié en isolation : signature valide OK, altération rejetée, MITM rejeté.
 - **Confiance des clés publiques** : TOFU + vérification de contact (déjà en place) ; une
   fois l'identité du contact vérifiée, le binding média↔identité est authentifié.
-- **Dégradation tolérante** : si le navigateur ne supporte pas RSA-PSS ou la clé de signature
-  est absente, l'appel continue sans vérification d'empreinte (signature ignorée).
+- **Vérification obligatoire** : une offre/réponse sans signature d'empreinte, ou dont la
+  signature ne peut pas être vérifiée (clé du pair indisponible, RSA-PSS non supporté), est
+  refusée et l'appel échoue. Les signaux `ice-candidate` et `media-state` ne portent pas
+  d'empreinte et ne sont que chiffrés.
 - **Validation des appels** : `call_accept` / `call_reject` ne sont honorés que pour un appel
   réellement en attente (TTL 60 s) ; raccrocher pendant la sonnerie l'annule ; les appels
   en attente sont purgés à la déconnexion (anti‑DoS « occupé »).

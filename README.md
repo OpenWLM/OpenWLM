@@ -27,7 +27,7 @@ OpenWLM is an independent educational, open-source project and a tribute to 2000
 - **Built-in test contact ("OpenWLM")**: virtual system contact (ID `-1`) with a quickstart button in the empty state, so new users can try chat, emoticons, sounds, Wizz/nudges, Tic-Tac-Toe and Connect Four (`/p4`) without a second account.
 - **Messaging**: rich text, classic emoticons, and custom end-to-end encrypted emoticons.
 - **Emoticons in names and status messages**: classic emoticons can be used in display names and personal status messages (PSM); they are rendered in the contact list, chat tabs, conversation headers and game scoreboards, using alpha-transparent PNG and APNG assets.
-- **Audio & video calls (WebRTC)**: peer-to-peer voice and video calls with encrypted signaling.
+- **Audio & video calls (WebRTC)**: peer-to-peer voice and video calls with encrypted signaling; during an audio call, either side can turn on their camera or share their screen.
 - **Voice clips**: record and stream end-to-end encrypted audio messages.
 - **Winks & nudges**: animated full-screen winks and the screen-shaking Wizz.
 - **1v1 mini-games**: real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames) and Connect Four (Puissance 4, 7x6 board), with server-side move validation against cheating, gravity animations and collapsible game panels.
@@ -47,6 +47,7 @@ OpenWLM applies the security measures below. They are checked by an automated te
    - Asymmetric RSA-OAEP 2048-bit encryption for session key exchange.
    - Symmetric AES-256-GCM encryption for messages, file transfers, and custom emoticons.
    - Zero-Knowledge architecture: the server never has access to plaintext messages or private decryption keys.
+   - Messages are signed (RSA-PSS) by the sender; only signed and verified messages are displayed (unsigned or unverifiable messages are rejected).
 2. **Client storage and non-extractable CryptoKey vault (`IndexedDB + Web Crypto`)**:
    - No JWT, raw RSA private key, JWK or crypto blob is kept in `localStorage` or `sessionStorage`.
    - The device vault (`WLM_DeviceVault_v1`) stores the private key as a native `CryptoKey` with `extractable: false` via IndexedDB structured cloning. Private key material is designed to prevent direct browser-side export through standard Web Crypto APIs (`crypto.subtle.exportKey()`), which significantly reduces exfiltration risk and helps contain sensitive material outside Web Storage.
@@ -61,7 +62,7 @@ OpenWLM applies the security measures below. They are checked by an automated te
    - Sender identity is checked against the verified JWT (`socket.user.id === senderId`).
    - Display nicknames are recomputed server-side from the SQL database (client-provided names are never trusted).
 6. **Server-Enforced Off-The-Record (Private Mode)**:
-   - Nothing is persisted: if either user in a conversation enables global private mode (`global_private = 1`), messages are never written to disk — this is enforced server-side and overrides any client manipulation.
+   - Nothing is persisted: if either user enables private mode — globally (`global_private = 1`) or for that conversation (`conversation_privacy`) — messages are never written to disk. The server decides from this persisted state and ignores the client's `isPrivate` flag; each user can only change their own setting.
 7. **Rate Limiting & Abuse Prevention**:
    - **1 GB** storage quota per account for active shared files.
    - Tiered rate limiters: authentication (10 req/min), file uploads (5 req/min), nudges (3/min), winks (7/min), messages (20 / 10s).
@@ -164,6 +165,12 @@ It issues direct API and WebSocket requests (bypassing the UI) and checks the se
 - File download attempts without valid secret tokens (HTTP 401/403)
 - Directory traversal attacks on avatars or scenes (HTTP 400)
 
+Browser end-to-end tests (Playwright, temporary database) cover sign-up/login, an encrypted message between two accounts, and an audio call switching to camera and screen sharing:
+
+```bash
+npm run test:e2e
+```
+
 > These tests catch regressions on known cases; they are a safety net, not a proof of security.
 
 ---
@@ -184,8 +191,8 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ## Version & References
 
-- **Current Version**: `v1.0.0`
-- **Git Reference Tag**: `v1.0.0`
+- **Current Version**: `v1.5.0`
+- **Git Reference Tag**: `v1.5.0`
 - **Changelog**: See [CHANGELOG.md](CHANGELOG.md) (or [French version](CHANGELOG.fr.md)).
 
 ---

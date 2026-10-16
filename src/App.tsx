@@ -1650,7 +1650,7 @@ const App: React.FC = () => {
       const res = await axios.get('/api/conversations/pending');
       if (!Array.isArray(res.data)) return;
       const ids: number[] = res.data
-        .map((r: any) => Number(r.contactId))
+        .map((r: { contactId?: unknown }) => Number(r.contactId))
         .filter((id: number) => Number.isInteger(id) && id > 0);
       if (ids.length === 0) return;
       setOpenChatIds(prev => {
@@ -1668,7 +1668,7 @@ const App: React.FC = () => {
   // Au démarrage de la session (clés E2EE prêtes)
   useEffect(() => {
     if (user && myKeys) fetchPendingConversations();
-  }, [user?.id, !!myKeys, fetchPendingConversations]);
+  }, [user, myKeys, fetchPendingConversations]);
 
   const resyncOpenChats = useCallback((force = false) => {
     const now = Date.now();
@@ -1955,7 +1955,7 @@ const App: React.FC = () => {
 
       // Synchronisation du Mode Privé
       // Le contact a changé SA préférence pour notre conversation (la mienne est inchangée)
-      newSocket.on('private_mode_changed', (data: any) => {
+      newSocket.on('private_mode_changed', (data: { senderId?: unknown; isPrivate?: unknown; effectivePrivate?: unknown; senderNickname?: string }) => {
         const senderId = Number(data?.senderId);
         if (!senderId) return;
         const isPrivate = !!data.isPrivate;
@@ -1974,7 +1974,7 @@ const App: React.FC = () => {
       });
 
       // Ma préférence a changé depuis une autre de mes sessions
-      newSocket.on('private_mode_self_sync', (data: any) => {
+      newSocket.on('private_mode_self_sync', (data: { contactId?: unknown; isPrivate?: unknown }) => {
         const contactId = Number(data?.contactId);
         if (!contactId) return;
         setIsPrivateMode(prev => ({ ...prev, [contactId]: !!data.isPrivate }));

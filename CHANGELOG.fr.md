@@ -9,9 +9,15 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
-## [Non publié] - 2026-10-12
+## [1.5.0] - 2026-10-16
+
+### Mode privé par conversation (côté serveur)
+- **État persisté** : nouvelle table `conversation_privacy` (une ligne par direction). `toggle_private_mode` n'écrit que la ligne de l'utilisateur authentifié (`socket.user.id`), jamais celle désignée dans le payload ; le contact et les autres sessions de l'utilisateur sont notifiés (`private_mode_changed`, `private_mode_self_sync`).
+- **Le serveur décide** : `send_message` ignore le drapeau `isPrivate` du client et calcule le mode privé à partir du mode global des deux utilisateurs et de leurs deux lignes de conversation ; chacun peut imposer la confidentialité, personne ne peut retirer celle de l'autre.
+- **Resynchronisation** : `/api/contacts/:userId` renvoie `my_private` / `their_private`, l'état est donc correct après une reconnexion sans rebasculer. Le basculement est refusé avec une explication quand le contact l'a activé.
 
 ### Durcissement serveur & anti-abus
+- **Repli sur le cookie** : un en-tête `Authorization: Bearer undefined` / `null` est ignoré au profit du cookie `HttpOnly` (corrige les erreurs « token invalide » intermittentes à l'envoi d'un fichier ou d'une émoticône personnalisée).
 - **Hachage asynchrone** : `crypto.pbkdf2` (pool libuv) au lieu de `pbkdf2Sync` — chaque tentative de login bloquait toute la boucle d'événements (~113 ms) ; les paramètres PBKDF2 sont inchangés (hashs existants valides).
 - **Login à temps constant** : un calcul PBKDF2 complet est effectué même pour un compte inexistant (anti-énumération temporelle).
 - **Inscription** : preuve de travail (hashcash) liée au captcha et à usage unique (`POW_DIFFICULTY`, défaut 17) + plafond des inscriptions réussies par IP sur 24 h glissantes (`SIGNUP_IP_DAILY_LIMIT`, défaut 10).
@@ -22,6 +28,8 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - Suppression de la dépendance inutilisée `sqlite3` (−18 paquets).
 
 ### Appels (WebRTC) — fiabilité & bout-en-bout
+- **Caméra ou partage d'écran pendant un appel audio** : l'appel audio réserve un transceiver vidéo dès l'offre, chacun peut donc activer sa caméra ou partager son écran par `replaceTrack` (sans renégociation ; repli sur une renégociation avec un pair d'une version antérieure). Une caméra ouverte en cours d'appel est libérée quand on la coupe. Un signal chiffré `media-state` prévient le pair quand la vidéo démarre ou s'arrête (« X a coupé sa caméra »).
+- **Correctifs d'établissement d'appel** : l'état « connecté » posé à l'arrivée des pistes du pair était écrasé par un « connexion » arrivé plus tard (appel bloqué sur « Connexion... »), et les candidats ICE reçus avant la réponse n'étaient jamais appliqués côté appelant.
 - **E2EE** : la signalisation (SDP/ICE) est chiffrée avec l'E2EE existant (le serveur devient un relais aveugle), et l'empreinte DTLS est signée (RSA-PSS) puis vérifiée à la réception (anti-MITM).
 - **Réseau** : serveurs ICE configurables via `GET /api/rtc-config` (STUN/TURN — identifiants TURN statiques ou éphémères) ; reprise ICE (`restartIce`) sur `disconnected`/`failed` et sur reconnexion socket ; budgets de débit bornés.
 - **UI** : micro/caméra on-off, minuteur, indicateur de qualité, sélecteur micro/caméra/haut-parleur, plein écran/PiP, partage d'écran, responsive ; sonnerie en boucle et notification système sur appel entrant.
@@ -29,6 +37,9 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Adaptation dynamique** du débit/résolution (`getStats`) et *perfect negotiation*.
 
 ### Messagerie
+- **Rattrapage après une coupure** : les conversations ouvertes se resynchronisent de façon incrémentale à la reconnexion du socket et au retour de l'app au premier plan ; les messages reçus hors ligne d'un contact dont l'onglet est fermé rouvrent cet onglet (nouvelle route `GET /api/conversations/pending`). Les messages purement locaux (mode privé, lignes système) sont conservés.
+- **Brouillon par conversation** : le texte non envoyé reste attaché à son onglet au lieu de suivre dans toutes les conversations.
+- **Chargement automatique de l'historique** : ouvrir un onglet ne charge plus que cet onglet (auparavant tous les onglets ouverts étaient rechargés, et leurs messages locaux perdus).
 - **Champ de saisie riche** : les émoticônes tapées (`:)`, `:D`, `(L)`, perso) s'affichent en image pendant la frappe et poussent le texte (fin du chevauchement).
 - **Rate limiting** : compteurs Wizz et Winks désormais séparés (3/min et 7/min indépendants) ; fenêtre de nettoyage alignée sur celle des handlers.
 - **« Non envoyé » + Renvoyer** : l'envoi (texte, fichier, vocal) attend désormais l'accusé du serveur (délai 15 s). En cas de refus, de délai dépassé ou de coupure, le message est marqué « ⚠ Non envoyé » (raison en infobulle) avec un bouton Renvoyer, au lieu de rester en attente indéfiniment. Le renvoi re‑signe le message avec le `mid` d'origine et le mode privé actuel ; le clair n'est gardé qu'en mémoire.
@@ -38,6 +49,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Renvoi idempotent (plus de doublon)** : le délai de 15 s de l'accusé est côté client uniquement, donc un accusé tardif signifie que le message a bien été accepté. Le renvoi réutilise désormais le `mid` d'origine et le serveur déduplique par `(sender_id, mid)` (index unique partiel), en répondant « succès » avec l'`id` existant sans rediffuser ni re‑notifier — un renvoi ne produit plus de seconde copie. En mode privé il n'y a rien à comparer (non persisté) ; l'anti‑rejeu du destinataire (unicité du `mid`) écarte alors toute seconde copie remise en direct. Cf. `docs/SECURITY_E2E.md`.
 
 ### Signature des messages (E2EE authentifié)
+- **Messages non signés ou invérifiables refusés** : seuls les messages signés et vérifiés sont affichés. Les messages à l'ancien format non signé (v1) sont refusés sans être déchiffrés, et les messages signés dont la clé de l'expéditeur est indisponible le sont aussi (bandeau « Message rejeté »). La liste anti-rétrogradation « contacts qui signent » est supprimée.
 - Les messages sont désormais **signés (RSA‑PSS)** en plus d'être chiffrés : le serveur ne peut plus fabriquer un message « de la part de » un contact. Nouvelle enveloppe v2 (chiffrer‑puis‑signer) : signature sur une chaîne canonique à domaine dédié (`openwlm-msg-v2`), `from`/`to`/`mid` redondés dans le chiffré (anti‑*stripping*), vérification avant déchiffrement, liste blanche des champs de contenu.
 - **Affichage** : signé valide = normal ; ancien format / clé de l'émetteur indisponible = « ⚠ non vérifié » ; signature invalide ou texte en clair = « ⛔ rejeté ». Anti‑rejeu par identifiant de message, anti‑rétrogradation.
 - **Appels** : la signature de l'empreinte DTLS devient obligatoire (les cas jusqu'ici tolérés refusent désormais la signalisation).
@@ -46,10 +58,14 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Pré-rendu** : la boucle de fin (redémarrage du SWF) est supprimée ; audio ré-aligné (offsets recalculés) ; vignette manquante de `bow` ajoutée.
 
 ### Documentation
+- Nettoyage du ton et de la mise en forme du README, du changelog et des docs ; docs mises à jour pour cette version.
 - Nouveaux documents : `docs/SECURITY_E2E.md` (périmètre E2E réel et limites), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
 - **Générateur de règles WAF** (`npm run waf:gen` / `waf:check`) piloté par l'audit des routes, avec auto-contrôle anti-« ouverture en grand » et vérification en CI.
 
-## [Non publié] - 2026-10-08
+### Interne
+- `src/App.tsx` découpé en composants (`ChatWindow`, `ChatMessageLog`, `ChatToolbar`, `ChatTabsBar`, `ContactRoster`, modales) et hooks (`useMessageCrypto`, `useContacts`, `useGames`, `useCalls`, `useWinksAndNudge`, `useProfile`, `useNotifications`) ; aucun changement fonctionnel.
+- Paquet npm renommé `openwlm`.
+- Tests : suites isolées `tests/test_conversation_privacy.js` et `tests/test_pending_conversations.js` ; E2E Playwright `e2e/calls.spec.ts` (deux navigateurs, appel audio → caméra → partage d'écran) et `e2e/messages.spec.ts`.
 
 ### Durcissement du client de bureau (Electron)
 - **Isolation du renderer** : `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` et `webSecurity: true` (auparavant `nodeIntegration: true` / `contextIsolation: false`, ce qui permettait à tout contenu injecté ou chargé à distance d'exécuter du code Node arbitraire sur la machine hôte).

@@ -80,7 +80,8 @@ l'historique revérifie le message.
 ## 2. Ce qui N'EST PAS chiffré de bout en bout (visible par le serveur)
 
 - **Pseudo (nickname)**, **PSM / statut perso**, **avatar**.
-- **Statut de présence** (en ligne / occupé / absent / hors ligne), **mode privé**.
+- **Statut de présence** (en ligne / occupé / absent / hors ligne), **mode privé** (global et
+  par conversation, persistés côté serveur : table `conversation_privacy`).
 - **Métadonnées des messages** : **type** (`text`/`audio`/`sound`…), **horodatages**,
   **qui parle à qui**, tailles.
 - **Nom de fichier d'origine**, type MIME et taille (`originalName`, `fileType` envoyés
@@ -131,7 +132,19 @@ limite habituelle de ce type d'application.
 ### Mode privé : sémantique de remise (et fenêtre de perte résiduelle)
 
 Le **mode privé** (par conversation ou global) ne **stocke rien** côté serveur : le message
-est seulement relayé aux **sessions connectées** du destinataire. Conséquence assumée :
+est seulement relayé aux **sessions connectées** du destinataire.
+
+**Qui décide** : le serveur, à partir de l'état persisté uniquement — mode global de l'un ou
+l'autre (`users.global_private`) ou préférence de conversation de l'un ou l'autre
+(`conversation_privacy`, une ligne par direction). Le `isPrivate` envoyé par le client est
+**ignoré**. `toggle_private_mode` n'écrit que la ligne de l'utilisateur **authentifié**
+(`socket.user.id`), jamais celle désignée dans le payload : chacun peut imposer la
+confidentialité, personne ne peut retirer celle voulue par l'autre. Les clients relisent cet
+état avec la liste des contacts (`my_private` / `their_private`), donc après une reconnexion
+sans avoir à rebasculer. Modèle de menace inchangé : cela protège contre un client buggé ou
+modifié, pas contre un serveur malveillant qui choisirait de tout stocker.
+
+Conséquence assumée :
 
 - **Destinataire hors ligne** → le serveur **refuse** le message
   (`code: RECIPIENT_OFFLINE_PRIVATE`) ; l'expéditeur le voit « **Non envoyé** » avec un bouton
@@ -141,9 +154,11 @@ est seulement relayé aux **sessions connectées** du destinataire. Conséquence
   destinataire se déconnecte **juste après** la vérification, le message peut encore être
   perdu (aucune file d'attente). C'est **inhérent** à un mode éphémère ; pour une remise
   garantie, utiliser le **mode normal** (stocké, remis à la reconnexion).
-- **Mode normal** : le message est **stocké** puis remis via l'historique (`GET /api/messages`)
-  quand le destinataire recharge/ouvre la conversation ; il n'y a **pas** de *replay* serveur
-  des messages en attente au moment de la reconnexion socket.
+- **Mode normal** : le message est **stocké** puis remis via l'historique (`GET /api/messages`).
+  Le serveur ne rejoue pas les messages à la reconnexion socket ; c'est le **client** qui
+  rattrape : à chaque reconnexion et au retour au premier plan, il recharge de façon
+  incrémentale les conversations ouvertes et interroge `GET /api/conversations/pending`
+  (conversations ayant des messages jamais remis) pour ouvrir les onglets correspondants.
 
 ### Renvoi « Non envoyé » : idempotence et doublon (traité)
 
@@ -194,7 +209,7 @@ Réserves honnêtes :
 
 ---
 
-## 7. Durcissements récents (2026-10-12)
+## 7. Durcissements 2026-10-12
 
 Ces changements **ne modifient pas** le périmètre E2E ci‑dessus (§1–§2) ; ils durcissent
 l'authentification et l'abus côté serveur :
@@ -215,3 +230,15 @@ l'authentification et l'abus côté serveur :
 
 > **Limites inchangées** : pas de forward secrecy, métadonnées non protégées, TOFU au
 > premier contact, confiance dans le JS servi (cf. §2–§3).
+
+## 8. Changements de la version 1.5.0 (2026-10-16)
+
+- **Messages non signés ou invérifiables refusés** (cf. §2 bis) : seuls les messages signés et
+  vérifiés sont affichés ; la liste « contacts qui signent » (anti‑rétrogradation) est supprimée.
+- **Mode privé par conversation appliqué côté serveur** (cf. §4) : état persisté, calculé par
+  le serveur, le drapeau `isPrivate` du client n'est plus décisionnaire.
+- **Authentification HTTP** : un en‑tête `Authorization: Bearer undefined`/`null` (client sans
+  JWT en mémoire) est ignoré au profit du cookie `HttpOnly`, au lieu d'un refus 403.
+- **Appels** : le signal `media-state` (vidéo activée/coupée) est chiffré comme le reste de la
+  signalisation ; la vérification de l'empreinte DTLS reste obligatoire pour toute
+  offre/réponse, y compris lors d'une renégociation.

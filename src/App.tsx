@@ -40,6 +40,7 @@ import { AvatarModal } from './components/AvatarModal';
 import { WinksModal } from './components/WinksModal';
 import { BgModal } from './components/BgModal';
 import { PasswordModal } from './components/PasswordModal';
+import { AddContactModal } from './components/AddContactModal';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -4700,19 +4701,12 @@ const App: React.FC = () => {
 
       {/* Modale: Ajouter un contact */}
       {showAddContactModal && (
-        <div className="modal-bg" onClick={() => setShowAddContactModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
-            <div className="win-modal-header"><span>{t.modals.addContactTitle}</span><button className="win-close-btn" onClick={() => setShowAddContactModal(false)}>✕</button></div>
-            <div className="auth-field" style={{ padding: '20px' }}>
-              <label>{t.modals.contactEmailLabel}</label>
-              <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder={t.modals.contactEmailPlaceholder || "pseudo@openwlm.dev"} style={{ width: '100%', marginTop: '5px' }} />
-            </div>
-            <div style={{ marginTop: '20px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '0 20px 20px' }}>
-              <button className="win-btn" onClick={handleInvite}>{t.common.ok}</button>
-              <button className="win-btn" onClick={() => setShowAddContactModal(false)}>{t.common.cancel}</button>
-            </div>
-          </div>
-        </div>
+        <AddContactModal
+          value={contactEmail}
+          onChange={setContactEmail}
+          onSubmit={handleInvite}
+          onClose={() => setShowAddContactModal(false)}
+        />
       )}
 
       {/* Modale: Modifier l'arrière-plan de la discussion */}

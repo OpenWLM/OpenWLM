@@ -8,70 +8,70 @@
 
 # OpenWLM (Modern Web Stack)
 
-Une récréation moderne et open-source de l'expérience iconique de messagerie instantanée rétro de la fin des années 2000 (interface Aero). Elle associe le design nostalgique des années 2000 au chiffrement de bout en bout du contenu des messages et à des pratiques de sécurité web actuelles. Le périmètre E2E réel — ce qui est protégé, ce qui ne l'est pas, et les limites — est documenté ci-dessous.
+Une recréation open-source d'une messagerie instantanée de la fin des années 2000 (interface Aero), avec chiffrement de bout en bout du contenu des messages et des pratiques de sécurité web actuelles. Le périmètre E2E réel — ce qui est protégé, ce qui ne l'est pas, et les limites — est documenté ci-dessous.
 
-⚠️ **Avertissement & Notice légale** :  
-OpenWLM est un projet éducatif indépendant, open-source et un hommage nostalgique aux logiciels de messagerie instantanée de la fin des années 2000. Il n'est en aucun cas affilié, associé, autorisé ou soutenu par une quelconque entreprise ou entité tierce.
+**Avertissement & Notice légale** :  
+OpenWLM est un projet éducatif indépendant, open-source et un hommage aux logiciels de messagerie instantanée de la fin des années 2000. Il n'est en aucun cas affilié, associé, autorisé ou soutenu par une quelconque entreprise ou entité tierce.
 
 > [!WARNING]
 > **Avertissement sur le développement assisté par IA** :  
-> Ce projet a été développé avec l'assistance d'une Intelligence Artificielle (Google Antigravity / programmation en binôme assistée par LLM). Il est relu manuellement et couvert par des tests de bout en bout ainsi qu'une suite de tests de sécurité automatisés (`npm run test:security`). Il ne s'agit **pas** d'un audit externe indépendant : des anomalies, régressions marginales ou comportements imprévus peuvent donc subsister. Les revues de code, tests communautaires et retours de sécurité sont les bienvenus !
+> Ce projet a été développé avec l'assistance d'une Intelligence Artificielle (Google Antigravity / programmation en binôme assistée par LLM). Il est relu manuellement et couvert par des tests de bout en bout ainsi qu'une suite de tests de sécurité automatisés (`npm run test:security`). Il ne s'agit **pas** d'un audit externe indépendant : des anomalies, régressions marginales ou comportements imprévus peuvent donc subsister. Les revues de code, tests communautaires et retours de sécurité sont les bienvenus.
 
 ---
 
-## 🚀 Fonctionnalités principales
+## Fonctionnalités principales
 
-### 💬 Communication & Expérience Rétro
-- **Interface Authentique** : Design rétro fidèle aux messageries de l'époque (Aero glass, onglets, scènes de fond, usertiles, sons d'origine).
-- **Application Web Progressive (PWA)** : Totalement installable en tant qu'application autonome sur ordinateur ou mobile avec mise en cache hors-ligne des assets via Service Worker, manifeste web et intégration d'icônes rétro Aero dans la barre des tâches.
-- **Assistant de test intégré ("OpenWLM")** : Contact système virtuel (ID `-1`) avec état d'accueil central, permettant de tester immédiatement le chat, les émoticônes, les sons, le Wizz, le Morpion et le Puissance 4 (`/p4`) sans second compte.
-- **Messagerie Instantanée Sécurisée** : Texte riche, émoticônes classiques d'origine et émoticônes personnalisées E2EE.
-- **Émoticônes dans les pseudos & statuts** : Affichage authentique des émoticônes d'origine directement dans les noms d'affichage et messages de statut personnel (PSM), rendu propre et aligné dans la liste de contacts, les onglets, les en-têtes et les tableaux des scores avec des assets PNG et APNG à vraie transparence alpha.
-- **Audio & Vidéo (WebRTC)** : Appels vocaux et vidéo en direct avec signalisation chiffrée.
-- **Messages Vocaux** : Enregistrement et lecture de clips vocaux chiffrés.
-- **Winks & Wizz** : Clins d'œil animés et Wizz secouant la fenêtre.
-- **Activités & Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers) et Puissance 4 (Connect Four sur grille 7x6) en temps réel avec validation anti-triche côté serveur, animations de gravité et barre de jeu réductible.
-- **Transfert de fichiers chiffré E2EE** : Partage temporaire (expiration 4h) avec déchiffrement direct et prévisualisation d'images.
-- **Internationalisation Complète (FR / EN)** : Support bilingue natif Français et Anglais avec bascule réactive instantanée, détection automatique du navigateur et zéro régression visuelle sur le rendu Aero.
+### Communication
+- **Interface** : recréation d'une messagerie de la fin des années 2000 — style Aero, onglets, scènes de fond, usertiles, sons d'origine.
+- **Application Web Progressive (PWA)** : installable comme application autonome sur ordinateur ou mobile, avec mise en cache hors ligne des assets par un Service Worker, un manifeste web et une icône Aero dans la barre des tâches.
+- **Contact de test intégré ("OpenWLM")** : contact système virtuel (ID `-1`) avec un bouton de démarrage rapide dans l'écran d'accueil, pour tester le chat, les émoticônes, les sons, le Wizz, le Morpion et le Puissance 4 (`/p4`) sans second compte.
+- **Messagerie** : texte riche, émoticônes classiques et émoticônes personnalisées chiffrées de bout en bout.
+- **Émoticônes dans les pseudos et statuts** : les émoticônes classiques peuvent être utilisées dans les noms d'affichage et les messages de statut personnel (PSM) ; elles s'affichent dans la liste de contacts, les onglets, les en-têtes de conversation et les tableaux des scores, avec des assets PNG et APNG à transparence alpha.
+- **Audio & vidéo (WebRTC)** : appels vocaux et vidéo en pair-à-pair, avec signalisation chiffrée.
+- **Messages vocaux** : enregistrement et lecture de clips vocaux chiffrés.
+- **Winks & Wizz** : clins d'œil animés et Wizz qui secoue la fenêtre.
+- **Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers) et Puissance 4 (Connect Four, grille 7x6) en temps réel, avec validation des coups côté serveur contre la triche, animations de gravité et panneau de jeu réductible.
+- **Transfert de fichiers chiffré** : partage temporaire entre contacts (expiration 4 h), déchiffré dans le navigateur, avec aperçu des images.
+- **Interface français / anglais** : la langue se change sans rechargement et est détectée depuis le navigateur ; les deux langues tiennent dans la mise en page Aero sans débordement.
 
 ---
 
-## 🔐 Sécurité & Architecture (Security Hardened)
+## Sécurité & Architecture
 
 OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées par une suite de tests automatisés et par relecture du code — et non par un audit externe indépendant :
 
-> 📌 **Périmètre E2E — ce qui est réellement de bout en bout, ce qui ne l'est pas, et les limites :**
+> **Périmètre E2E — ce qui est réellement de bout en bout, ce qui ne l'est pas, et les limites :**
 > voir **[docs/SECURITY_E2E.md](docs/SECURITY_E2E.md)**.
 
 1. **Chiffrement de bout en bout (E2EE Zero-Knowledge)** :
    - Chiffrement asymétrique RSA-OAEP 2048 bits pour l'échange de clés de session.
    - Chiffrement symétrique AES-256-GCM pour les messages, fichiers et émoticônes.
    - Le serveur ne voit jamais le texte en clair ni les clés de déchiffrement (Zero-Knowledge).
-2. **Stockage client durci & Coffre local (`IndexedDB + Web Crypto`)** :
-   - Élimination des jetons JWT, clés privées RSA brutes, JWK et blobs cryptographiques de `localStorage` et `sessionStorage`.
+2. **Stockage client et coffre local (`IndexedDB + Web Crypto`)** :
+   - Aucun jeton JWT, clé privée RSA brute, JWK ou blob cryptographique n'est conservé dans `localStorage` ni `sessionStorage`.
    - Le coffre local (`WLM_DeviceVault_v1`) persiste la clé privée sous forme de `CryptoKey` native avec `extractable: false` via le clonage structuré IndexedDB. Le matériel cryptographique de la clé privée est conçu pour ne pas être exportable via les API Web Crypto standard (`crypto.subtle.exportKey()`), ce qui réduit significativement le risque d'exfiltration directe par rapport à un stockage classique et aide à maintenir les données sensibles à l'écart du Web Storage.
-   - `wlm_user` dans `localStorage` est strictement restreint aux champs d'affichage non sensibles (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
-3. **Durcissement des sessions serveur par cookie `HttpOnly; SameSite=Strict`** :
-   - Émission de jetons JWT sécurisés sous forme de cookies `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` (`Secure` en production HTTPS / Cloudflare).
-   - Prise en charge transparente et unifiée des cookies sur toutes les routes Express et la négociation WebSocket (`io.use`).
-   - Révocation instantanée côté serveur (`token_version`) et suppression du cookie lors de la déconnexion (`/api/logout`).
+   - `wlm_user` dans `localStorage` est limité aux champs d'affichage non sensibles (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
+3. **Sessions serveur en cookie `HttpOnly; SameSite=Strict`** :
+   - Les jetons JWT sont émis sous forme de cookies `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` (`Secure` en production HTTPS / Cloudflare).
+   - Même prise en charge des cookies sur les routes Express et à la négociation WebSocket (`io.use`).
+   - Révocation côté serveur (`token_version`) et suppression du cookie lors de la déconnexion (`/api/logout`).
 4. **Autorisation centralisée (`canInteract`)** :
-   - Vérification stricte des relations de contact mutuel et de l'absence de blocage avant toute interaction (messages, wizz, appels, fichiers, jeux).
+   - Vérification du contact mutuel et de l'absence de blocage avant toute interaction (messages, wizz, appels, fichiers, jeux).
 5. **Prévention de l'usurpation d'identité (Anti-Spoofing)** :
-   - Validation stricte de l'identité émettrice via le token JWT certifié (`socket.user.id === senderId`).
-   - Les pseudonymes affichés sont systématiquement recalculés depuis la base de données SQL côté serveur.
+   - L'identité de l'émetteur est vérifiée à partir du token JWT (`socket.user.id === senderId`).
+   - Les pseudonymes affichés sont recalculés depuis la base de données SQL côté serveur.
 6. **Mode Privé (Off-The-Record) appliqué côté serveur** :
    - Aucune persistance : si un contact a activé le mode privé global (`global_private = 1`), les messages ne sont jamais écrits sur disque, quelle que soit la manipulation tentée côté client.
 7. **Protection contre les abus & déni de service** :
-   - Quota de stockage strict de **1 Go** par compte utilisateur pour les fichiers partagés.
+   - Quota de stockage de **1 Go** par compte utilisateur pour les fichiers partagés.
    - Rate limiting étagé : authentification (10 req/min), uploads (5 req/min), wizz (3/min), winks (7/min), messages (20 / 10s).
    - Nettoyage automatique toutes les 5 minutes des structures mémoire (captchas, adresses IP inactives).
 8. **Comparaisons cryptographiques sécurisées** :
-   - Vérification des hashs PBKDF2 en temps constant (`crypto.timingSafeEqual`) pour neutraliser les attaques par analyse temporelle.
+   - Vérification des hashs PBKDF2 en temps constant (`crypto.timingSafeEqual`), contre les attaques par analyse temporelle.
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 - **Frontend** : React 19, TypeScript, Vite, CSS Vanilla (thème Aero rétro).
 - **Plateformes Client** : Navigateur web, Progressive Web App (PWA) avec Service Worker & Manifeste Web, Desktop (wrapper Electron optionnel).
@@ -88,7 +88,7 @@ OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées pa
 
 ---
 
-## 📦 Installation & Lancement
+## Installation & Lancement
 
 ### Prérequis
 - **Node.js** : v20 ou supérieur recommandé (testé sous v22 LTS).
@@ -117,7 +117,7 @@ Pour activer les notifications en arrière-plan sans compromettre de secrets :
 ```bash
 node scripts/generate_vapid_keys.js
 ```
-Consultez le guide complet : [docs/VAPID_SETUP.md](docs/VAPID_SETUP.md).
+Voir [docs/VAPID_SETUP.md](docs/VAPID_SETUP.md).
 
 ### 4. Démarrer l'application
 
@@ -143,7 +143,7 @@ L'application est accessible sur : **http://localhost:3001**
 
 ---
 
-## 🧪 Tests de Sécurité & Non-Régression
+## Tests de Sécurité & Non-Régression
 
 Une suite de tests automatisés vérifie que les principales restrictions côté client sont aussi appliquées côté API et sockets :
 
@@ -168,9 +168,9 @@ Elle envoie des requêtes API et WebSocket directes (sans passer par l'interface
 
 ---
 
-## 🛡️ Procédure de Sauvegarde avant Évolution Sensible
+## Sauvegarde avant une évolution sensible
 
-Pour respecter les bonnes pratiques de maintenance et garantir un retour arrière immédiat :
+Avant une modification d'architecture ou de base de données :
 
 ```bash
 # 1. Créer une archive à froid horodatée (serveur arrêté de préférence)
@@ -182,14 +182,14 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ---
 
-## 🏷️ Version & Référence
+## Version & Référence
 
 - **Version actuelle** : `v1.0.0`
 - **Tag Git de référence** : `v1.0.0`
-- **Historique complet** : Voir le fichier [CHANGELOG.md](CHANGELOG.md).
+- **Historique** : Voir le fichier [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## 📄 Licence
+## Licence
 
 Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus d'informations.

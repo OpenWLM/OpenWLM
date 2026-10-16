@@ -11,248 +11,248 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié] - 2026-10-12
 
-### 🛡️ Durcissement serveur & anti-abus
+### Durcissement serveur & anti-abus
 - **Hachage asynchrone** : `crypto.pbkdf2` (pool libuv) au lieu de `pbkdf2Sync` — chaque tentative de login bloquait toute la boucle d'événements (~113 ms) ; les paramètres PBKDF2 sont inchangés (hashs existants valides).
 - **Login à temps constant** : un calcul PBKDF2 complet est effectué même pour un compte inexistant (anti-énumération temporelle).
 - **Inscription** : preuve de travail (hashcash) liée au captcha et à usage unique (`POW_DIFFICULTY`, défaut 17) + plafond des inscriptions réussies par IP sur 24 h glissantes (`SIGNUP_IP_DAILY_LIMIT`, défaut 10).
-- **Clés E2EE** : la preuve du mot de passe (`authKeyHex`) est désormais exigée pour **toute** écriture de clés, y compris la première installation (empêche d'installer une identité d'attaquant sur une session volée).
+- **Clés E2EE** : la preuve du mot de passe (`authKeyHex`) est désormais exigée pour toute écriture de clés, y compris la première installation (empêche d'installer une identité d'attaquant sur une session volée).
 - **Appels** : `call_accept` / `call_reject` ne sont honorés que pour un appel réellement en attente (anti-DoS « occupé »).
-- **Robustesse** : arrêt propre (code 1) sur erreur non gérée pour être relancé par un superviseur ; les exceptions dans les handlers Socket.IO sont confinées à l'événement. **Un superviseur (systemd/pm2/Docker) devient obligatoire en production** — voir `docs/DEPLOYMENT.md`.
-- **Chargement de `.env` corrigé** : déplacé dans un module importé **en tout premier** (`server/loadEnv.js`), pour qu'un `JWT_SECRET` (ou `VAPID_*`) fourni dans `.env` soit pris en compte **avant** l'initialisation des modules. Auparavant `.env` était chargé dans le corps de `index.js`, donc après l'évaluation de `middleware/auth.js` (`SECRET = getJwtSecret()`), qui retombait alors sur `.jwt_secret` généré.
+- **Gestion des plantages** : arrêt propre (code 1) sur erreur non gérée pour être relancé par un superviseur ; les exceptions dans les handlers Socket.IO sont confinées à l'événement. Un superviseur (systemd/pm2/Docker) devient obligatoire en production — voir `docs/DEPLOYMENT.md`.
+- **Chargement de `.env` corrigé** : déplacé dans un module importé en tout premier (`server/loadEnv.js`), pour qu'un `JWT_SECRET` (ou `VAPID_*`) fourni dans `.env` soit pris en compte avant l'initialisation des modules. Auparavant `.env` était chargé dans le corps de `index.js`, donc après l'évaluation de `middleware/auth.js` (`SECRET = getJwtSecret()`), qui retombait alors sur `.jwt_secret` généré.
 - Suppression de la dépendance inutilisée `sqlite3` (−18 paquets).
 
-### 📞 Appels (WebRTC) — fiabilité & bout-en-bout
-- **E2EE** : signalisation (SDP/ICE) **chiffrée** avec l'E2EE existant (le serveur devient un relais aveugle) + **empreinte DTLS signée (RSA-PSS)** et vérifiée à la réception (anti-MITM).
-- **Réseau** : serveurs ICE configurables via `GET /api/rtc-config` (STUN/TURN — identifiants TURN statiques ou éphémères) ; **reprise ICE** (`restartIce`) sur `disconnected`/`failed` et sur reconnexion socket ; budgets de débit bornés.
-- **UI** : micro/caméra on-off, minuteur, indicateur de qualité, sélecteur micro/caméra/haut-parleur, plein écran/PiP, partage d'écran, responsive ; **sonnerie en boucle** + **notification système** sur appel entrant.
-- **Fenêtre d'appel non bloquante** : un appel n'est plus un calque plein écran qui captait tous les clics. C'est une petite fenêtre déplaçable (bornée au viewport), réductible/dépliable **sans démonter les flux WebRTC**, qui laisse la liste de contacts et les autres conversations utilisables pendant l'appel (façon WLM 2009). Seule la décision accepter/refuser d'un appel entrant reste une modale centrée assombrie ; sur mobile la fenêtre démarre réduite (barre au-dessus de la zone de saisie) et la boîte de sonnerie garde accepter/refuser entièrement visibles (correctif d'un rognage dû à la scène vidéo qui s'effondrait à 0 de haut).
-- **Adaptation dynamique** du débit/résolution (`getStats`) et ***perfect negotiation***.
+### Appels (WebRTC) — fiabilité & bout-en-bout
+- **E2EE** : la signalisation (SDP/ICE) est chiffrée avec l'E2EE existant (le serveur devient un relais aveugle), et l'empreinte DTLS est signée (RSA-PSS) puis vérifiée à la réception (anti-MITM).
+- **Réseau** : serveurs ICE configurables via `GET /api/rtc-config` (STUN/TURN — identifiants TURN statiques ou éphémères) ; reprise ICE (`restartIce`) sur `disconnected`/`failed` et sur reconnexion socket ; budgets de débit bornés.
+- **UI** : micro/caméra on-off, minuteur, indicateur de qualité, sélecteur micro/caméra/haut-parleur, plein écran/PiP, partage d'écran, responsive ; sonnerie en boucle et notification système sur appel entrant.
+- **Fenêtre d'appel non bloquante** : un appel n'est plus un calque plein écran qui captait tous les clics. C'est une petite fenêtre déplaçable (bornée au viewport), réductible/dépliable sans démonter les flux WebRTC, qui laisse la liste de contacts et les autres conversations utilisables pendant l'appel (façon WLM 2009). Seule la décision accepter/refuser d'un appel entrant reste une modale centrée assombrie ; sur mobile la fenêtre démarre réduite (barre au-dessus de la zone de saisie) et la boîte de sonnerie garde accepter/refuser entièrement visibles (correctif d'un rognage dû à la scène vidéo qui s'effondrait à 0 de haut).
+- **Adaptation dynamique** du débit/résolution (`getStats`) et *perfect negotiation*.
 
-### 💬 Messagerie
-- **Champ de saisie riche** : les émoticônes tapées (`:)`, `:D`, `(L)`, perso) s'affichent en image **pendant la frappe** et poussent le texte (fin du chevauchement).
-- **Rate limiting** : compteurs **Wizz** et **Winks** désormais **séparés** (3/min et 7/min indépendants) ; fenêtre de nettoyage alignée sur celle des handlers.
-- **« Non envoyé » + Renvoyer** : l'envoi (texte, fichier, vocal) attend désormais l'accusé du serveur (délai 15 s). En cas de refus, de délai dépassé ou de coupure, le message est marqué **⚠ Non envoyé** (raison en infobulle) avec un bouton **Renvoyer**, au lieu de rester en attente indéfiniment. Le renvoi re‑signe le message **avec le `mid` d'origine** et le mode privé **actuel** ; le clair n'est gardé qu'**en mémoire**.
-- **Mode privé + contact hors ligne** : rien n'étant conservé côté serveur, le message est désormais **refusé explicitement** (`RECIPIENT_OFFLINE_PRIVATE`) au lieu d'être perdu en silence alors que l'expéditeur voyait « envoyé ». Les messages normaux sont inchangés (stockés, remis à la reconnexion). Les Winks suivent la même règle (un accusé pilote maintenant le retour côté expéditeur).
+### Messagerie
+- **Champ de saisie riche** : les émoticônes tapées (`:)`, `:D`, `(L)`, perso) s'affichent en image pendant la frappe et poussent le texte (fin du chevauchement).
+- **Rate limiting** : compteurs Wizz et Winks désormais séparés (3/min et 7/min indépendants) ; fenêtre de nettoyage alignée sur celle des handlers.
+- **« Non envoyé » + Renvoyer** : l'envoi (texte, fichier, vocal) attend désormais l'accusé du serveur (délai 15 s). En cas de refus, de délai dépassé ou de coupure, le message est marqué « ⚠ Non envoyé » (raison en infobulle) avec un bouton Renvoyer, au lieu de rester en attente indéfiniment. Le renvoi re‑signe le message avec le `mid` d'origine et le mode privé actuel ; le clair n'est gardé qu'en mémoire.
+- **Mode privé + contact hors ligne** : rien n'étant conservé côté serveur, le message est désormais refusé explicitement (`RECIPIENT_OFFLINE_PRIVATE`) au lieu d'être perdu en silence alors que l'expéditeur voyait « envoyé ». Les messages normaux sont inchangés (stockés, remis à la reconnexion). Les Winks suivent la même règle (un accusé pilote maintenant le retour côté expéditeur).
 - **Clips vocaux** : encodage à 32 kbit/s avec arrêt automatique à 90 s (ligne système), gardant le clip sous la limite de 1 Mo des trames socket ; un message trop gros est marqué « trop volumineux » sans bouton de renvoi.
-- **Fenêtre de perte résiduelle (limite honnête)** : en mode privé, la présence est vérifiée **au moment de l'envoi** ; si le contact se déconnecte juste après, le message peut encore être perdu (pas de file d'attente). Utiliser le mode normal pour une remise garantie. Cf. `docs/SECURITY_E2E.md`.
-- **Renvoi idempotent (plus de doublon)** : le délai de 15 s de l'accusé est **côté client uniquement**, donc un accusé tardif signifie que le message a bien été accepté. Le renvoi **réutilise désormais le `mid` d'origine** et le serveur **déduplique par `(sender_id, mid)`** (index unique partiel), en répondant « succès » avec l'`id` existant **sans rediffuser ni re‑notifier** — un renvoi ne produit plus de seconde copie. En mode privé il n'y a rien à comparer (non persisté) ; l'**anti‑rejeu du destinataire** (unicité du `mid`) écarte alors toute seconde copie remise en direct. Cf. `docs/SECURITY_E2E.md`.
+- **Fenêtre de perte résiduelle (limite connue)** : en mode privé, la présence est vérifiée au moment de l'envoi ; si le contact se déconnecte juste après, le message peut encore être perdu (pas de file d'attente). Utiliser le mode normal pour une remise garantie. Cf. `docs/SECURITY_E2E.md`.
+- **Renvoi idempotent (plus de doublon)** : le délai de 15 s de l'accusé est côté client uniquement, donc un accusé tardif signifie que le message a bien été accepté. Le renvoi réutilise désormais le `mid` d'origine et le serveur déduplique par `(sender_id, mid)` (index unique partiel), en répondant « succès » avec l'`id` existant sans rediffuser ni re‑notifier — un renvoi ne produit plus de seconde copie. En mode privé il n'y a rien à comparer (non persisté) ; l'anti‑rejeu du destinataire (unicité du `mid`) écarte alors toute seconde copie remise en direct. Cf. `docs/SECURITY_E2E.md`.
 
-### 🔐 Signature des messages (E2EE authentifié)
-- Les messages sont désormais **signés (RSA‑PSS)** en plus d'être chiffrés : le serveur ne peut plus fabriquer un message « de la part de » un contact. Nouvelle **enveloppe v2** (chiffrer‑puis‑signer) : signature sur une chaîne canonique à domaine dédié (`openwlm-msg-v2`), `from`/`to`/`mid` redondés **dans** le chiffré (anti‑*stripping*), vérification **avant** déchiffrement, liste blanche des champs de contenu.
-- **Affichage** : signé valide = normal ; ancien format / clé de l'émetteur indisponible = **⚠ non vérifié** ; signature invalide ou texte en clair = **⛔ rejeté**. **Anti‑rejeu** par identifiant de message, **anti‑rétrogradation**.
-- **Appels** : la signature de l'empreinte DTLS devient **obligatoire** (les cas « tolérants » refusent désormais la signalisation).
+### Signature des messages (E2EE authentifié)
+- Les messages sont désormais **signés (RSA‑PSS)** en plus d'être chiffrés : le serveur ne peut plus fabriquer un message « de la part de » un contact. Nouvelle enveloppe v2 (chiffrer‑puis‑signer) : signature sur une chaîne canonique à domaine dédié (`openwlm-msg-v2`), `from`/`to`/`mid` redondés dans le chiffré (anti‑*stripping*), vérification avant déchiffrement, liste blanche des champs de contenu.
+- **Affichage** : signé valide = normal ; ancien format / clé de l'émetteur indisponible = « ⚠ non vérifié » ; signature invalide ou texte en clair = « ⛔ rejeté ». Anti‑rejeu par identifiant de message, anti‑rétrogradation.
+- **Appels** : la signature de l'empreinte DTLS devient obligatoire (les cas jusqu'ici tolérés refusent désormais la signalisation).
 
-### 😉 Winks
+### Winks
 - **Pré-rendu** : la boucle de fin (redémarrage du SWF) est supprimée ; audio ré-aligné (offsets recalculés) ; vignette manquante de `bow` ajoutée.
 
-### 📚 Documentation
+### Documentation
 - Nouveaux documents : `docs/SECURITY_E2E.md` (périmètre E2E réel et limites), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
 - **Générateur de règles WAF** (`npm run waf:gen` / `waf:check`) piloté par l'audit des routes, avec auto-contrôle anti-« ouverture en grand » et vérification en CI.
 
 ## [Non publié] - 2026-10-08
 
-### 🔒 Durcissement du client de bureau (Electron)
-- **Isolation stricte du renderer** : `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` et `webSecurity: true` (auparavant `nodeIntegration: true` / `contextIsolation: false`, ce qui permettait à tout contenu injecté ou chargé à distance d'exécuter du code Node arbitraire sur la machine hôte).
+### Durcissement du client de bureau (Electron)
+- **Isolation du renderer** : `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` et `webSecurity: true` (auparavant `nodeIntegration: true` / `contextIsolation: false`, ce qui permettait à tout contenu injecté ou chargé à distance d'exécuter du code Node arbitraire sur la machine hôte).
 - Désactivation de `nodeIntegrationInWorker`, `allowRunningInsecureContent`, `experimentalFeatures` et `webviewTag`.
 - La navigation externe (`will-navigate`) et l'ouverture de nouvelles fenêtres (`window.open`, `target=_blank`) sont bloquées dans l'application et déléguées au navigateur système.
-- Permissions de session limitées au strict nécessaire : `media` (appels WebRTC) et `notifications` (push) ; toute autre demande de permission est refusée.
+- Permissions de session limitées au nécessaire : `media` (appels WebRTC) et `notifications` (push) ; toute autre demande de permission est refusée.
 
-### 🛡️ Sécurité & Vérification locale de contacts (Safety Number / IndexedDB)
+### Sécurité & vérification locale de contacts (Safety Number / IndexedDB)
 - **Vérification d'empreinte de clé publique (Safety Number)** :
-  - Calcul déterministe d'empreinte SHA-256 canonique à partir des composants RSA (`e`, `kty`, `n`) de la clé publique de contact.
-  - Formatage en 8 blocs de 4 caractères pour une comparaison ergonomique hors-bande (ex. `A1B2 C3D4 ...`).
-  - Détection automatique et instantanée de tout changement de clé publique avec révocation automatique du statut vérifié et bandeau d'alerte.
-  - Badge discret en SVG translucide Aero dans le header de conversation (vert avec coche `✓` si vérifié, rouge avec `?` si non vérifié).
-  - Modale dédiée Windows Aero pour inspecter l'empreinte et basculer l'état de confiance local.
-- **Stockage localisé dans le coffre-fort IndexedDB (`WLM_DeviceVault_v1`)** :
-  - Migration intégrale du stockage local depuis `localStorage['wlm_verified_contacts_v1']` vers l'object store `verified_contacts` d'IndexedDB.
-  - Migration automatique, idempotente et sans résidu : suppression propre de l'ancienne clé legacy et de tout drapeau dans `localStorage`.
-  - Résilience garantie : préservation des données legacy en cas d'erreur IndexedDB, fallback transparent si IndexedDB est désactivé.
+  - Calcul déterministe d'empreinte SHA-256 canonique à partir des composants RSA (`e`, `kty`, `n`) de la clé publique du contact.
+  - Formatage en 8 blocs de 4 caractères pour une comparaison hors-bande (ex. `A1B2 C3D4 ...`).
+  - Détection de tout changement de clé publique, avec révocation automatique du statut vérifié et bandeau d'alerte.
+  - Badge SVG Aero dans le header de conversation (vert avec coche `✓` si vérifié, rouge avec `?` si non vérifié).
+  - Modale Aero pour inspecter l'empreinte et basculer l'état de confiance local.
+- **Stockage dans le coffre IndexedDB (`WLM_DeviceVault_v1`)** :
+  - Migration du stockage local depuis `localStorage['wlm_verified_contacts_v1']` vers l'object store `verified_contacts` d'IndexedDB.
+  - Migration automatique et idempotente : l'ancienne clé legacy et les drapeaux associés sont supprimés de `localStorage`.
+  - En cas d'échec : les données legacy sont conservées si l'écriture IndexedDB échoue, avec un repli si IndexedDB est désactivé.
 
 ## [1.4.0] - 2026-10-05
 
-### 🔔 Notifications & PWA Web Push (Desktop & Mobile)
+### Notifications & PWA Web Push (Desktop & Mobile)
 - **Configuration VAPID de bout en bout (RFC 8291 / RFC 8292)** :
-  - Standardisation des variables d'environnement `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` et `VAPID_SUBJECT`.
-  - Intégration de la bibliothèque `web-push` avec chiffrement de charge utile RFC 8291 (`aes128gcm`) et signature JWT VAPID RFC 8292 (`ES256`).
-  - Validation stricte au démarrage du serveur : chargement prioritaire depuis l'environnement, repli automatique sur le fichier local sécurisé `.vapid_keys.json` (chmod `0600`, exclu de git), désactivation propre sans crash si les clés sont absentes.
-  - Protection absolue des secrets : la clé privée `VAPID_PRIVATE_KEY` n'est jamais exposée dans l'API, les réponses HTTP ou le frontend.
-  - Endpoint de contrôle d'état `GET /api/push/status` exposant de manière transparente `available`, `hasVapid` et `publicKey`.
-  - Endpoint de test authentifié `POST /api/push/test` permettant de tester la réception immédiate d'une notification push sur les appareils du compte connecté.
+  - Variables d'environnement `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` et `VAPID_SUBJECT`.
+  - Bibliothèque `web-push` avec chiffrement de charge utile RFC 8291 (`aes128gcm`) et signature JWT VAPID RFC 8292 (`ES256`).
+  - Validation au démarrage du serveur : chargement prioritaire depuis l'environnement, repli sur le fichier local `.vapid_keys.json` (chmod `0600`, exclu de git), push désactivé sans crash si les clés sont absentes.
+  - La clé privée `VAPID_PRIVATE_KEY` n'est jamais exposée dans l'API, les réponses HTTP ou le frontend.
+  - Endpoint de contrôle d'état `GET /api/push/status` exposant `available`, `hasVapid` et `publicKey`.
+  - Endpoint de test authentifié `POST /api/push/test` pour tester la réception d'une notification push sur les appareils du compte connecté.
   - Nettoyage automatique des abonnements expirés ou révoqués (`HTTP 404 / 410 Gone`) dans la base SQLite `push_subscriptions`.
-  - Utilitaire dédié `scripts/generate_vapid_keys.js` pour générer des clés VAPID sécurisées avec protection contre l'écrasement involontaire.
-- **Expérience PWA Android & Arrière-plan** :
-  - Support des notifications en arrière-plan via Service Worker (`push` et `notificationclick`).
-  - Redirection et ouverture automatique de la conversation (`OPEN_CHAT`) lors du clic sur une notification push ou système.
-  - Intégration d'icônes maskable conformes PWA (`pwa-maskable-192x192.png` et `pwa-maskable-512x512.png`) avec fond plein `#d5e9f8` et zone de sécurité centrale de 80%, éliminant les bordures blanches indésirables sur Android.
-- **Notifications Desktop & Toasts In-App Rétro WLM** :
-  - Arbitrage intelligent des notifications : toast in-app Aero rétro en avant-plan PC, notification système native en arrière-plan, aucune notification pour ses propres messages ou la conversation activement visible.
-  - Parcours d'activation assisté pour Microsoft Edge et les PWA Windows gérant les demandes de notification discrètes.
+  - Utilitaire `scripts/generate_vapid_keys.js` pour générer des clés VAPID, avec protection contre l'écrasement involontaire.
+- **PWA Android & arrière-plan** :
+  - Notifications en arrière-plan via Service Worker (`push` et `notificationclick`).
+  - Ouverture automatique de la conversation (`OPEN_CHAT`) au clic sur une notification push ou système.
+  - Icônes maskable PWA (`pwa-maskable-192x192.png` et `pwa-maskable-512x512.png`) avec fond plein `#d5e9f8` et zone de sécurité centrale de 80 %, pour supprimer les bordures blanches sur Android.
+- **Notifications desktop & toasts in-app** :
+  - Arbitrage des notifications : toast in-app Aero en avant-plan sur PC, notification système native en arrière-plan, aucune notification pour ses propres messages ou pour la conversation affichée.
+  - Parcours d'activation assisté pour Microsoft Edge et les PWA Windows, qui traitent les demandes de notification de façon discrète.
 
-### 🔄 Synchronisation temps réel multi-session
+### Synchronisation temps réel multi-session
 - **Diffusion des messages vers toutes les sessions actives d'un compte** :
   - Suivi multi-socket côté serveur (`userId → Set<socketId>`) remplaçant l'ancien mapping à socket unique, qui écrasait la session précédente à chaque nouvelle connexion.
   - Rooms Socket.IO par utilisateur (`user:<id>`) rejointes dès l'authentification du handshake et lors de `identify`.
-  - Un nouveau message est livré à **toutes** les sessions du destinataire, ainsi qu'aux **autres** sessions de l'expéditeur (sans doublon sur la session d'origine).
+  - Un nouveau message est livré à **toutes** les sessions du destinataire, ainsi qu'aux autres sessions de l'expéditeur (sans doublon sur la session d'origine).
   - Wizz, clins d'œil, mode privé, appels WebRTC, jeux et changements de statut migrés vers les rooms utilisateur.
-  - Le statut hors ligne n'est diffusé qu'à la fermeture de la **dernière** session du compte.
+  - Le statut hors ligne n'est diffusé qu'à la fermeture de la dernière session du compte.
   - Côté client, les messages synchronisés depuis une autre de ses propres sessions sont rangés dans la bonne conversation (celle du destinataire), sans son, sans notification et sans rejouer wizz/clin d'œil. Chiffrement E2EE inchangé (`keySender` déjà présent).
   - Test d'intégration `tests/test_multi_session_sync.js` (serveur réel sur base isolée, 2 sessions × 2 comptes).
 
-### 🗂️ Onglets de conversation
-- **Réorganisation des onglets par glisser-déposer** : déplacement horizontal avec indicateur d'insertion clair, ordre mis à jour au relâchement, sans impact sur l'ouverture, la fermeture, l'onglet actif ni les indicateurs de nouveaux messages (`src/utils/TabUtils.ts`, `tests/test_tabs_drag_and_drop.js`).
+### Onglets de conversation
+- **Réorganisation des onglets par glisser-déposer** : déplacement horizontal avec indicateur d'insertion, ordre mis à jour au relâchement, sans impact sur l'ouverture, la fermeture, l'onglet actif ni les indicateurs de nouveaux messages (`src/utils/TabUtils.ts`, `tests/test_tabs_drag_and_drop.js`).
 
-### 🔐 Provisioning des secrets
+### Provisioning des secrets
 - Script de provisioning `scripts/provision_vapid.sh` et fichier `.env.example` documenté ; les vraies clés ne sont jamais écrites dans un fichier suivi par Git.
 - Détecteur de secrets `scripts/check_secrets.js` (exécuté par `npm test`) et hook Git pre-commit installable via `scripts/install_git_hooks.sh`.
 
 ## [1.3.0] - 2026-10-03
 
-### 🔒 Sécurité & Persistance Client
-- **Architecture de stockage web durcie (surface d'exposition minimale)** :
-  - Élimination des jetons JWT, clés privées RSA brutes, JWK, coffres chiffrés et blobs cryptographiques de `localStorage` et `sessionStorage`.
-  - Restriction de `wlm_user` dans `localStorage` à une liste blanche stricte de champs d'affichage non sensibles : `{ id, username, nickname, avatar, scene, status, rememberMe }`.
-  - Nettoyeur proactif d'hygiène au démarrage purgeant automatiquement tout résidu historique ou clé non autorisée des versions antérieures.
-- **Coffre-fort E2EE local (`IndexedDB + Web Crypto`)** :
-  - Implémentation du coffre d'appareil `WLM_DeviceVault_v1` utilisant le clonage structuré natif d'IndexedDB pour persister la clé privée sous forme d'objet natif `CryptoKey` avec `extractable: false`.
-  - Résistance accrue contre l'exfiltration : le matériel cryptographique de la clé privée est conçu pour ne pas être exportable via les API Web Crypto standard (les appels directs à `crypto.subtle.exportKey()` sont rejetés par le moteur du navigateur), ce qui réduit significativement le risque d'exfiltration directe et améliore la protection contre le vol de stockage par injection de script (XSS).
-- **Durcissement des sessions serveur par cookie `HttpOnly; SameSite=Strict`** :
-  - Émission automatique par l'endpoint `/api/login` du cookie de session `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h`.
-  - Prise en charge transparente et unifiée des cookies sur toutes les routes Express et la négociation WebSocket (`io.use`).
-  - Révocation instantanée côté serveur et suppression du cookie lors de la déconnexion (`/api/logout`).
-- **Expérience utilisateur robuste "Mémoriser mes clés E2EE sur cet appareil"** :
-  - Wording bilingue modernisé et adapté au mobile : *"Mémoriser mes clés E2EE sur cet appareil"* / *"Remember my E2EE keys on this device"*.
-  - Approche UX non bloquante : la connexion n'est pas interrompue en cas d'indisponibilité du stockage local (quota dépassé, navigation privée) ; la session se poursuit normalement en mémoire vive avec un toast explicatif.
-  - Fonctionnalité *"Oublier cet appareil"* : suppression propre du trousseau IndexedDB, purge des marqueurs locaux et bascule en session mémoire seule sans déconnexion forcée.
-- **Indicateur rétro Aero raffiné et discret** :
-  - Remplacement du badge texte lourd par une mini-icône cadenas SVG de 12px intégrée à côté du statut utilisateur avec infobulle au survol, respectant l'alignement WLM et le responsive mobile.
+### Sécurité & persistance client
+- **Stockage web (surface d'exposition minimale)** :
+  - Jetons JWT, clés privées RSA brutes, JWK, coffres chiffrés et blobs cryptographiques retirés de `localStorage` et `sessionStorage`.
+  - `wlm_user` dans `localStorage` limité à une liste blanche de champs d'affichage non sensibles : `{ id, username, nickname, avatar, scene, status, rememberMe }`.
+  - Nettoyage au démarrage qui purge les résidus des versions antérieures et les clés non autorisées.
+- **Coffre E2EE local (`IndexedDB + Web Crypto`)** :
+  - Coffre d'appareil `WLM_DeviceVault_v1` utilisant le clonage structuré d'IndexedDB pour persister la clé privée sous forme d'objet natif `CryptoKey` avec `extractable: false`.
+  - Le matériel cryptographique de la clé privée est conçu pour ne pas être exportable via les API Web Crypto standard (les appels directs à `crypto.subtle.exportKey()` sont rejetés par le moteur du navigateur), ce qui réduit significativement le risque d'exfiltration directe et améliore la protection contre le vol de stockage par injection de script (XSS).
+- **Sessions serveur en cookie `HttpOnly; SameSite=Strict`** :
+  - L'endpoint `/api/login` émet le cookie de session `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h`.
+  - Même prise en charge des cookies sur toutes les routes Express et à la négociation WebSocket (`io.use`).
+  - Révocation côté serveur et suppression du cookie lors de la déconnexion (`/api/logout`).
+- **« Mémoriser mes clés E2EE sur cet appareil »** :
+  - Nouveau libellé bilingue, plus court sur mobile : *"Mémoriser mes clés E2EE sur cet appareil"* / *"Remember my E2EE keys on this device"*.
+  - Non bloquant : la connexion n'est pas interrompue si le stockage local est indisponible (quota dépassé, navigation privée) ; la session continue en mémoire vive avec un toast explicatif.
+  - *"Oublier cet appareil"* : suppression du trousseau IndexedDB, purge des marqueurs locaux et bascule en session mémoire seule sans déconnexion forcée.
+- **Indicateur cadenas** :
+  - Remplacement du badge texte par une icône cadenas SVG de 12px à côté du statut utilisateur, avec infobulle au survol ; alignement WLM conservé, fonctionne sur mobile.
 - **Mise à niveau du Service Worker** :
-  - Incrémentation du cache en `openwlm-v4` pour forcer le rafraîchissement immédiat de la coquille applicative et des bundles JS.
+  - Cache passé en `openwlm-v4` pour forcer le rafraîchissement de la coquille applicative et des bundles JS.
 
 ## [1.2.1] - 2026-10-03
 
-### 🎨 Visuel & Assets
-- **Vraie transparence alpha pour toutes les émoticônes (PNG & APNG)** :
-  - Disparition complète des halos blancs, cadres rectangulaires et contours crénelés autour des émoticônes sur fond coloré (Aero bleu `#3B84D1`) ou sombre.
+### Visuel & assets
+- **Transparence alpha pour toutes les émoticônes (PNG & APNG)** :
+  - Suppression des halos blancs, cadres rectangulaires et contours crénelés autour des émoticônes sur fond coloré (Aero bleu `#3B84D1`) ou sombre.
   - Conversion des 59 émoticônes statiques du format GIF 8-bit opaque vers le format PNG 32-bit RGBA avec anti-aliasing alpha progressif et dé-matting des contours.
-  - Conversion des 10 émoticônes animées (`cry_smile`, `wink_smile`, `party`, `Sleepy`, `thinking`, `eye-rolling`, `idk`, `Lightning`, `bat`, `cake`) en Animated PNG (APNG) avec canal alpha 8-bit natif par image et respect strict du nombre de frames et des délais en millisecondes d'origine.
+  - Conversion des 10 émoticônes animées (`cry_smile`, `wink_smile`, `party`, `Sleepy`, `thinking`, `eye-rolling`, `idk`, `Lightning`, `bat`, `cake`) en Animated PNG (APNG) avec canal alpha 8-bit par image, en conservant le nombre de frames et les délais en millisecondes d'origine.
   - Mise à jour du placeholder de la fenêtre d'ajout de contact vers `pseudo@openwlm.dev`.
-- **Vraie transparence alpha pour le logo papillon OpenWLM** :
-  - Suppression complète du cadre rectangulaire blanc opaque autour de `openwlm_logo.png`, particulièrement visible en mode sombre sur la page de connexion.
-  - Détourage précis par inondation BFS et dé-matting multi-passes orthogonal des contours sans altérer la netteté, les reflets gloss supérieurs des ailes, ni l'espace négatif central entre les ailes.
+- **Transparence alpha pour le logo papillon OpenWLM** :
+  - Suppression du cadre rectangulaire blanc opaque autour de `openwlm_logo.png`, visible surtout en mode sombre sur la page de connexion.
+  - Détourage par inondation BFS et dé-matting multi-passes orthogonal des contours, sans altérer la netteté, les reflets gloss supérieurs des ailes, ni l'espace négatif central entre les ailes.
 
 ## [1.2.0] - 2026-10-03
 
-### ✨ Fonctionnalités
+### Fonctionnalités
 - **Émoticônes dans les pseudos et messages de statut (PSM)** :
-  - Support fidèle et nostalgique des émoticônes rétro emblématiques directement au sein des pseudonymes et messages de statut personnel (PSM).
-  - Intégration globale dans toute l'interface : profil personnel, liste de contacts (en ligne, hors ligne, invitations en attente), onglets de conversation, en-tête de chat, nom d'expéditeur des messages, bannières d'invitation, bandeau réduit de jeu (docked pill), tableaux des scores (Puissance 4, Morpion, Dames) et appels audio/vidéo.
-  - Formateur modulaire sécurisé sans injection HTML (composants React stricts, zéro risque XSS).
-  - Optimisation Fast-Path par expression régulière garantissant un rendu instantané et sans allocation pour les pseudos textuels classiques.
-  - Dimensionnement typographique proportionnel en unités relatives `em` (`1.2em`, max 16px, min 11px) et calage vertical `-0.18em` préservant les hauteurs de ligne et l'alignement Aero.
-  - Conservation du texte brut pour les codes non reconnus et troncature propre anti-overflow sur mobile.
+  - Émoticônes rétro prises en charge dans les pseudonymes et messages de statut personnel (PSM).
+  - Affichées dans le profil personnel, la liste de contacts (en ligne, hors ligne, invitations en attente), les onglets de conversation, l'en-tête de chat, le nom d'expéditeur des messages, les bannières d'invitation, le bandeau réduit de jeu (docked pill), les tableaux des scores (Puissance 4, Morpion, Dames) et les appels audio/vidéo.
+  - Formateur modulaire sans injection HTML (composants React, pas de risque XSS).
+  - Chemin rapide par expression régulière : rendu sans allocation pour les pseudos sans émoticône.
+  - Dimensionnement en unités relatives `em` (`1.2em`, max 16px, min 11px) et calage vertical `-0.18em`, qui préservent les hauteurs de ligne et l'alignement Aero.
+  - Conservation du texte brut pour les codes non reconnus et troncature anti-débordement sur mobile.
 
 ## [1.1.0] - 2026-10-02
 
-### 🎮 Fonctionnalités
+### Fonctionnalités
 - **Mini-jeu Puissance 4 (Connect Four) 1v1** :
-  - Plateau 7x6 avec esthétique rétro Aero authentique (cadre bleu biseauté, jetons 3D brillants rouges et jaunes).
-  - Validation faisant autorité côté serveur : respect des tours, calcul de gravité, rejet de colonne pleine, détection automatique des victoires et matchs nuls.
-  - Animation fluide de chute de jetons, surbrillance scintillante des 4 pions vainqueurs, et guide visuel au survol.
-  - Support bilingue natif (FR/EN) pour les bannières de jeu, les scores et les infobulles.
-  - Intégration complète dans le chat (menu Jeux, bannières d'invitation, barre réduite, assistant bot `/p4` ou `/puissance4`).
-  - Rendu responsive mobile anti-overflow.
-  - Pastilles de couleur discrètes élégamment intégrées sur la ligne du pseudo des joueurs.
+  - Plateau 7x6 au style Aero (cadre bleu biseauté, jetons 3D brillants rouges et jaunes).
+  - Validation côté serveur faisant autorité : respect des tours, calcul de gravité, rejet de colonne pleine, détection automatique des victoires et matchs nuls.
+  - Animation de chute des jetons, surbrillance des 4 pions vainqueurs et guide visuel au survol.
+  - Bannières de jeu, scores et infobulles en français et en anglais.
+  - Accessible depuis le chat (menu Jeux, bannières d'invitation, barre réduite, assistant bot `/p4` ou `/puissance4`).
+  - Rendu mobile sans débordement.
+  - Pastilles de couleur sur la ligne du pseudo des joueurs.
 
 ## [1.0.0] - 2026-10-02
 
-Cette version majeure consolide la réécriture moderne de la messagerie instantanée rétro fin des années 2000 (thème Aero) avec un durcissement de sécurité de niveau production, un contact d'assistance de test intégré ("OpenWLM"), et une couverture de tests de non-régression automatisée.
+Cette version consolide la recréation de la messagerie instantanée de la fin des années 2000 (thème Aero) avec un durcissement de sécurité, un contact d'assistance de test intégré ("OpenWLM") et une couverture de tests de non-régression automatisée.
 
-### 🚀 Fonctionnalités (Features)
+### Fonctionnalités (Features)
 
-- **Contact système & Assistant de test intégré ("OpenWLM")** :
-  - Contact système virtuel dédié (ID `-1`) permettant aux nouveaux utilisateurs de tester immédiatement l'interface sans nécessiter de second compte.
-  - État vide central soigné avec bouton interactif *"Démarrer une conversation de test"*.
-  - Section *"Bot (1)"* discrète et repliable dans la liste de contacts, badge sobre `BOT`.
+- **Contact système & assistant de test intégré ("OpenWLM")** :
+  - Contact système virtuel (ID `-1`) permettant aux nouveaux utilisateurs de tester l'interface sans second compte.
+  - État vide central avec un bouton *"Démarrer une conversation de test"*.
+  - Section *"Bot (1)"* repliable dans la liste de contacts, avec un badge `BOT`.
   - Commandes de test intégrées : Aide (`aide`), Écho (`echo`), Émoticônes (`emoticones`), Sons (`sons`), Wizz (`wizz`), Morpion solo (`morpion`).
-  - Isolation 100% côté client : zéro trafic réseau parasite, zéro écriture en base de données, zéro conflit avec les vrais contacts.
+  - Fonctionne entièrement côté client : aucun trafic réseau, aucune écriture en base de données, aucun conflit avec les vrais contacts.
 - **Émoticônes personnalisées chiffrées de bout en bout (E2EE)** :
   - Gestion des raccourcis personnalisés avec chiffrement Zero-Knowledge (AES-256-GCM).
-  - Support des images statiques (PNG, WebP, JPEG) et animées (GIF).
-  - Découpage automatique des tailles d'affichage (inline 19px et standard 50px).
-- **Activités & Jeux multijoueurs intégrés** :
-  - Morpion classique (Tic-Tac-Toe) temps réel.
-  - Jeu de dames (Checkers) temps réel avec validation côté serveur.
-  - Réduction de fenêtre de jeu (dock banner) sans interrompre la discussion.
+  - Images statiques (PNG, WebP, JPEG) et animées (GIF).
+  - Deux tailles d'affichage générées automatiquement (inline 19px et standard 50px).
+- **Activités & jeux multijoueurs** :
+  - Morpion (Tic-Tac-Toe) en temps réel.
+  - Jeu de dames (Checkers) en temps réel avec validation côté serveur.
+  - Réduction de la fenêtre de jeu (dock banner) sans interrompre la discussion.
 - **Transfert de fichiers chiffré E2EE** :
   - Partage de fichiers volumineux chiffrés avec expiration automatique (4 heures).
-  - Aperçu direct des images avec déchiffrement à la volée et zoom lightbox.
-- **Expérience Aero fin des années 2000 authentique** :
+  - Aperçu des images déchiffrées dans le navigateur, avec zoom lightbox.
+- **Style Aero fin des années 2000** :
   - Sons d'origine (connexion, message, wizz, appel, nudge).
   - Clins d'œil animés (Winks), Wizz avec secousse d'écran.
   - Surnom, message personnel (PSM), sélecteur d'avatars et de scènes rétro.
-- **Internationalisation Complète (FR / EN)** :
-  - Fournisseur réactif `I18nProvider` avec bascule instantanée sans rechargement entre le français et l'anglais.
-  - Traduction intégrale de l'authentification, de la liste de contacts, de la barre d'outils, des en-têtes de messages et de la boîte d'options classique rétro.
-  - Prise en charge bilingue des mini-jeux (Dames, Morpion), du lecteur de clips vocaux, des appels WebRTC et du gestionnaire d'émoticônes personnalisées.
-  - Zéro régression visuelle ni débordement d'interface, préservant scrupuleusement l'esthétique Aero de la fin des années 2000.
+- **Interface bilingue (FR / EN)** :
+  - Fournisseur `I18nProvider` avec bascule sans rechargement entre le français et l'anglais.
+  - Traduction de l'authentification, de la liste de contacts, de la barre d'outils, des en-têtes de messages et de la boîte d'options.
+  - Mini-jeux (Dames, Morpion), lecteur de clips vocaux, appels WebRTC et gestionnaire d'émoticônes personnalisées traduits.
+  - Pas de débordement d'interface dans l'une ou l'autre langue.
 
 ---
 
-### 🛡️ Sécurité (Security Hardening)
+### Sécurité (Security Hardening)
 
-#### Priorité 1 — Authentification forte & Contrôle des accès
-- **Secret JWT robuste** :
-  - Élimination de tout secret statique par défaut.
-  - Génération automatique d'une clé cryptographique de 256 bits (`.jwt_secret`) avec permissions restrictives (`0600`) et exclusion Git.
+#### Priorité 1 — Authentification & contrôle des accès
+- **Secret JWT** :
+  - Suppression de tout secret statique par défaut.
+  - Génération automatique d'une clé cryptographique de 256 bits (`.jwt_secret`) avec permissions `0600` et exclusion Git.
 - **Helper d'autorisation centralisé `canInteract(senderId, targetId)`** :
-  - Contrôle systématique du lien de contact mutuel et de l'absence de blocage.
+  - Contrôle du lien de contact mutuel et de l'absence de blocage.
   - Appliqué avant toute émission de message, Wizz, Clin d'œil, appel WebRTC, invitation de jeu ou transfert de fichier.
 - **Prévention de l'usurpation d'identité (Anti-Spoofing)** :
   - Rejet immédiat si `socket.user.id !== senderId`.
-  - Recalcul obligatoire du pseudonyme (`senderNickname`) depuis la base de données SQL (aucune confiance accordée au client).
-- **Mode Privé (Off-The-Record) appliqué côté serveur** :
+  - Pseudonyme (`senderNickname`) toujours recalculé depuis la base de données SQL (aucune confiance accordée au client).
+- **Mode privé (Off-The-Record) appliqué côté serveur** :
   - Aucune persistance côté serveur si l'un des contacts a activé le mode privé global (`global_private = 1`), quels que soient les paramètres envoyés par le client.
 
-#### Priorité 2 — Isolation des données & Révocation
+#### Priorité 2 — Isolation des données & révocation
 - **Sécurisation des transferts de fichiers (`/api/files/upload`)** :
   - Contrôle `canInteract` obligatoire avant acceptation du fichier.
-  - Quota de stockage strict de **1 Go** par compte utilisateur pour les fichiers partagés.
+  - Quota de stockage de **1 Go** par compte utilisateur pour les fichiers partagés.
   - Rate limiting dédié aux téléversements : maximum 5 uploads par minute par IP (HTTP 429).
   - Jetons d'accès cryptographiques de 24 octets hexadécimaux avec expiration de 4 heures.
-- **Révocation instantanée des sessions JWT (`token_version`)** :
+- **Révocation des sessions JWT (`token_version`)** :
   - Colonne `token_version` en base de données, vérifiée dans le middleware Express et WebSocket.
-  - Révocation automatique et immédiate lors du changement de mot de passe.
-  - Endpoint dédié `POST /api/logout` et événement `manual_disconnect` incrémentant la version côté serveur.
-- **Validation stricte des invitations de jeux (`game_accept`)** :
-  - Obligation d'une invitation préalable active stockée en mémoire avec expiration TTL de 60 secondes.
-  - Consommation unique de l'invitation à l'acceptation (anti-forçage de partie).
+  - Révocation automatique lors du changement de mot de passe.
+  - Endpoint `POST /api/logout` et événement `manual_disconnect` incrémentant la version côté serveur.
+- **Validation des invitations de jeux (`game_accept`)** :
+  - Invitation préalable active obligatoire, stockée en mémoire avec une expiration de 60 secondes.
+  - Invitation consommée à l'acceptation (une partie ne peut pas être forcée).
 - **Protection du cache des émoticônes (`CustomEmoticonsDB`)** :
   - Méthode `clearAll()` purgeant l'IndexedDB locale (clés AES et blobs) et révoquant les URLs mémoire lors de la déconnexion.
 
 #### Priorité 3 — Défense en profondeur
-- **Neutralisation des attaques temporelles (Anti-Timing Attacks)** :
+- **Attaques temporelles (Anti-Timing Attacks)** :
   - Utilisation de `crypto.timingSafeEqual` sur les buffers binaires PBKDF2 lors de l'authentification (`/api/login`) et du changement de mot de passe (`/api/user/change-password`).
 - **Prévention des fuites mémoire (Anti-DoS RAM)** :
-  - Nettoyage périodique automatique toutes les 5 minutes des structures mémoire (`captchas`, `rateLimitStorage`, `uploadRateLimitStorage`).
+  - Nettoyage automatique toutes les 5 minutes des structures mémoire (`captchas`, `rateLimitStorage`, `uploadRateLimitStorage`).
 
 ---
 
-### 🔧 Corrections (Bug Fixes)
+### Corrections (Bug Fixes)
 
-- Correction de la mise en cache agressive des raccourcis d'émoticônes personnalisées supprimées.
+- Correction de la mise en cache des raccourcis d'émoticônes personnalisées supprimées.
 - Correction de l'attribution des messages de transfert de fichiers (*"[Contact] vous a envoyé un fichier"* au lieu de *"[Contact] dit"*).
 - Correction du déclenchement du son de connexion lors de l'arrivée d'un contact en ligne.
 - Harmonisation du Content Security Policy (CSP) en production et derrière Cloudflare Tunnel.
 
 ---
 
-### 🧪 Infrastructure & Tests
+### Infrastructure & tests
 
 - **Suite de tests de sécurité automatisés (`tests/audit_security_enforcement.js`)** :
   - Suite de tests sans interface envoyant des requêtes directes pour vérifier que les principales restrictions côté client sont aussi appliquées côté serveur.
-  - Commande intégrée `npm run test:security` / `npm test`.
+  - Commande `npm run test:security` / `npm test`.
 - **Script de peuplement de démonstration (`scripts/seed-demo.js`)** :
-  - Commande `npm run db:seed` créant un environnement de test local propre (Alice & Bob) sans aucune donnée personnelle.
+  - Commande `npm run db:seed` créant un environnement de test local (Alice & Bob) sans aucune donnée personnelle.
 - **Routine de sauvegarde à froid** :
-  - Procédure standardisée de snapshot `tar.gz` avant toute opération sensible.
+  - Procédure de snapshot `tar.gz` documentée avant toute opération sensible.

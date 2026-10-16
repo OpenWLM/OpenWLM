@@ -209,5 +209,5 @@ l'authentification et l'abus côté serveur :
   cf. `docs/DEPLOYMENT.md` ; exceptions des handlers Socket.IO confinées à l'événement.
 - Retrait de la dépendance inutilisée `sqlite3`.
 
-> ⚠️ **Limites inchangées** : pas de forward secrecy, métadonnées non protégées, TOFU au
+> **Limites inchangées** : pas de forward secrecy, métadonnées non protégées, TOFU au
 > premier contact, confiance dans le JS servi (cf. §2–§3).

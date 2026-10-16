@@ -11,248 +11,248 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - 2026-10-12
 
-### 🛡️ Server hardening & anti-abuse
+### Server hardening & anti-abuse
 - **Asynchronous hashing**: `crypto.pbkdf2` (libuv pool) instead of `pbkdf2Sync` — every login attempt blocked the whole event loop (~113 ms); PBKDF2 parameters are unchanged (existing hashes stay valid).
 - **Constant-time login**: a full PBKDF2 is computed even for a non-existent account (anti account-enumeration).
 - **Signup**: hashcash proof-of-work bound to the captcha and single-use (`POW_DIFFICULTY`, default 17) + per-IP cap on successful signups over a sliding 24 h (`SIGNUP_IP_DAILY_LIMIT`, default 10).
-- **E2EE keys**: the password proof (`authKeyHex`) is now required for **every** key write, including the first install (prevents installing an attacker-controlled identity on a stolen session).
+- **E2EE keys**: the password proof (`authKeyHex`) is now required for every key write, including the first install (prevents installing an attacker-controlled identity on a stolen session).
 - **Calls**: `call_accept` / `call_reject` are honored only for an actually pending call (anti "busy" DoS).
-- **Robustness**: clean exit (code 1) on an unhandled error so a supervisor restarts it; exceptions inside Socket.IO handlers are confined to the event. **A supervisor (systemd/pm2/Docker) is now mandatory in production** — see `docs/DEPLOYMENT.md`.
-- **`.env` loading fixed**: moved into a module imported **first** (`server/loadEnv.js`), so a `JWT_SECRET` (or `VAPID_*`) provided in `.env` is honored **before** modules initialize. Previously `.env` was loaded in the body of `index.js`, i.e. after `middleware/auth.js` evaluated (`SECRET = getJwtSecret()`), which then fell back to a generated `.jwt_secret`.
+- **Crash handling**: clean exit (code 1) on an unhandled error so a supervisor restarts it; exceptions inside Socket.IO handlers are confined to the event. A supervisor (systemd/pm2/Docker) is now mandatory in production — see `docs/DEPLOYMENT.md`.
+- **`.env` loading fixed**: moved into a module imported first (`server/loadEnv.js`), so a `JWT_SECRET` (or `VAPID_*`) provided in `.env` is honored before modules initialize. Previously `.env` was loaded in the body of `index.js`, i.e. after `middleware/auth.js` evaluated (`SECRET = getJwtSecret()`), which then fell back to a generated `.jwt_secret`.
 - Removed the unused `sqlite3` dependency (−18 packages).
 
-### 📞 Calls (WebRTC) — reliability & end-to-end
-- **E2EE**: signaling (SDP/ICE) **encrypted** with the existing E2EE (the server becomes a blind relay) + **DTLS fingerprint signed (RSA-PSS)** and verified on receipt (anti-MITM).
-- **Network**: configurable ICE servers via `GET /api/rtc-config` (STUN/TURN — static or ephemeral TURN credentials); **ICE restart** on `disconnected`/`failed` and on socket reconnect; bounded bitrate budgets.
-- **UI**: mic/camera on-off, timer, quality indicator, mic/camera/speaker pickers, fullscreen/PiP, screen sharing, responsive; **looping ring** + **system notification** on incoming call.
-- **Non-blocking call window**: a call is no longer a full-viewport overlay that swallowed every click. It is a small window you can drag (clamped to the viewport), minimize/expand **without unmounting the WebRTC streams**, so the contact list and other conversations stay usable during the call (WLM 2009 style). Only the incoming-call accept/reject decision keeps the centered, dimmed modal; on mobile the window starts minimized (bar above the composer) and the ringing dialog keeps accept/reject fully visible (fixed a truncation caused by the video stage collapsing to zero height).
-- **Dynamic adaptation** of bitrate/resolution (`getStats`) and ***perfect negotiation***.
+### Calls (WebRTC) — reliability & end-to-end
+- **E2EE**: signaling (SDP/ICE) is encrypted with the existing E2EE (the server becomes a blind relay), and the DTLS fingerprint is signed (RSA-PSS) and verified on receipt (anti-MITM).
+- **Network**: configurable ICE servers via `GET /api/rtc-config` (STUN/TURN — static or ephemeral TURN credentials); ICE restart on `disconnected`/`failed` and on socket reconnect; bounded bitrate budgets.
+- **UI**: mic/camera on-off, timer, quality indicator, mic/camera/speaker pickers, fullscreen/PiP, screen sharing, responsive layout; looping ring and system notification on incoming call.
+- **Non-blocking call window**: a call is no longer a full-viewport overlay that swallowed every click. It is a small window you can drag (clamped to the viewport), minimize/expand without unmounting the WebRTC streams, so the contact list and other conversations stay usable during the call (WLM 2009 style). Only the incoming-call accept/reject decision keeps the centered, dimmed modal; on mobile the window starts minimized (bar above the composer) and the ringing dialog keeps accept/reject fully visible (fixed a truncation caused by the video stage collapsing to zero height).
+- **Dynamic adaptation** of bitrate/resolution (`getStats`) and *perfect negotiation*.
 
-### 💬 Messaging
-- **Rich input**: typed emoticons (`:)`, `:D`, `(L)`, custom) render as inline images **while typing** and push the text (no more overlap).
-- **Rate limiting**: **Wizz** and **Winks** counters are now **separate** (independent 3/min and 7/min); cleanup window aligned with the handlers.
-- **"Not sent" + Resend**: sending (text, file, voice) now waits for the server ack (15 s timeout). On refusal, timeout or disconnection the message is marked **⚠ Not sent** (reason as tooltip) with a **Resend** button instead of staying "pending" forever. Resending re-signs the message **with the original `mid`** and the **current** private-mode setting; the plaintext is kept **in memory only**.
-- **Private mode + offline contact**: nothing is stored server-side, so the message is now **explicitly refused** (`RECIPIENT_OFFLINE_PRIVATE`) instead of being silently lost while the sender saw "sent". Normal messages are unchanged (stored, delivered on reconnection). Winks follow the same rule (an ack now drives the sender's feedback).
+### Messaging
+- **Rich input**: typed emoticons (`:)`, `:D`, `(L)`, custom) render as inline images while typing and push the text (no more overlap).
+- **Rate limiting**: Wizz and Winks counters are now separate (independent 3/min and 7/min); cleanup window aligned with the handlers.
+- **"Not sent" + Resend**: sending (text, file, voice) now waits for the server ack (15 s timeout). On refusal, timeout or disconnection the message is marked "⚠ Not sent" (reason as tooltip) with a Resend button instead of staying "pending" forever. Resending re-signs the message with the original `mid` and the current private-mode setting; the plaintext is kept in memory only.
+- **Private mode + offline contact**: nothing is stored server-side, so the message is now explicitly refused (`RECIPIENT_OFFLINE_PRIVATE`) instead of being silently lost while the sender saw "sent". Normal messages are unchanged (stored, delivered on reconnection). Winks follow the same rule (an ack now drives the sender's feedback).
 - **Voice clips**: encoded at 32 kbit/s with an automatic 90 s stop (system line), keeping the clip under the 1 MB socket frame limit; oversized payloads are marked "too large" without a resend button.
-- **Remaining loss window (honest limit)**: in private mode, presence is checked **at send time**; if the contact disconnects right after, the message can still be lost (no queue). Use normal mode for guaranteed delivery. See `docs/SECURITY_E2E.md`.
-- **Idempotent resend (no duplicate)**: the 15 s ack timeout is **client-side only**, so a late ack means the message was actually accepted. The resend now **reuses the original `mid`** and the server **deduplicates by `(sender_id, mid)`** (partial unique index), answering "success" with the existing id **without re-delivering or re-notifying** — a resend no longer produces a second copy. Private mode has nothing to compare (not persisted); there, the recipient's **replay protection** (unique `mid`) drops any second live copy. See `docs/SECURITY_E2E.md`.
+- **Remaining loss window (known limit)**: in private mode, presence is checked at send time; if the contact disconnects right after, the message can still be lost (no queue). Use normal mode for guaranteed delivery. See `docs/SECURITY_E2E.md`.
+- **Idempotent resend (no duplicate)**: the 15 s ack timeout is client-side only, so a late ack means the message was actually accepted. The resend now reuses the original `mid` and the server deduplicates by `(sender_id, mid)` (partial unique index), answering "success" with the existing id without re-delivering or re-notifying — a resend no longer produces a second copy. Private mode has nothing to compare (not persisted); there, the recipient's replay protection (unique `mid`) drops any second live copy. See `docs/SECURITY_E2E.md`.
 
-### 🔐 Message signatures (authenticated E2EE)
-- Messages are now **signed (RSA-PSS)** in addition to being encrypted: the server can no longer forge a message "from" a contact. New **v2 envelope** (encrypt-then-sign): signature over a domain-separated canonical string (`openwlm-msg-v2`), `from`/`to`/`mid` duplicated **inside** the ciphertext (anti-stripping), verification **before** decryption, content-field allowlist.
-- **Display**: valid signature = normal; legacy format / sender key unavailable = **⚠ unverified**; invalid signature or plaintext = **⛔ rejected**. **Replay protection** by message id, **anti-downgrade**.
-- **Calls**: the DTLS fingerprint signature is now **mandatory** (the previous "tolerant" cases now reject the signaling).
+### Message signatures (authenticated E2EE)
+- Messages are now **signed (RSA-PSS)** in addition to being encrypted: the server can no longer forge a message "from" a contact. New v2 envelope (encrypt-then-sign): signature over a domain-separated canonical string (`openwlm-msg-v2`), `from`/`to`/`mid` duplicated inside the ciphertext (anti-stripping), verification before decryption, content-field allowlist.
+- **Display**: valid signature = normal; legacy format / sender key unavailable = "⚠ unverified"; invalid signature or plaintext = "⛔ rejected". Replay protection by message id, anti-downgrade.
+- **Calls**: the DTLS fingerprint signature is now mandatory (the cases previously tolerated now reject the signaling).
 
-### 😉 Winks
+### Winks
 - **Pre-render**: the trailing SWF loop (restart) is removed; audio re-aligned (recomputed offsets); added the missing `bow` thumbnail.
 
-### 📚 Documentation
+### Documentation
 - New docs: `docs/SECURITY_E2E.md` (real E2E scope and limits), `docs/CALLS.md`, `docs/DEPLOYMENT.md`, `docs/CLOUDFLARE_WAF.md`.
 - **WAF rule generator** (`npm run waf:gen` / `waf:check`) driven by route auditing, with a "don't open wide" self-check and a CI guard.
 
 ## [Unreleased] - 2026-10-08
 
-### 🔒 Desktop Client (Electron) Renderer Hardening
-- **Strict renderer isolation**: `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` and `webSecurity: true` (previously `nodeIntegration: true` / `contextIsolation: false`, which let any injected or remotely loaded content execute arbitrary Node code on the host machine).
+### Desktop client (Electron) renderer hardening
+- **Renderer isolation**: `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` and `webSecurity: true` (previously `nodeIntegration: true` / `contextIsolation: false`, which let any injected or remotely loaded content execute arbitrary Node code on the host machine).
 - Disabled `nodeIntegrationInWorker`, `allowRunningInsecureContent`, `experimentalFeatures` and `webviewTag`.
 - External top-level navigation (`will-navigate`) and new windows (`window.open`, `target=_blank`) are blocked inside the app and delegated to the system browser instead.
-- Session permissions restricted to the strictly required `media` (WebRTC calls) and `notifications` (push); every other permission request is denied.
+- Session permissions restricted to the required `media` (WebRTC calls) and `notifications` (push); every other permission request is denied.
 
-### 🛡️ Security & Local Contact Verification (Safety Number / IndexedDB)
-- **Public Key Fingerprint Verification (Safety Number)**:
-  - Deterministic canonical SHA-256 fingerprint computation from contact public key RSA components (`e`, `kty`, `n`).
-  - Formatted into 8 blocks of 4 characters for easy out-of-band verification (e.g. `A1B2 C3D4 ...`).
-  - Automatic and immediate key change detection with verified status revocation and alert banner.
-  - Discreet translucent Aero SVG shield badge in conversation header (green with `✓` if verified, red with `?` if unverified).
-  - Dedicated Windows Aero dialog to inspect safety numbers and toggle verification state.
-- **Device Vault Storage in IndexedDB (`WLM_DeviceVault_v1`)**:
-  - Full local storage migration from `localStorage['wlm_verified_contacts_v1']` to IndexedDB's `verified_contacts` object store.
-  - Automatic, idempotent, residue-free migration: clean removal of legacy key and flags from `localStorage`.
-  - Resilience guarantees: preserves legacy data on store write errors, seamless transparent fallback if IndexedDB is disabled.
+### Security & local contact verification (Safety Number / IndexedDB)
+- **Public key fingerprint verification (Safety Number)**:
+  - Deterministic canonical SHA-256 fingerprint computed from the contact's public key RSA components (`e`, `kty`, `n`).
+  - Formatted into 8 blocks of 4 characters for out-of-band verification (e.g. `A1B2 C3D4 ...`).
+  - Key change detection, with revocation of the verified status and an alert banner.
+  - Aero SVG shield badge in the conversation header (green with `✓` if verified, red with `?` if unverified).
+  - Aero dialog to inspect safety numbers and toggle the verification state.
+- **Device vault storage in IndexedDB (`WLM_DeviceVault_v1`)**:
+  - Local storage migrated from `localStorage['wlm_verified_contacts_v1']` to IndexedDB's `verified_contacts` object store.
+  - Automatic, idempotent migration: the legacy key and flags are removed from `localStorage`.
+  - Failure handling: legacy data is kept on store write errors, with a fallback if IndexedDB is disabled.
 
 ## [1.4.0] - 2026-10-05
 
-### 🔔 Notifications & PWA Web Push (Desktop & Mobile)
-- **End-to-End VAPID Web Push Configuration (RFC 8291 / RFC 8292)**:
-  - Standardized configuration parameters: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`.
-  - Integrated `web-push` library with RFC 8291 payload encryption (`aes128gcm`) and RFC 8292 VAPID JWT signatures (`ES256`).
-  - Strict startup validation: environment priority with automatic fallback to secure local file `.vapid_keys.json` (chmod `0600`, excluded from git); cleanly disables push without crashing if keys are missing.
-  - Zero private key exposure: `VAPID_PRIVATE_KEY` is never exposed in API payloads, responses, or client bundles.
-  - Health check endpoint `GET /api/push/status` clearly reports `available`, `hasVapid`, and `publicKey`.
-  - Authenticated test route `POST /api/push/test` allows immediate test push dispatch to registered devices.
+### Notifications & PWA Web Push (desktop & mobile)
+- **VAPID Web Push configuration (RFC 8291 / RFC 8292)**:
+  - Configuration parameters: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`.
+  - `web-push` library with RFC 8291 payload encryption (`aes128gcm`) and RFC 8292 VAPID JWT signatures (`ES256`).
+  - Startup validation: environment first, with fallback to the local file `.vapid_keys.json` (chmod `0600`, excluded from git); push is disabled without crashing if keys are missing.
+  - `VAPID_PRIVATE_KEY` is never exposed in API payloads, responses, or client bundles.
+  - Health check endpoint `GET /api/push/status` reports `available`, `hasVapid`, and `publicKey`.
+  - Authenticated test route `POST /api/push/test` sends a test push to registered devices.
   - Automatic pruning of expired or unregistered subscriptions (`HTTP 404 / 410 Gone`) in SQLite `push_subscriptions`.
-  - Added key generation utility `scripts/generate_vapid_keys.js` with safeguards against unintended key overwrites.
-- **Android PWA & Background Support**:
-  - Full background notification delivery via Service Worker (`push` and `notificationclick`).
-  - Automatic chat window navigation and focus (`OPEN_CHAT`) on notification click.
-  - Added compliant PWA maskable icons (`pwa-maskable-192x192.png` and `pwa-maskable-512x512.png`) with `#d5e9f8` solid background and 80% safe zone to eliminate white borders on Android.
-- **Desktop Notifications & Retro WLM In-App Toasts**:
-  - Smart arbitration: retro Aero in-app toast when active in foreground on PC, native OS notification when in background, zero notifications for own messages or actively focused conversations.
-  - Guided permission activation workflow for Microsoft Edge and Windows PWAs handling quiet notification requests.
+  - Added key generation utility `scripts/generate_vapid_keys.js`, which refuses to overwrite existing keys unintentionally.
+- **Android PWA & background support**:
+  - Background notification delivery via Service Worker (`push` and `notificationclick`).
+  - Clicking a notification opens and focuses the chat window (`OPEN_CHAT`).
+  - Added PWA maskable icons (`pwa-maskable-192x192.png` and `pwa-maskable-512x512.png`) with a `#d5e9f8` solid background and 80% safe zone, to avoid white borders on Android.
+- **Desktop notifications & in-app toasts**:
+  - Arbitration: Aero in-app toast when the app is in the foreground on PC, native OS notification when in the background, no notification for your own messages or for the focused conversation.
+  - Guided permission activation for Microsoft Edge and Windows PWAs, which handle notification requests quietly.
 
-### 🔄 Real-Time Multi-Session Sync
+### Real-time multi-session sync
 - **Messages delivered to every active session of an account**:
   - Server-side multi-socket tracking (`userId → Set<socketId>`) replacing the former single-socket mapping, which overwrote the previous session on each new connection.
   - Per-user Socket.IO rooms (`user:<id>`) joined on handshake authentication and on `identify`.
-  - New messages are delivered to **all** recipient sessions and to the sender's **other** sessions (no duplicate on the originating session).
+  - New messages are delivered to **all** recipient sessions and to the sender's other sessions (no duplicate on the originating session).
   - Nudges, winks, private mode, WebRTC calls, games and status updates migrated to user rooms.
-  - Offline status is only broadcast when the account's **last** session closes.
+  - Offline status is only broadcast when the account's last session closes.
   - Client-side, messages synced from one of your own other sessions are filed under the correct conversation (the recipient's), with no sound, no notification and no replayed nudge/wink. E2EE unchanged (`keySender` already present).
   - Integration test `tests/test_multi_session_sync.js` (real server on an isolated database, 2 sessions × 2 accounts).
 
-### 🗂️ Conversation Tabs
-- **Drag-and-drop tab reordering**: horizontal dragging with a clear insertion indicator, order committed on drop, without affecting opening, closing, the active tab or new-message indicators (`src/utils/TabUtils.ts`, `tests/test_tabs_drag_and_drop.js`).
+### Conversation tabs
+- **Drag-and-drop tab reordering**: horizontal dragging with an insertion indicator, order committed on drop, without affecting opening, closing, the active tab or new-message indicators (`src/utils/TabUtils.ts`, `tests/test_tabs_drag_and_drop.js`).
 
-### 🔐 Secrets Provisioning
+### Secrets provisioning
 - Provisioning script `scripts/provision_vapid.sh` and documented `.env.example`; real keys are never written to a Git-tracked file.
 - Secret scanner `scripts/check_secrets.js` (run by `npm test`) and an installable Git pre-commit hook via `scripts/install_git_hooks.sh`.
 
 ## [1.3.0] - 2026-10-03
 
-### 🔒 Security & Client Persistence
-- **Hardened Client Storage Architecture**:
-  - Eliminated JWT tokens, raw RSA private keys, JWKs, encrypted key vaults, and cryptographic blobs from browser `localStorage` and `sessionStorage`.
-  - Restricted `wlm_user` in `localStorage` strictly to an explicit whitelist of non-sensitive display fields: `{ id, username, nickname, avatar, scene, status, rememberMe }`.
-  - Implemented proactive startup hygiene sweeps that scrub residual tokens, legacy private keys, and unauthorized storage keys left over from previous versions.
-- **Hardware-Isolated E2EE Key Storage (`IndexedDB + Web Crypto`)**:
-  - Implemented secure device vault `WLM_DeviceVault_v1` using native IndexedDB structured clones to persist private RSA keys as non-extractable `CryptoKey` objects (`extractable: false`).
-  - Strengthened defense against direct key theft: private key material is not exportable through standard Web Crypto APIs (direct calls to `crypto.subtle.exportKey()` are rejected by browser engines), which significantly reduces exfiltration risk and helps contain sensitive material outside Web Storage.
-- **Server-Side Session Hardening with `HttpOnly; SameSite=Strict` Cookies**:
-  - Login endpoint (`/api/login`) automatically issues session tokens via secure `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` cookies.
-  - Transparent dual-fallback authentication across all Express endpoints and Socket.IO handshakes (`io.use`), accepting both cookie headers and in-memory authorization headers.
-  - Instant session revocation and cookie purge on logout (`/api/logout`).
-- **Resilient "Remember Keys on this Device" UX**:
-  - Modernized mobile-friendly wording: *"Remember my E2EE keys on this device"* / *"Mémoriser mes clés E2EE sur cet appareil"*.
-  - Non-blocking authentication design: if local persistence encounters an error (e.g. storage quota limits, private browsing sandbox), user login continues smoothly in memory with a friendly non-blocking notification toast.
-  - *"Forget this device"* (`Oublier cet appareil`): cleanly removes cryptographic keys from IndexedDB, purges local markers, and transitions active session to memory-only without forced logout.
-- **Discreet Retro Aero Indicator**:
-  - Replaced bulky textual topbar badge with a minimalist 12px SVG padlock icon adjacent to the user status selector, with comprehensive hover tooltips preserving retro Aero aesthetics and mobile responsiveness.
-- **Service Worker Cache Upgrade**:
-  - Incremented cache to `openwlm-v4` to force immediate browser cache eviction and new bundle consumption.
+### Security & client persistence
+- **Client storage**:
+  - JWT tokens, raw RSA private keys, JWKs, encrypted key vaults, and cryptographic blobs removed from browser `localStorage` and `sessionStorage`.
+  - `wlm_user` in `localStorage` restricted to an explicit whitelist of non-sensitive display fields: `{ id, username, nickname, avatar, scene, status, rememberMe }`.
+  - Startup cleanup that removes residual tokens, legacy private keys, and unauthorized storage keys left over from previous versions.
+- **E2EE key storage (`IndexedDB + Web Crypto`)**:
+  - Device vault `WLM_DeviceVault_v1` using IndexedDB structured clones to persist private RSA keys as non-extractable `CryptoKey` objects (`extractable: false`).
+  - Private key material is not exportable through standard Web Crypto APIs (direct calls to `crypto.subtle.exportKey()` are rejected by browser engines), which significantly reduces exfiltration risk and helps contain sensitive material outside Web Storage.
+- **Server-side sessions in `HttpOnly; SameSite=Strict` cookies**:
+  - The login endpoint (`/api/login`) issues session tokens as `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` cookies.
+  - Authentication fallback across all Express endpoints and Socket.IO handshakes (`io.use`), accepting both cookie headers and in-memory authorization headers.
+  - Session revocation and cookie purge on logout (`/api/logout`).
+- **"Remember keys on this device"**:
+  - New wording, shorter on mobile: *"Remember my E2EE keys on this device"* / *"Mémoriser mes clés E2EE sur cet appareil"*.
+  - Non-blocking: if local persistence fails (e.g. storage quota, private browsing), login continues in memory and a toast explains it.
+  - *"Forget this device"* (`Oublier cet appareil`): removes cryptographic keys from IndexedDB, purges local markers, and switches the active session to memory-only without logging out.
+- **Padlock indicator**:
+  - Replaced the textual topbar badge with a 12px SVG padlock icon next to the status selector, with hover tooltips; works on mobile.
+- **Service Worker cache upgrade**:
+  - Cache bumped to `openwlm-v4` to force browsers to evict the old cache and load the new bundle.
 
 ## [1.2.1] - 2026-10-03
 
-### 🎨 Visual & Assets
-- **True Alpha Transparency for All Emoticons (PNG & APNG)**:
-  - Eliminated white rectangular halos, opaque borders, and matte fringes around all emoticons when rendered on colored (Aero blue `#3B84D1`) or dark backgrounds.
-  - Converted all 59 static emoticon assets from legacy 8-bit GIF89a to full 32-bit RGBA PNG files with anti-aliased alpha transparency and edge de-matting.
-  - Converted all 10 animated emoticon assets (`cry_smile`, `wink_smile`, `party`, `Sleepy`, `thinking`, `eye-rolling`, `idk`, `Lightning`, `bat`, `cake`) to native Animated PNG (APNG) with 8-bit per-frame alpha transparency while strictly preserving authentic frame counts and millisecond animation timings.
-  - Updated Add Contact modal placeholder from legacy hotmail to `pseudo@openwlm.dev`.
-- **True Alpha Transparency for OpenWLM Butterfly Logo**:
-  - Eliminated the opaque off-white rectangular bounding box around `openwlm_logo.png` visible on dark mode and colored backgrounds.
-  - Implemented smooth perimeter BFS flood-fill and multi-pass orthogonal edge de-matting against the background, preserving 100% of the authentic butterfly colors, shapes, gloss reflections, and negative space between wings.
+### Visual & assets
+- **Alpha transparency for all emoticons (PNG & APNG)**:
+  - Removed the white rectangular halos, opaque borders, and matte fringes around emoticons on colored (Aero blue `#3B84D1`) or dark backgrounds.
+  - Converted all 59 static emoticon assets from 8-bit GIF89a to 32-bit RGBA PNG files with anti-aliased alpha transparency and edge de-matting.
+  - Converted all 10 animated emoticon assets (`cry_smile`, `wink_smile`, `party`, `Sleepy`, `thinking`, `eye-rolling`, `idk`, `Lightning`, `bat`, `cake`) to Animated PNG (APNG) with 8-bit per-frame alpha transparency, keeping the original frame counts and millisecond animation timings.
+  - Updated the Add Contact modal placeholder from legacy hotmail to `pseudo@openwlm.dev`.
+- **Alpha transparency for the OpenWLM butterfly logo**:
+  - Removed the opaque off-white rectangular box around `openwlm_logo.png` visible on dark mode and colored backgrounds.
+  - Perimeter BFS flood-fill and multi-pass orthogonal edge de-matting against the background, keeping the butterfly's original colors, shapes, gloss reflections, and the negative space between wings.
 
 ## [1.2.0] - 2026-10-03
 
-### ✨ Features
-- **Emoticons in User Nicknames & PSM**:
-  - Authentic support for classic late-2000s emoticons inside user nicknames, display names, and personal status messages (PSM).
-  - Comprehensive UI integration: profile editor, contact roster (online, offline, pending), chat tabs, conversation header, message sender titles, game invite banners, docked game pill, scoreboard cards, and WebRTC audio/video calls.
-  - Safe, XSS-free React node parsing with zero HTML injection (`dangerouslySetInnerHTML` never used).
-  - Fast-path regex optimization ensuring instant zero-allocation rendering for plain text names without emoticons.
-  - Typographic `em`-based relative scaling (`1.2em`, max 16px, min 11px) with `-0.18em` vertical alignment strictly preserving line heights and retro Aero visual aesthetics.
-  - Graceful text fallback for unrecognized codes and responsive ellipsis truncation for narrow mobile screens.
+### Features
+- **Emoticons in user nicknames & PSM**:
+  - Classic late-2000s emoticons supported inside user nicknames, display names, and personal status messages (PSM).
+  - Rendered in the profile editor, contact roster (online, offline, pending), chat tabs, conversation header, message sender titles, game invite banners, docked game pill, scoreboard cards, and WebRTC audio/video calls.
+  - Parsed into React nodes with no HTML injection (`dangerouslySetInnerHTML` never used).
+  - Fast path for plain-text names without emoticons (regex check, no allocation).
+  - `em`-based relative scaling (`1.2em`, max 16px, min 11px) with `-0.18em` vertical alignment, so line heights are unchanged.
+  - Text fallback for unrecognized codes and ellipsis truncation on narrow mobile screens.
 
 ## [1.1.0] - 2026-10-02
 
-### 🎮 Features
-- **Puissance 4 (Connect Four) 1v1 Mini-Game**:
-  - Full 7x6 board with authentic late-2000s Aero retro design (molded blue casing, glossy red and yellow discs).
+### Features
+- **Puissance 4 (Connect Four) 1v1 mini-game**:
+  - 7x6 board in late-2000s Aero style (molded blue casing, glossy red and yellow discs).
   - Server-side validation: turn enforcement, gravity row calculation, column overflow rejection, win and draw detection.
-  - Smooth gravity drop animations, winning 4-disc pulse glow, and hover column guides.
-  - Native bilingual support (FR/EN) for turn announcements, banners, and tooltips.
-  - Integrated in chat games menu, invite banners, docked pill, and bot test assistant (`/p4` or `/puissance4`).
-  - Mobile responsive scaling with zero horizontal clipping.
-  - Discrete inline player color indicator next to player nicknames.
+  - Gravity drop animations, glow on the winning 4 discs, and hover column guides.
+  - Bilingual (FR/EN) turn announcements, banners, and tooltips.
+  - Available in the chat games menu, invite banners, docked pill, and the bot test assistant (`/p4` or `/puissance4`).
+  - Scales on mobile without horizontal clipping.
+  - Inline player color indicator next to player nicknames.
 
 ## [1.0.0] - 2026-10-02
 
-This major release consolidates the modern recreation of late-2000s instant messaging (Aero theme) with security hardening, a built-in test assistant contact ("OpenWLM"), and automated regression testing.
+This release consolidates the recreation of late-2000s instant messaging (Aero theme) with security hardening, a built-in test assistant contact ("OpenWLM"), and automated regression testing.
 
-### 🚀 Features
+### Features
 
-- **System Assistant & Test Contact ("OpenWLM")**:
-  - Dedicated virtual system contact (ID `-1`) enabling new users to immediately test the application without requiring a second account.
-  - Polished central empty-state screen with interactive *"Start a test conversation"* button.
-  - Discreet, collapsible *"Bot (1)"* section in the contact roster with a clean `BOT` badge.
+- **System assistant & test contact ("OpenWLM")**:
+  - Virtual system contact (ID `-1`) so new users can test the application without a second account.
+  - Central empty-state screen with a *"Start a test conversation"* button.
+  - Collapsible *"Bot (1)"* section in the contact roster with a `BOT` badge.
   - Built-in test commands: Help (`aide`), Echo (`echo`), Emoticons (`emoticones`), Sounds (`sons`), Wizz/Nudge (`wizz`), Solo Tic-Tac-Toe (`morpion`).
-  - 100% client-side isolation: zero network traffic, zero database writes, zero interference with real contacts.
-- **End-to-End Encrypted (E2EE) Custom Emoticons**:
+  - Runs entirely client-side: no network traffic, no database writes, no interference with real contacts.
+- **End-to-end encrypted (E2EE) custom emoticons**:
   - Custom shortcut management with Zero-Knowledge encryption (AES-256-GCM).
-  - Support for static (PNG, WebP, JPEG) and animated (GIF) image formats.
-  - Automatic dual rendering sizes (inline 19px and standard 50px).
-- **Multiplayer Activities & Mini-Games**:
-  - Classic Tic-Tac-Toe (Morpion) in real-time.
+  - Static (PNG, WebP, JPEG) and animated (GIF) image formats.
+  - Two rendering sizes generated automatically (inline 19px and standard 50px).
+- **Multiplayer activities & mini-games**:
+  - Tic-Tac-Toe (Morpion) in real time.
   - Real-time Checkers (Jeu de dames) with server-side validation.
-  - Collapsible dock banner allowing users to minimize active games without leaving the chat.
-- **E2EE File Transfer**:
-  - Encrypted peer file sharing with automatic 4-hour time-to-live (TTL).
-  - Instant on-the-fly image decryption with lightbox preview.
-- **Authentic Late-2000s Aero Experience**:
-  - Original retro sound effects (logon, message, wizz, call, nudge).
-  - Full-screen animated winks, screen-shaking wizz effects.
+  - Collapsible dock banner to minimize active games without leaving the chat.
+- **E2EE file transfer**:
+  - Encrypted file sharing between contacts with an automatic 4-hour time-to-live (TTL).
+  - Images decrypted in the browser, with lightbox preview.
+- **Late-2000s Aero look**:
+  - Retro sound effects (logon, message, wizz, call, nudge).
+  - Full-screen animated winks, screen-shaking wizz.
   - Display nicknames, personal status messages (PSM), retro avatars, and scenes.
-- **Full Bilingual Internationalization (EN / FR)**:
-  - Reactive `I18nProvider` with seamless, live switching between English and French.
-  - Comprehensive localization of authentication, contact roster, chat toolbar, top action bar, message headers, and classic options dialog.
-  - Localized interactive mini-games (Checkers, Tic-Tac-Toe), voice clip player, WebRTC audio/video calls, and custom emoticons modal.
-  - Zero visual clipping or layout degradation, strictly preserving the late-2000s Aero aesthetics.
+- **Bilingual interface (EN / FR)**:
+  - `I18nProvider` with live switching between English and French.
+  - Localized authentication, contact roster, chat toolbar, top action bar, message headers, and options dialog.
+  - Localized mini-games (Checkers, Tic-Tac-Toe), voice clip player, WebRTC audio/video calls, and custom emoticons modal.
+  - No clipping or layout breakage in either language.
 
 ---
 
-### 🛡️ Security Hardening
+### Security hardening
 
-#### Priority 1 — Strong Authentication & Access Control
-- **Cryptographic JWT Secret**:
-  - Deprecated static fallback secrets.
-  - Automatic generation of a high-entropy 256-bit secret stored in `.jwt_secret` with strict file permissions (`0600`) and Git exclusion.
-- **Centralized Authorization Helper `canInteract(senderId, targetId)`**:
-  - Server-side validation of mutual contact status and absence of blocks.
-  - Enforced across all messages, wizz, winks, WebRTC calls, game invites, and file transfers.
-- **Anti-Identity Spoofing**:
+#### Priority 1 — Authentication & access control
+- **Cryptographic JWT secret**:
+  - Static fallback secrets removed.
+  - Automatic generation of a 256-bit secret stored in `.jwt_secret` with `0600` file permissions and excluded from Git.
+- **Centralized authorization helper `canInteract(senderId, targetId)`**:
+  - Server-side check of mutual contact status and absence of blocks.
+  - Applied to messages, wizz, winks, WebRTC calls, game invites, and file transfers.
+- **Anti identity spoofing**:
   - Immediate rejection when `socket.user.id !== senderId`.
-  - Display nicknames (`senderNickname`) systematically recomputed from the SQL database (never trusting client-supplied strings).
-- **Server-Enforced Off-The-Record (Private Mode)**:
+  - Display nicknames (`senderNickname`) recomputed from the SQL database (client-supplied strings are never trusted).
+- **Server-enforced Off-The-Record (private mode)**:
   - Non-persistence enforced server-side: if either user has enabled global private mode (`global_private = 1`), messages are never persisted to SQLite, regardless of client parameters.
 
-#### Priority 2 — Data Isolation & Session Revocation
-- **File Transfer Hardening (`/api/files/upload`)**:
-  - Compulsory `canInteract` check prior to accepting file uploads.
-  - Strict **1 GB** storage quota per account with automatic deletion on threshold exceedance.
-  - Dedicated rate limiter on uploads: maximum 5 uploads per minute per IP (HTTP 429).
+#### Priority 2 — Data isolation & session revocation
+- **File transfer hardening (`/api/files/upload`)**:
+  - `canInteract` check before accepting file uploads.
+  - **1 GB** storage quota per account with automatic deletion when exceeded.
+  - Dedicated rate limiter on uploads: at most 5 uploads per minute per IP (HTTP 429).
   - 24-byte hexadecimal cryptographic access tokens with 4-hour expiration.
-- **Instant JWT Session Revocation (`token_version`)**:
+- **JWT session revocation (`token_version`)**:
   - Database-backed `token_version` validated on every Express request and WebSocket handshake.
-  - Instant invalidation upon password change.
-  - Dedicated `POST /api/logout` endpoint and `manual_disconnect` event incrementing server-side version.
-- **Strict Game Invite Validation (`game_accept`)**:
-  - Prior active invitation required in memory with a 60-second TTL.
-  - Single-use consumption upon acceptance to prevent unauthorized game session forging.
-- **Custom Emoticon Cache Isolation (`CustomEmoticonsDB`)**:
-  - Added `clearAll()` method purging local IndexedDB stores (AES keys and blobs) and revoking memory blob URLs upon logout.
+  - Invalidated on password change.
+  - `POST /api/logout` endpoint and `manual_disconnect` event incrementing the server-side version.
+- **Game invite validation (`game_accept`)**:
+  - Requires a prior active invitation in memory, with a 60-second TTL.
+  - Single-use on acceptance, so a game session cannot be forged.
+- **Custom emoticon cache isolation (`CustomEmoticonsDB`)**:
+  - Added a `clearAll()` method that purges local IndexedDB stores (AES keys and blobs) and revokes in-memory blob URLs on logout.
 
-#### Priority 3 — Defense in Depth
-- **Anti-Timing Attack Protection**:
+#### Priority 3 — Defense in depth
+- **Timing attack protection**:
   - Constant-time password hash comparison using `crypto.timingSafeEqual` on PBKDF2 binary buffers during authentication (`/api/login`) and password updates (`/api/user/change-password`).
-- **Memory Leak & RAM DoS Prevention**:
-  - Automated garbage collection every 5 minutes purging expired captchas and inactive rate-limit tracking entries.
+- **Memory leak & RAM DoS prevention**:
+  - Cleanup every 5 minutes of expired captchas and inactive rate-limit entries.
 
 ---
 
-### 🔧 Bug Fixes
+### Bug fixes
 
-- Resolved browser caching issues with deleted custom emoticon shortcuts.
+- Fixed browser caching of deleted custom emoticon shortcuts.
 - Fixed file transfer message attribution displaying *"[Contact] sent you a file"* instead of *"[Contact] says"*.
-- Fixed missing online notification sound trigger when a contact connects.
-- Harmonized Content Security Policy (CSP) headers between direct production and Cloudflare Tunnel configurations.
+- Fixed missing online notification sound when a contact connects.
+- Aligned Content Security Policy (CSP) headers between direct production and Cloudflare Tunnel configurations.
 
 ---
 
-### 🧪 Infrastructure & Testing
+### Infrastructure & testing
 
-- **Automated Security-Test Suite (`tests/audit_security_enforcement.js`)**:
+- **Automated security-test suite (`tests/audit_security_enforcement.js`)**:
   - Headless test suite issuing direct requests to check that the main client-side restrictions are also enforced server-side.
-  - Integrated command: `npm test` / `npm run test:security`.
-- **Demo Database Seeder (`scripts/seed-demo.js`)**:
-  - Command `npm run db:seed` creating clean, fictitious local demonstration accounts (Alice & Bob) with zero personal data.
-- **Safe Rollback Procedures**:
-  - Standardized cold archive snapshot guidelines prior to sensitive migrations.
+  - Command: `npm test` / `npm run test:security`.
+- **Demo database seeder (`scripts/seed-demo.js`)**:
+  - `npm run db:seed` creates fictitious local demonstration accounts (Alice & Bob) with no personal data.
+- **Rollback procedures**:
+  - Documented cold archive snapshot guidelines before sensitive migrations.

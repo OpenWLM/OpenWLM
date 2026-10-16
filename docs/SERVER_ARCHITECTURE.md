@@ -45,7 +45,7 @@ server/
   - `toPrivateUserDTO(user)` : Transmet les attributs publics ainsi que `encrypted_private_key`, mais **jamais** `password_hash` ou `salt`.
 
 ### B. Authentification & Sécurité ([`server/middleware/auth.js`](file:///home/guifort-adm/OpenWLM/server/middleware/auth.js))
-- **`authenticateToken`** : Vérifie la validité du JWT dans l'en-tête `Authorization` ou le cookie `token` (`HttpOnly; SameSite=Strict`). Vérifie formellement la concordance avec `token_version` en base de données pour appliquer la révocation immédiate des sessions.
+- **`authenticateToken`** : Vérifie la validité du JWT dans l'en-tête `Authorization` ou le cookie `token` (`HttpOnly; SameSite=Strict`). Vérifie la concordance avec `token_version` en base de données pour appliquer la révocation immédiate des sessions.
 - **`canInteract(senderId, targetId)`** : Fonction centrale d'autorisation vérifiant l'existence du destinataire, la relation mutuelle d'amitié dans `contacts`, et l'absence de blocage dans les deux sens.
 - **Rate Limiters** :
   - `authRateLimiter` (10 tentatives / min par IP)
@@ -78,5 +78,5 @@ Chaque domaine métier est encapsulé dans une fonction usine injectant les dép
 ## 3. Avantages techniques apportés par ce découpage
 
 1. **Testabilité unitaire et ciblée** : Chaque routeur et chaque module socket peut être importé et testé isolément sans instancier tout le serveur.
-2. **Maintenance et lisibilité** : `server/index.js` passe de **3 379 lignes à ~220 lignes**, se concentrant uniquement sur la configuration du serveur et la composition des modules.
-3. **Zéro régression** : Les contrats d'API HTTP, les événements WebSocket, les clés de base de données et les règles de sécurité demeurent **strictement identiques**.
+2. **Maintenance et lisibilité** : `server/index.js` passe de 3 379 lignes à ~220 lignes, se concentrant uniquement sur la configuration du serveur et la composition des modules.
+3. **Pas de régression** : les contrats d'API HTTP, les événements WebSocket, les clés de base de données et les règles de sécurité sont inchangés.

@@ -6,7 +6,7 @@
 > les Security Events (faux positifs), puis passer en **`Block`**. Les seuils de
 > rate limiting sont des ordres de grandeur à ajuster.
 
-> 🔧 **Sections §1 et §2 auto-générées** par `scripts/gen_waf_rules.mjs`.
+> **Sections §1 et §2 auto-générées** par `scripts/gen_waf_rules.mjs`.
 > Régénérer avec `npm run waf:gen` (et vérifier avec `npm run waf:check`).
 > Toute modification des routes serveur **doit** être suivie d'une régénération.
 
@@ -92,8 +92,8 @@ or http.request.uri.path.extension in {"env" "sqlite" "log" "bak" "old"}
 | `/api/**` (global) | 120 / min / IP | Challenge |
 | `/socket.io/**` | **ne pas** limiter finement | seuil de connexion élevé uniquement |
 
-> ⚠️ **`/socket.io/`** fonctionne en **polling** (nombreux GET/POST courts) + un
-> upgrade WebSocket. Un rate limiting agressif **casse le temps réel**. Ne pas
+> **`/socket.io/`** fonctionne en polling (nombreux GET/POST courts) + un
+> upgrade WebSocket. Un rate limiting agressif casse le temps réel. Ne pas
 > employer la même règle que pour `/api/**`.
 >
 > Note : le serveur applique déjà ses propres limiteurs (`authRateLimiter`,
@@ -122,7 +122,7 @@ or http.request.uri.path.extension in {"env" "sqlite" "log" "bak" "old"}
 3. La liste blanche transforme les chemins inconnus de « **200 SPA** » en
    **403** → comportement voulu (corrige aussi le cache « fallback » observé sur `bow.png`).
 4. Autoriser `HEAD` partout où `GET` l'est.
-5. Ordre de priorité : *Blocage chemins sensibles* **>** *Liste blanche* **>** *Rate limiting*.
+5. Ordre de priorité : *Blocage chemins sensibles* > *Liste blanche* > *Rate limiting*.
 
 ---
 

@@ -8,70 +8,70 @@
 
 # OpenWLM (Modern Web Stack)
 
-A modern, open-source recreation of the iconic late-2000s retro instant messaging experience (Aero glass UI). It pairs the nostalgic design of the 2000s with end-to-end encryption of message content and current web security practices. The real E2E scope — what is protected, what is not, and the limits — is documented below.
+An open-source recreation of a late-2000s instant messenger (Aero glass UI), with end-to-end encryption of message content and current web security practices. The actual E2E scope — what is protected, what is not, and the limits — is documented below.
 
-⚠️ **Disclaimer & Legal Notice**:  
-OpenWLM is an independent educational, open-source project and a nostalgic tribute to classic 2000s instant messaging software. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with any proprietary brand, software, or corporation.
+**Disclaimer & Legal Notice**:  
+OpenWLM is an independent educational, open-source project and a tribute to 2000s instant messaging software. It is not affiliated, associated, authorized, endorsed by, or in any way officially connected with any proprietary brand, software, or corporation.
 
 > [!WARNING]
 > **AI-Assisted Development Notice**:  
-> This project was developed with the assistance of Artificial Intelligence (Google Antigravity / LLM-assisted pair programming). It is reviewed manually and covered by end-to-end tests plus an automated security-test suite (`npm run test:security`). This is **not** an independent third-party audit, so unexpected bugs, edge-case regressions, or design oversights may still remain. Peer reviews, community testing, and vulnerability reports are warmly welcomed!
+> This project was developed with the assistance of Artificial Intelligence (Google Antigravity / LLM-assisted pair programming). It is reviewed manually and covered by end-to-end tests plus an automated security-test suite (`npm run test:security`). This is **not** an independent third-party audit, so unexpected bugs, edge-case regressions, or design oversights may still remain. Peer reviews, community testing, and vulnerability reports are welcome.
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
-### 💬 Communication & Authenticity
-- **Authentic Retro Interface**: Faithful replica of classic late-2000s instant messaging (Aero glass styling, tabs, background scenes, usertiles, retro audio sound effects).
-- **Progressive Web App (PWA)**: Fully installable as a standalone desktop or mobile application with offline Service Worker asset caching, web app manifest, and retro Aero taskbar icon integration.
-- **Built-in Assistant & Test Contact ("OpenWLM")**: Dedicated virtual system contact (ID `-1`) with an empty-state quickstart button, allowing new users to test chat, emoticons, sounds, Wizz/nudges, Tic-Tac-Toe, and Connect Four (`/p4`) immediately without needing a second account.
-- **Secure Instant Messaging**: Rich text support, classic legacy emoticons, and custom end-to-end encrypted emoticons.
-- **Display Name & Status Emoticons**: Authentic support for classic emoticons directly inside user display names and personal status messages (PSM), rendered seamlessly across contact rosters, chat tabs, conversation headers, and game scoreboards with true alpha-transparent PNG & APNG assets.
-- **Audio & Video Calls (WebRTC)**: Real-time peer-to-peer voice and video calls with encrypted signaling.
-- **Voice Clips**: Record and stream end-to-end encrypted audio messages.
-- **Winks & Nudges**: Animated full-screen winks and screen-shaking Wizz effects.
-- **1v1 Multiplayer Mini-Games**: Real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), and Connect Four (Puissance 4 on a classic 7x6 board) with server-side anti-cheat validation, gravity animations, and collapsible game docks.
-- **Encrypted File Transfer**: Temporary peer file sharing (4-hour TTL) with on-the-fly decryption and image lightbox previews.
-- **Full Bilingual Internationalization (EN / FR)**: Native English and French support with instant reactive switching, browser language autodetection, and zero UI overflow preserving the classic retro Aero layout.
+### Communication
+- **Interface**: recreation of a late-2000s instant messenger — Aero styling, tabs, background scenes, usertiles, sound effects.
+- **Progressive Web App (PWA)**: installable as a standalone desktop or mobile app, with offline asset caching through a Service Worker, a web app manifest and an Aero taskbar icon.
+- **Built-in test contact ("OpenWLM")**: virtual system contact (ID `-1`) with a quickstart button in the empty state, so new users can try chat, emoticons, sounds, Wizz/nudges, Tic-Tac-Toe and Connect Four (`/p4`) without a second account.
+- **Messaging**: rich text, classic emoticons, and custom end-to-end encrypted emoticons.
+- **Emoticons in names and status messages**: classic emoticons can be used in display names and personal status messages (PSM); they are rendered in the contact list, chat tabs, conversation headers and game scoreboards, using alpha-transparent PNG and APNG assets.
+- **Audio & video calls (WebRTC)**: peer-to-peer voice and video calls with encrypted signaling.
+- **Voice clips**: record and stream end-to-end encrypted audio messages.
+- **Winks & nudges**: animated full-screen winks and the screen-shaking Wizz.
+- **1v1 mini-games**: real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames) and Connect Four (Puissance 4, 7x6 board), with server-side move validation against cheating, gravity animations and collapsible game panels.
+- **Encrypted file transfer**: temporary file sharing between contacts (4-hour TTL), decrypted in the browser, with image previews in a lightbox.
+- **English / French interface**: the language can be switched without reloading and is detected from the browser; both languages fit the Aero layout without overflow.
 
 ---
 
-## 🔐 Architecture & Security Hardening
+## Architecture & Security Hardening
 
 OpenWLM applies the security measures below. They are checked by an automated test suite and code review — not by an independent external audit:
 
-> 📌 **E2E scope — what is really end-to-end, what is not, and the limits:**
+> **E2E scope — what is really end-to-end, what is not, and the limits:**
 > see **[docs/SECURITY_E2E.md](docs/SECURITY_E2E.md)**.
 
 1. **End-to-End Encryption (E2EE Zero-Knowledge)**:
    - Asymmetric RSA-OAEP 2048-bit encryption for session key exchange.
    - Symmetric AES-256-GCM encryption for messages, file transfers, and custom emoticons.
    - Zero-Knowledge architecture: the server never has access to plaintext messages or private decryption keys.
-2. **Hardened Client Storage & Non-Extractable CryptoKey Vault (`IndexedDB + Web Crypto`)**:
-   - Eliminates JWT tokens, raw RSA private keys, JWKs, and crypto blobs from `localStorage` and `sessionStorage`.
+2. **Client storage and non-extractable CryptoKey vault (`IndexedDB + Web Crypto`)**:
+   - No JWT, raw RSA private key, JWK or crypto blob is kept in `localStorage` or `sessionStorage`.
    - The device vault (`WLM_DeviceVault_v1`) stores the private key as a native `CryptoKey` with `extractable: false` via IndexedDB structured cloning. Private key material is designed to prevent direct browser-side export through standard Web Crypto APIs (`crypto.subtle.exportKey()`), which significantly reduces exfiltration risk and helps contain sensitive material outside Web Storage.
-   - `wlm_user` in `localStorage` is strictly restricted to an explicit whitelist of non-sensitive display fields (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
-3. **Server-Side Session Hardening with `HttpOnly; SameSite=Strict` Cookies**:
+   - `wlm_user` in `localStorage` is limited to an explicit whitelist of non-sensitive display fields (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
+3. **Server-side sessions in `HttpOnly; SameSite=Strict` cookies**:
    - JWT tokens are issued as secure `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` cookies (`Secure` in HTTPS/Cloudflare production).
-   - Unified dual authentication fallback on Express endpoints and Socket.IO handshakes (`io.use`).
+   - The same authentication fallback (header, then cookie) on Express endpoints and Socket.IO handshakes (`io.use`).
    - Server-side token version revocation (`token_version`) and cookie purging on `/api/logout`.
 4. **Centralized Access Authorization (`canInteract`)**:
-   - Strict mutual contact verification and bidirectional block checking before any interaction (messages, nudges, calls, files, games).
+   - Mutual contact check and block check in both directions before any interaction (messages, nudges, calls, files, games).
 5. **Identity Spoofing Prevention**:
-   - Strict validation of sender identity via verified JWT tokens (`socket.user.id === senderId`).
-   - Display nicknames are systematically recalculated server-side from the SQL database (client-provided names are never trusted).
+   - Sender identity is checked against the verified JWT (`socket.user.id === senderId`).
+   - Display nicknames are recomputed server-side from the SQL database (client-provided names are never trusted).
 6. **Server-Enforced Off-The-Record (Private Mode)**:
    - Nothing is persisted: if either user in a conversation enables global private mode (`global_private = 1`), messages are never written to disk — this is enforced server-side and overrides any client manipulation.
 7. **Rate Limiting & Abuse Prevention**:
-   - Strict **1 GB** storage quota per account for active shared files.
+   - **1 GB** storage quota per account for active shared files.
    - Tiered rate limiters: authentication (10 req/min), file uploads (5 req/min), nudges (3/min), winks (7/min), messages (20 / 10s).
-   - Automated in-memory garbage collection every 5 minutes purging expired captchas and inactive client IPs.
+   - In-memory cleanup every 5 minutes removes expired captchas and inactive client IPs.
 8. **Timing-Safe Cryptography**:
-   - Password hashes verified in constant time using `crypto.timingSafeEqual` to neutralize timing attack vulnerabilities.
+   - Password hashes are compared in constant time with `crypto.timingSafeEqual`, to prevent timing attacks.
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 - **Frontend**: React 19, TypeScript, Vite, Vanilla CSS (Aero retro theme).
 - **Client Platforms**: Web browser, Progressive Web App (PWA) with Service Worker & Web App Manifest, Desktop (Optional Electron wrapper).
@@ -88,7 +88,7 @@ OpenWLM applies the security measures below. They are checked by an automated te
 
 ---
 
-## 📦 Installation & Quickstart
+## Installation & Quickstart
 
 ### Prerequisites
 - **Node.js**: v20 or higher recommended (tested on v22 LTS).
@@ -117,7 +117,7 @@ To enable reliable background notifications without committing secrets:
 ```bash
 node scripts/generate_vapid_keys.js
 ```
-See the complete documentation: [docs/VAPID_SETUP.md](docs/VAPID_SETUP.md).
+See [docs/VAPID_SETUP.md](docs/VAPID_SETUP.md).
 
 ### 4. Run the application
 
@@ -143,7 +143,7 @@ The application will be accessible at: **http://localhost:3001**
 
 ---
 
-## 🧪 Security & Regression Testing
+## Security & Regression Testing
 
 An automated security-test suite checks that the key client-side restrictions are also enforced server-side:
 
@@ -168,9 +168,9 @@ It issues direct API and WebSocket requests (bypassing the UI) and checks the se
 
 ---
 
-## 🛡️ Safe Rollback & Backup Procedures
+## Rollback & Backup
 
-Before making any sensitive architectural or database changes:
+Before architectural or database changes:
 
 ```bash
 # 1. Create a timestamped cold archive (server stopped recommended)
@@ -182,7 +182,7 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ---
 
-## 🏷️ Version & References
+## Version & References
 
 - **Current Version**: `v1.0.0`
 - **Git Reference Tag**: `v1.0.0`
@@ -190,6 +190,6 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ---
 
-## 📄 License
+## License
 
 This project is open-source under the MIT License. See the [LICENSE](LICENSE) file for details.

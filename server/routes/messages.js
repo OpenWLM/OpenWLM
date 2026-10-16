@@ -54,6 +54,30 @@ export const createMessagesRouter = () => {
   });
 
   /**
+   * Conversations ayant des messages jamais remis à aucune de mes sessions
+   * (reçus pendant que j'étais hors ligne). Le client ouvre les onglets
+   * correspondants ; le chargement de l'historique les marque ensuite « remis ».
+   */
+  router.get('/conversations/pending', authenticateToken, (req, res) => {
+    try {
+      const rows = db.prepare(`
+        SELECT m.sender_id AS contactId, COUNT(*) AS count, MAX(m.timestamp) AS lastTimestamp
+        FROM messages m
+        JOIN contacts c ON c.user_id = m.receiver_id AND c.contact_id = m.sender_id
+        WHERE m.receiver_id = ? AND m.delivery_status = 'sent'
+          AND (c.blocked IS NULL OR c.blocked = 0)
+        GROUP BY m.sender_id
+        ORDER BY lastTimestamp DESC
+        LIMIT 50
+      `).all(req.user.id);
+      res.json(rows);
+    } catch (err) {
+      console.error("Erreur conversations en attente:", err);
+      res.status(500).json({ error: "Erreur serveur." });
+    }
+  });
+
+  /**
    * Supprimer l'historique des messages
    */
   router.post('/messages/clear', authenticateToken, (req, res) => {

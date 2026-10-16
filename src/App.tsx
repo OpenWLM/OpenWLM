@@ -1617,9 +1617,17 @@ const App: React.FC = () => {
   /**
    * CHARGEMENT AUTOMATIQUE DE L'HISTORIQUE AU DÉMARRAGE (POUR LES ONGLETS OUVERTS)
    */
+  // Seuls les onglets NOUVELLEMENT ouverts sont chargés : recharger tous les onglets à
+  // chaque ouverture effaçait les messages locaux (mode privé, lignes système) des autres.
+  const autoLoadedChatsRef = useRef<Set<number>>(new Set());
+  useEffect(() => { autoLoadedChatsRef.current = new Set(); }, [user?.id]);
   useEffect(() => {
+    const loaded = autoLoadedChatsRef.current;
+    loaded.forEach(id => { if (!openChatIds.includes(id)) loaded.delete(id); });
     if (user && myKeys && openChatIds.length > 0) {
       openChatIds.forEach(id => {
+        if (loaded.has(id)) return;
+        loaded.add(id);
         loadChatHistory(id);
       });
     }
@@ -1635,6 +1643,35 @@ const App: React.FC = () => {
   const openChatIdsRef = useRef(openChatIds);
   useEffect(() => { openChatIdsRef.current = openChatIds; }, [openChatIds]);
   const lastResyncRef = useRef(0);
+
+  // Conversations NON ouvertes ayant reçu des messages pendant la coupure (ou avant la
+  // connexion) : on ouvre leurs onglets, comme le ferait un message reçu en direct.
+  const fetchPendingConversations = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await axios.get('/api/conversations/pending');
+      if (!Array.isArray(res.data)) return;
+      const ids: number[] = res.data
+        .map((r: any) => Number(r.contactId))
+        .filter((id: number) => Number.isInteger(id) && id > 0);
+      if (ids.length === 0) return;
+      setOpenChatIds(prev => {
+        const added = ids.filter(id => !prev.includes(id));
+        return added.length > 0 ? [...prev, ...added] : prev;
+      });
+      if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+        setActiveChatId(prev => (prev === 0 ? ids[0] : prev));
+      }
+    } catch (err) {
+      console.warn("[Sync] Impossible de récupérer les conversations en attente:", err);
+    }
+  }, [user]);
+
+  // Au démarrage de la session (clés E2EE prêtes)
+  useEffect(() => {
+    if (user && myKeys) fetchPendingConversations();
+  }, [user?.id, !!myKeys, fetchPendingConversations]);
+
   const resyncOpenChats = useCallback((force = false) => {
     const now = Date.now();
     // visibilitychange + pageshow arrivent souvent ensemble : un seul rechargement
@@ -1643,7 +1680,8 @@ const App: React.FC = () => {
     const ids = new Set(openChatIdsRef.current);
     if (activeChatIdRef.current) ids.add(activeChatIdRef.current);
     ids.forEach(id => { if (id !== SYSTEM_BOT_ID) loadChatHistory(id, { incremental: true }); });
-  }, [loadChatHistory]);
+    fetchPendingConversations();
+  }, [loadChatHistory, fetchPendingConversations]);
   const resyncOpenChatsRef = useRef(resyncOpenChats);
   useEffect(() => { resyncOpenChatsRef.current = resyncOpenChats; }, [resyncOpenChats]);
 

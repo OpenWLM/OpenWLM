@@ -25,7 +25,7 @@
 | PWA / statique | GET | `/apple-touch-icon.png`, `/favicon.ico`, `/favicon.png`, `/favicon.svg`, `/icons.svg`, `/index.html`, `/manifest.json`, `/pwa-192x192.png`, `/pwa-512x512.png`, `/pwa-maskable-192x192.png`, `/pwa-maskable-512x512.png`, `/sw.js` |
 | Assets | GET | `/assets/**` |
 | Realtime | GET/POST + WS | `/socket.io/**` |
-| API | GET | `/api/captcha`, `/api/contacts/:userId`, `/api/emoticons/custom/asset/:assetId`, `/api/emoticons/custom/my`, `/api/files/download/:fileId`, `/api/files/info/:fileId`, `/api/games/active`, `/api/invitations/:userId`, `/api/messages/:userId/:contactId`, `/api/push/status`, `/api/rtc-config`, `/api/user/:userId/public-key`, `/api/user/me` |
+| API | GET | `/api/captcha`, `/api/contacts/:userId`, `/api/conversations/pending`, `/api/emoticons/custom/asset/:assetId`, `/api/emoticons/custom/my`, `/api/files/download/:fileId`, `/api/files/info/:fileId`, `/api/games/active`, `/api/invitations/:userId`, `/api/messages/:userId/:contactId`, `/api/push/status`, `/api/rtc-config`, `/api/user/:userId/public-key`, `/api/user/me` |
 | API | POST | `/api/accept-invite`, `/api/contacts/block`, `/api/contacts/delete`, `/api/decline-invite`, `/api/emoticons/custom/upload`, `/api/files/upload`, `/api/invite`, `/api/login`, `/api/logout`, `/api/messages/clear`, `/api/push/subscribe`, `/api/push/test`, `/api/push/unsubscribe`, `/api/signup`, `/api/user/change-password`, `/api/user/global-private`, `/api/user/keys`, `/api/user/reset-e2e-keys`, `/api/user/update` |
 | API | DELETE | `/api/emoticons/custom/:id` |
 <!-- WAF-GEN:SURFACE:END -->
@@ -47,7 +47,7 @@ passage le « 200 fallback »).
 ```
 not (
   ( http.request.method in {"GET" "HEAD" "OPTIONS"} and (
-      http.request.uri.path in { "/" "/apple-touch-icon.png" "/favicon.ico" "/favicon.png" "/favicon.svg" "/icons.svg" "/index.html" "/manifest.json" "/pwa-192x192.png" "/pwa-512x512.png" "/pwa-maskable-192x192.png" "/pwa-maskable-512x512.png" "/sw.js" "/api/captcha" "/api/emoticons/custom/my" "/api/games/active" "/api/push/status" "/api/rtc-config" "/api/user/me" }
+      http.request.uri.path in { "/" "/apple-touch-icon.png" "/favicon.ico" "/favicon.png" "/favicon.svg" "/icons.svg" "/index.html" "/manifest.json" "/pwa-192x192.png" "/pwa-512x512.png" "/pwa-maskable-192x192.png" "/pwa-maskable-512x512.png" "/sw.js" "/api/captcha" "/api/conversations/pending" "/api/emoticons/custom/my" "/api/games/active" "/api/push/status" "/api/rtc-config" "/api/user/me" }
       or starts_with(http.request.uri.path, "/assets/")
       or matches(http.request.uri.path, "^/api/contacts/[0-9]+$")
       or matches(http.request.uri.path, "^/api/emoticons/custom/asset/emo_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")

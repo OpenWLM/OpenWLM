@@ -9,12 +9,10 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
-## [Non publié]
+## [1.5.0] - 2026-10-16
 
 ### Interface
 - **Version sur la page de connexion** : pied de page « OpenWLM v1.5.0 · GitHub », avec un lien vers le dépôt. La version est lue dans `package.json` au build (`__APP_VERSION__`).
-
-## [1.5.0] - 2026-10-16
 
 ### Mode privé par conversation (côté serveur)
 - **État persisté** : nouvelle table `conversation_privacy` (une ligne par direction). `toggle_private_mode` n'écrit que la ligne de l'utilisateur authentifié (`socket.user.id`), jamais celle désignée dans le payload ; le contact et les autres sessions de l'utilisateur sont notifiés (`private_mode_changed`, `private_mode_self_sync`).

@@ -9,12 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.5.0] - 2026-10-16
 
 ### Interface
 - **Version on the sign-in page**: "OpenWLM v1.5.0 · GitHub" footer, with a link to the repository. The version is read from `package.json` at build time (`__APP_VERSION__`).
-
-## [1.5.0] - 2026-10-16
 
 ### Private mode per conversation (server-side)
 - **Persisted state**: new `conversation_privacy` table (one row per direction). `toggle_private_mode` writes only the authenticated user's own row (`socket.user.id`), never one named in the payload; the contact and the user's other sessions are notified (`private_mode_changed`, `private_mode_self_sync`).

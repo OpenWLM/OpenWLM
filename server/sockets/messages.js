@@ -1,4 +1,4 @@
-import { db } from '../db.js';
+import { db, isConversationPrivate } from '../db.js';
 import { getUserRoom, isUserOnline } from '../sessionStore.js';
 import { canInteract } from '../middleware/auth.js';
 import { dispatchPushNotification } from '../routes/push.js';
@@ -18,7 +18,9 @@ export const registerMessageHandlers = (io, socket) => {
    * Envoi d'un message
    */
   socket.on('send_message', (data, callback) => {
-    const { senderId, receiverId, text, style, audio, type, isPrivate } = data || {};
+    // `isPrivate` éventuellement fourni par le client est volontairement IGNORÉ :
+    // le serveur calcule seul le mode privé effectif à partir de l'état persisté.
+    const { senderId, receiverId, text, style, audio, type } = data || {};
     
     if (socket.user.id !== senderId) {
       if (typeof callback === 'function') callback({ success: false, error: "Non autorisé." });
@@ -38,10 +40,8 @@ export const registerMessageHandlers = (io, socket) => {
       return;
     }
 
-    const sender = db.prepare('SELECT id, username, nickname, global_private FROM users WHERE id = ?').get(senderId);
-    const receiver = db.prepare('SELECT global_private FROM users WHERE id = ?').get(receiverId);
-    const isForcedPrivate = (sender && Number(sender.global_private) === 1) || (receiver && Number(receiver.global_private) === 1);
-    const finalIsPrivate = isPrivate || isForcedPrivate;
+    const sender = db.prepare('SELECT id, username, nickname FROM users WHERE id = ?').get(senderId);
+    const finalIsPrivate = isConversationPrivate(senderId, receiverId);
     const senderDisplayName = sender ? (sender.nickname || sender.username) : null;
 
     // Enveloppe v2 : on extrait le `mid` (identifiant aléatoire signé) pour rendre
@@ -354,29 +354,49 @@ export const registerMessageHandlers = (io, socket) => {
    */
   socket.on('toggle_private_mode', (data) => {
     const { senderId, receiverId, isPrivate } = data || {};
-    if (socket.user.id !== senderId) return;
+    // SÉCURITÉ : le propriétaire de la ligne est TOUJOURS l'identité authentifiée de la
+    // socket, jamais un champ du payload. Un senderId divergent est rejeté.
+    const ownerId = socket.user.id;
+    if (senderId !== undefined && senderId !== ownerId) return;
+    const contactId = Number(receiverId);
+    if (!Number.isInteger(contactId) || contactId <= 0 || contactId === ownerId) return;
+    if (typeof isPrivate !== 'boolean') return;
 
-    const check = canInteract(senderId, receiverId);
+    const check = canInteract(ownerId, contactId);
     if (!check.allowed) {
-      console.warn(`[Security Alert] Tentative de toggle_private_mode non autorisée de ${senderId} vers ${receiverId}: ${check.reason}`);
+      console.warn(`[Security Alert] Tentative de toggle_private_mode non autorisée de ${ownerId} vers ${contactId}: ${check.reason}`);
       return;
     }
 
-    const senderUser = db.prepare('SELECT nickname, username FROM users WHERE id = ?').get(senderId);
-    const safeNickname = senderUser ? (senderUser.nickname || senderUser.username) : 'Un contact';
+    try {
+      db.prepare(`
+        INSERT INTO conversation_privacy (owner_id, contact_id, is_private, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(owner_id, contact_id) DO UPDATE SET is_private = excluded.is_private, updated_at = excluded.updated_at
+      `).run(ownerId, contactId, isPrivate ? 1 : 0, new Date().toISOString());
+    } catch (err) {
+      console.error("Erreur enregistrement conversation_privacy:", err);
+      return;
+    }
 
-    io.to(getUserRoom(receiverId)).emit('private_mode_changed', { 
-      senderId, 
-      receiverId,
-      isPrivate: !!isPrivate,
-      senderNickname: safeNickname 
+    const senderUser = db.prepare('SELECT nickname, username FROM users WHERE id = ?').get(ownerId);
+    const safeNickname = senderUser ? (senderUser.nickname || senderUser.username) : 'Un contact';
+    const effectivePrivate = isConversationPrivate(ownerId, contactId);
+
+    // Notifications de confort (réactivité de l'UI) : l'état persisté reste la source de vérité.
+    io.to(getUserRoom(contactId)).emit('private_mode_changed', {
+      senderId: ownerId,
+      receiverId: contactId,
+      isPrivate,
+      effectivePrivate,
+      senderNickname: safeNickname
     });
 
-    socket.to(getUserRoom(senderId)).emit('private_mode_changed', { 
-      senderId, 
-      receiverId,
-      isPrivate: !!isPrivate,
-      senderNickname: safeNickname 
+    // Autres sessions du propriétaire : resynchroniser sa propre préférence
+    socket.to(getUserRoom(ownerId)).emit('private_mode_self_sync', {
+      contactId,
+      isPrivate,
+      effectivePrivate
     });
   });
 };

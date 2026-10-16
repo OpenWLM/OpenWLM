@@ -43,6 +43,10 @@ export interface Contact {
   status: string;
   blocked: number | boolean;
   global_private?: number;
+  /** Ma préférence « conversation privée » envers ce contact (état serveur). */
+  my_private?: number;
+  /** Préférence « conversation privée » du contact envers moi (état serveur). */
+  their_private?: number;
   isBot?: boolean;
 }
 

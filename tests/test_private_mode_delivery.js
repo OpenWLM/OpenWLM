@@ -47,6 +47,7 @@ test('mode privé : refus explicite si le destinataire est hors ligne, remise s\
   const db = new Database(path.join(PROJECT_ROOT, 'messenger.db'));
   const cleanup = () => {
     try { db.prepare('DELETE FROM messages WHERE sender_id IN (9981,9982) OR receiver_id IN (9981,9982)').run(); } catch { /* ignore */ }
+    try { db.prepare('DELETE FROM conversation_privacy WHERE owner_id IN (9981,9982) OR contact_id IN (9981,9982)').run(); } catch { /* ignore */ }
     try { db.prepare('DELETE FROM contacts WHERE user_id IN (9981,9982) OR contact_id IN (9981,9982)').run(); } catch { /* ignore */ }
     try { db.prepare('DELETE FROM users WHERE id IN (9981,9982)').run(); } catch { /* ignore */ }
   };
@@ -58,17 +59,23 @@ test('mode privé : refus explicite si le destinataire est hors ligne, remise s\
   db.prepare('INSERT INTO contacts (user_id, contact_id, status, blocked) VALUES (?, ?, 1, 0)').run(IDS.a, IDS.b);
   db.prepare('INSERT INTO contacts (user_id, contact_id, status, blocked) VALUES (?, ?, 1, 0)').run(IDS.b, IDS.a);
   const countStored = () => db.prepare('SELECT COUNT(*) AS n FROM messages WHERE sender_id = ?').get(IDS.a).n;
+  // Le mode privé par conversation est désormais l'état persisté (conversation_privacy),
+  // le `isPrivate` du client n'est plus décisionnaire.
+  const setConvPrivate = (on) => db.prepare(`INSERT INTO conversation_privacy (owner_id, contact_id, is_private) VALUES (?, ?, ?)
+    ON CONFLICT(owner_id, contact_id) DO UPDATE SET is_private = excluded.is_private`).run(IDS.a, IDS.b, on ? 1 : 0);
 
   const sA = await connect(tok(IDS.a, 'priv_a'));
   let sB = null;
   try {
-    // 1) B hors ligne, message privé → refusé, rien n'est stocké
+    // 1) B hors ligne, conversation privée → refusé, rien n'est stocké
+    setConvPrivate(true);
     const offline = await send(sA, { isPrivate: true });
     assert.equal(offline.success, false, 'message privé vers contact hors ligne refusé');
     assert.equal(offline.code, 'RECIPIENT_OFFLINE_PRIVATE');
     assert.equal(countStored(), 0, 'rien n\'est stocké en mode privé');
 
     // 2) Mode privé GLOBAL imposé par le destinataire (message non marqué privé par l'émetteur)
+    setConvPrivate(false);
     db.prepare('UPDATE users SET global_private = 1 WHERE id = ?').run(IDS.b);
     const forced = await send(sA, { isPrivate: false });
     assert.equal(forced.success, false, 'mode privé global du destinataire : refus aussi');
@@ -81,6 +88,7 @@ test('mode privé : refus explicite si le destinataire est hors ligne, remise s\
     assert.equal(countStored(), 1, 'message normal stocké');
 
     // 4) B connecté, message privé → accepté, remis en direct, non stocké
+    setConvPrivate(true);
     sB = await connect(tok(IDS.b, 'priv_b'));
     await wait(100);
     const received = new Promise((resolve) => sB.once('receive_message', resolve));

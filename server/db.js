@@ -159,6 +159,41 @@ try {
   console.warn("Table conversation_read_cursors déjà présente ou erreur:", e.message);
 }
 
+// MODE PRIVÉ PAR CONVERSATION : une ligne par direction (« owner considère sa
+// conversation avec contact comme privée »). Persisté côté serveur, qui fait seul
+// autorité sur la persistance des messages (le `isPrivate` du client est ignoré).
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_privacy (
+      owner_id INTEGER NOT NULL,
+      contact_id INTEGER NOT NULL,
+      is_private INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT,
+      PRIMARY KEY (owner_id, contact_id),
+      FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY(contact_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+} catch(e) {
+  console.warn("Table conversation_privacy déjà présente ou erreur:", e.message);
+}
+
+/**
+ * Mode privé effectif d'une conversation, calculé UNIQUEMENT à partir de l'état
+ * persisté : mode global de l'un ou l'autre, ou préférence de conversation de l'un
+ * ou l'autre. Chacun ne peut faire valoir que sa propre ligne ; personne ne peut
+ * retirer la confidentialité voulue par l'autre.
+ */
+export const isConversationPrivate = (userA, userB) => {
+  const globals = db.prepare('SELECT COUNT(*) AS n FROM users WHERE id IN (?, ?) AND global_private = 1').get(userA, userB);
+  if (globals && globals.n > 0) return true;
+  const convo = db.prepare(`
+    SELECT COUNT(*) AS n FROM conversation_privacy
+    WHERE is_private = 1 AND ((owner_id = ? AND contact_id = ?) OR (owner_id = ? AND contact_id = ?))
+  `).get(userA, userB, userB, userA);
+  return !!(convo && convo.n > 0);
+};
+
 /**
  * DTO pour les données publiques d'un utilisateur
  */

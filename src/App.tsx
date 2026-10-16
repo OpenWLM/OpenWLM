@@ -531,14 +531,23 @@ const App: React.FC = () => {
       alert("Le mode privé global est activé. Désactivez-le dans le menu principal pour gérer individuellement.");
       return;
     }
+    if (activeContact?.their_private === 1 && !isPrivateMode[chatId]) {
+      alert("Ce contact a activé le mode privé pour cette conversation. Vous ne pouvez pas le désactiver.");
+      return;
+    }
     const newState = !isPrivateMode[chatId];
     setIsPrivateMode(prev => ({ ...prev, [chatId]: newState }));
-    
+    privacyToggledAtRef.current[chatId] = Date.now();
+    // Le contact peut garder la conversation privée de son côté
+    const stillPrivate = newState || activeContact?.their_private === 1;
+
     // Notification système locale
     const systemMsg = {
       senderId: 0,
       receiverId: chatId,
-      text: `Vous avez ${newState ? 'activé' : 'désactivé'} le mode privé. Les messages ${newState ? 'ne seront plus' : 'seront à nouveau'} enregistrés.`,
+      text: newState || !stillPrivate
+        ? `Vous avez ${newState ? 'activé' : 'désactivé'} le mode privé. Les messages ${newState ? 'ne seront plus' : 'seront à nouveau'} enregistrés.`
+        : `Vous avez désactivé le mode privé, mais votre contact le garde actif : les messages ne sont toujours pas enregistrés.`,
       sender: 'Système',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
@@ -582,13 +591,11 @@ const App: React.FC = () => {
   // Sauvegarde persistante du mode privé global
   useEffect(() => {
     saveGlobalPrivateMode(globalPrivateMode);
-
-    // Synchroniser avec les chats ouverts
-    if (user?.id && openChatIds.length > 0) {
-       // Note: To avoid socket missing here, we'll handle emission in another way, 
-       // but we persist the value so it applies to all logic.
-    }
   }, [globalPrivateMode]);
+
+  // Horodatage du dernier basculement local par conversation : évite qu'un
+  // rafraîchissement des contacts parti AVANT l'écriture serveur n'annule le clic.
+  const privacyToggledAtRef = useRef<Record<number, number>>({});
 
   // Sauvegarde persistante du mode privé
   useEffect(() => {
@@ -687,6 +694,34 @@ const App: React.FC = () => {
     setShowAddContactModal,
     clearHistoryErrorText: t.roster.clearHistoryError
   });
+
+  // MODE PRIVÉ PAR CONVERSATION : l'état persisté côté serveur (renvoyé avec la liste
+  // des contacts, rafraîchie au chargement puis périodiquement) fait autorité. On
+  // resynchronise ainsi après une reconnexion sans dépendre des événements en direct.
+  useEffect(() => {
+    setIsPrivateMode(prev => {
+      let changed = false;
+      const next = { ...prev };
+      const now = Date.now();
+      contacts.forEach(c => {
+        if (c.my_private === undefined) return;
+        if (now - (privacyToggledAtRef.current[c.id] || 0) < 5000) return;
+        const v = c.my_private === 1;
+        if (!!prev[c.id] !== v) { next[c.id] = v; changed = true; }
+      });
+      return changed ? next : prev;
+    });
+  }, [contacts]);
+
+  // Mode privé EFFECTIF par conversation (même règle que le serveur) : mon mode global,
+  // celui du contact, ma préférence de conversation ou la sienne.
+  const effectivePrivateModes = useMemo(() => {
+    const map: Record<number, boolean> = { ...isPrivateMode };
+    contacts.forEach(c => {
+      map[c.id] = globalPrivateMode || !!isPrivateMode[c.id] || c.global_private === 1 || c.their_private === 1;
+    });
+    return map;
+  }, [contacts, isPrivateMode, globalPrivateMode]);
 
   // Domaine jeux (partie active, invitations, reprise) — extrait dans un hook dédié.
   const {
@@ -1824,18 +1859,30 @@ const App: React.FC = () => {
       });
 
       // Synchronisation du Mode Privé
+      // Le contact a changé SA préférence pour notre conversation (la mienne est inchangée)
       newSocket.on('private_mode_changed', (data: any) => {
-        const { senderId, isPrivate, senderNickname } = data;
-        setIsPrivateMode(prev => ({ ...prev, [senderId]: isPrivate }));
+        const senderId = Number(data?.senderId);
+        if (!senderId) return;
+        const isPrivate = !!data.isPrivate;
+        const effective = data.effectivePrivate !== undefined ? !!data.effectivePrivate : isPrivate;
+        const senderNickname = data.senderNickname;
+        setContacts(prev => prev.map(c => c.id === senderId ? { ...c, their_private: isPrivate ? 1 : 0 } : c));
 
         const systemMsg: Message = {
           senderId: 0,
           receiverId: senderId,
-          text: `${senderNickname} a ${isPrivate ? 'activé' : 'désactivé'} le mode privé. Les messages ${isPrivate ? 'ne seront pas' : 'seront'} enregistrés.`,
+          text: `${senderNickname} a ${isPrivate ? 'activé' : 'désactivé'} le mode privé. Les messages ${effective ? 'ne seront pas' : 'seront'} enregistrés.`,
           sender: 'Système',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
         setMessages(prev => ({ ...prev, [senderId]: [...(prev[senderId] || []), systemMsg] }));
+      });
+
+      // Ma préférence a changé depuis une autre de mes sessions
+      newSocket.on('private_mode_self_sync', (data: any) => {
+        const contactId = Number(data?.contactId);
+        if (!contactId) return;
+        setIsPrivateMode(prev => ({ ...prev, [contactId]: !!data.isPrivate }));
       });
 
       // WebRTC : Réception d'un appel
@@ -1910,6 +1957,24 @@ const App: React.FC = () => {
             });
           } catch (e) {
             console.warn('[Security] Impossible de parser la clé publique reçue:', e);
+          }
+        }
+
+        // Le contact a basculé son mode privé GLOBAL : on le signale dans la conversation
+        // (l'état lui-même suit via contacts.global_private, persisté côté serveur).
+        if (data.global_private !== undefined) {
+          const known = contactsRef.current.find(c => c.id === contactId);
+          if (known && known.global_private !== undefined && Number(known.global_private) !== Number(data.global_private)) {
+            const on = Number(data.global_private) === 1;
+            const name = known.nickname || known.username;
+            const systemMsg: Message = {
+              senderId: 0,
+              receiverId: contactId,
+              text: `${name} a ${on ? 'activé' : 'désactivé'} le mode privé global.${on ? ' Les messages ne seront pas enregistrés.' : ''}`,
+              sender: 'Système',
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+            setMessages(prev => (prev[contactId] ? { ...prev, [contactId]: [...prev[contactId], systemMsg] } : prev));
           }
         }
 
@@ -2043,14 +2108,14 @@ const App: React.FC = () => {
     }
 
     if (maxContactMsgId > 0) {
-      const isPriv = globalPrivateMode || !!isPrivateMode[activeChatId] || isMsgPrivate;
+      const isPriv = !!effectivePrivateModes[activeChatId] || isMsgPrivate;
       socket.emit('message_read', {
         contactId: activeChatId,
         lastReadMessageId: maxContactMsgId,
         isPrivate: isPriv
       });
     }
-  }, [activeChatId, messages[activeChatId]?.length, socket, user, globalPrivateMode, isPrivateMode]);
+  }, [activeChatId, messages[activeChatId]?.length, socket, user, effectivePrivateModes]);
 
   /**
    * RÉCUPÉRATION DE LA CLÉ PUBLIQUE D'UN CONTACT (Cache-first)
@@ -2195,7 +2260,7 @@ const App: React.FC = () => {
         style: null,
         audio: null,
         type: info.type,
-        isPrivate: globalPrivateMode || !!isPrivateMode[info.contactId]
+        isPrivate: !!effectivePrivateModes[info.contactId]
       };
       const retried: Message = { ...localMsg, mid: envelope.mid, _isPending: true, _failed: undefined, _failReason: undefined, timestamp: new Date().toISOString() };
       setMessages(prev => ({
@@ -2432,7 +2497,7 @@ const App: React.FC = () => {
         style: null, 
         audio: null, 
         type: 'text',
-        isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
+        isPrivate: !!effectivePrivateModes[activeChatId]
       };
       
       const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -2577,7 +2642,7 @@ const App: React.FC = () => {
         style: null,
         audio: null,
         type: 'file',
-        isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
+        isPrivate: !!effectivePrivateModes[activeChatId]
       };
 
       const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -2620,7 +2685,7 @@ const App: React.FC = () => {
         alert("Une erreur est survenue lors du chiffrement ou de l'envoi du fichier.");
       }
     }
-  }, [socket, myKeys, activeChatId, user, myNickname, globalPrivateMode, isPrivateMode]);
+  }, [socket, myKeys, activeChatId, user, myNickname, effectivePrivateModes]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2865,7 +2930,7 @@ const App: React.FC = () => {
                 style: null,
                 audio: null,
                 type: 'audio',
-                isPrivate: globalPrivateMode || !!isPrivateMode[activeChatId]
+                isPrivate: !!effectivePrivateModes[activeChatId]
               };
 
               const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -3150,15 +3215,6 @@ const App: React.FC = () => {
     if (!openChatIds.includes(id)) {
       setOpenChatIds(prev => [...prev, id]);
 
-      // Synchronisation automatique du mode privé si actif en local
-      if (id !== SYSTEM_BOT_ID && (globalPrivateMode || isPrivateMode[id]) && socket) {
-        socket.emit('toggle_private_mode', {
-          senderId: user?.id,
-          receiverId: id,
-          isPrivate: true,
-          senderNickname: myNickname
-        });
-      }
     }
     setActiveChatId(id);
     loadChatHistory(id);
@@ -3590,17 +3646,8 @@ const App: React.FC = () => {
                       const newGlobal = !globalPrivateMode;
                       setGlobalPrivateMode(newGlobal); 
                       setShowStatusMenu(false); 
+                      // Persisté côté serveur, qui diffuse le nouvel état aux contacts (user_status_changed)
                       axios.post('/api/user/global-private', { userId: user?.id, globalPrivate: newGlobal }).catch(console.error);
-                      if (socket && openChatIds.length > 0) {
-                        openChatIds.forEach(id => {
-                          socket.emit('toggle_private_mode', {
-                            senderId: user?.id,
-                            receiverId: id,
-                            isPrivate: newGlobal || !!isPrivateMode[id],
-                            senderNickname: myNickname
-                          });
-                        });
-                      }
                     }}>
                       {globalPrivateMode ? t.roster.globalPrivateOn : t.roster.globalPrivateOff}
                     </div>
@@ -3709,7 +3756,7 @@ const App: React.FC = () => {
             activeChatId={activeChatId}
             activeContact={activeContact}
             globalPrivateMode={globalPrivateMode}
-            isPrivateMode={isPrivateMode}
+            isPrivateMode={effectivePrivateModes}
             showGamesMenu={showGamesMenu}
             onToggleGamesMenu={() => setShowGamesMenu(prev => !prev)}
             onOpenFiles={() => fileInputRef.current?.click()}
@@ -3740,7 +3787,7 @@ const App: React.FC = () => {
                   <div className="conv-header-content" style={{ display: 'flex', alignItems: 'flex-end', width: '100%' }}>
                      <div className={`conv-avatar-box ${activeContact.status || 'online'}`} style={{ position: 'relative' }}>
                        <img src={activeContact.avatar} alt="Avatar" />
-                       {(globalPrivateMode || isPrivateMode[activeChatId]) && (
+                       {effectivePrivateModes[activeChatId] && (
                          <div className="padlock-badge" title={t.chat.privateModeActive}>🔒</div>
                        )}
                      </div>

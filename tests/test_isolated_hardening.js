@@ -183,6 +183,8 @@ test('P2 messages : ids privés uniques (pas de collision Date.now)', async () =
   // désormais refusé (RECIPIENT_OFFLINE_PRIVATE), cf. tests/test_private_mode_delivery.js.
   const b = await connect(tok(bobId));
   try {
+    // Le mode privé est l'état persisté côté serveur (le flag isPrivate client est ignoré)
+    a.emit('toggle_private_mode', { senderId: aliceId, receiverId: bobId, isPrivate: true });
     await new Promise((r) => setTimeout(r, 150));
     const ids = await Promise.all([
       new Promise((resolve) => a.emit('send_message', { senderId: aliceId, receiverId: bobId, text: 'p1', isPrivate: true }, resolve)),
@@ -190,6 +192,8 @@ test('P2 messages : ids privés uniques (pas de collision Date.now)', async () =
     ]);
     assert.ok(ids[0]?.id && ids[1]?.id, 'acks privés avec id');
     assert.notEqual(ids[0].id, ids[1].id, 'les ids privés ne doivent pas entrer en collision');
+    a.emit('toggle_private_mode', { senderId: aliceId, receiverId: bobId, isPrivate: false });
+    await new Promise((r) => setTimeout(r, 100));
   } finally { a.disconnect(); b.disconnect(); }
 });
 

@@ -213,7 +213,9 @@ test('3. Mode privé : AUCUNE persistance (ni message, ni reçu, ni curseur)', a
   A1.statusUpdates.length = 0;
   A1.readUpdates.length = 0;
 
-  // Alice envoie un message privé
+  // Alice passe la conversation en privé (état persisté côté serveur), puis envoie
+  A1.emit('toggle_private_mode', { senderId: aliceId, receiverId: bobId, isPrivate: true });
+  await sleep(150);
   const ackPrivate = await sendMessage(A1, {
     senderId: aliceId,
     receiverId: bobId,
@@ -248,6 +250,8 @@ test('3. Mode privé : AUCUNE persistance (ni message, ni reçu, ni curseur)', a
   assert.equal(cursorPrivate, 0, 'Aucun curseur de lecture ne doit être persisté pour un message privé');
 
   db.close();
+  A1.emit('toggle_private_mode', { senderId: aliceId, receiverId: bobId, isPrivate: false });
+  await sleep(150);
 });
 
 test('4. Sécurité : usurpation d identité et injection non autorisée rejetées', async () => {

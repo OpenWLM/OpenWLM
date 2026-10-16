@@ -156,10 +156,14 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
         users.global_private, 
         users.public_key, 
         CASE WHEN reverse_c.blocked = 1 THEN 'offline' ELSE users.status END as status, 
-        contacts.blocked 
+        contacts.blocked,
+        COALESCE(my_cp.is_private, 0) as my_private,
+        COALESCE(their_cp.is_private, 0) as their_private
       FROM contacts 
       JOIN users ON contacts.contact_id = users.id 
       LEFT JOIN contacts reverse_c ON reverse_c.user_id = contacts.contact_id AND reverse_c.contact_id = contacts.user_id
+      LEFT JOIN conversation_privacy my_cp ON my_cp.owner_id = contacts.user_id AND my_cp.contact_id = contacts.contact_id
+      LEFT JOIN conversation_privacy their_cp ON their_cp.owner_id = contacts.contact_id AND their_cp.contact_id = contacts.user_id
       WHERE contacts.user_id = ?
     `).all(userId);
     

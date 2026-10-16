@@ -48,6 +48,7 @@ import { ContactRoster } from './components/ContactRoster';
 import { ChatTabsBar } from './components/ChatTabsBar';
 import { ChatToolbar } from './components/ChatToolbar';
 import { ChatMessageLog } from './components/ChatMessageLog';
+import { ChatWindow } from './components/ChatWindow';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -3649,72 +3650,53 @@ const App: React.FC = () => {
       </div>
 
       {/* --- FENÊTRE DE CONVERSATION --- */}
-      <div className={`conversation-window ${isNudging ? 'wlm-nudge' : ''}`}>
-        {activeChatId === 0 ? (
-          /* État vide si aucune discussion n'est sélectionnée */
-          <div className="empty-chat-state">
-            <div className="msn-butterfly giant"></div>
-            <div className="welcome-text">{t.roster.emptyStateTitle}</div>
-            <div className="sub-welcome">{t.roster.emptyStateSubtitle}</div>
-            <div style={{ marginTop: '16px' }}>
-              <button 
-                type="button" 
-                className="win-btn"
-                onClick={() => openChat(SYSTEM_BOT_ID)}
-                style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}
-              >
-                <span>🤖</span>
-                <span>{t.roster.startTestChat}</span>
-              </button>
-            </div>
-            <div style={{ fontSize: '11px', color: '#777', marginTop: '10px' }}>
-              {t.roster.emptyStateBotHint}
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Barre d'onglets pour les discussions ouvertes */}
-            <ChatTabsBar
-              openChatIds={openChatIds}
-              contacts={contacts}
-              activeChatId={activeChatId}
-              draggedTabId={draggedTabId}
-              dragOverTabId={dragOverTabId}
-              dropPosition={dropPosition}
-              isGameTab={(id) => activeGame?.opponentId === id || resumableGames.some(g => g.opponentId === id)}
-              onSelectTab={setActiveChatId}
-              onCloseTab={closeChat}
-              onMobileBack={() => setActiveChatId(0)}
-              onDragStart={handleTabDragStart}
-              onDragOver={handleTabDragOver}
-              onDragLeave={handleTabDragLeave}
-              onDrop={handleTabDrop}
-              onDragEnd={handleTabDragEnd}
-            />
-
-            {/* Barre d'actions du chat (Haut) */}
-            <ChatToolbar
-              activeChatId={activeChatId}
-              activeContact={activeContact}
-              globalPrivateMode={globalPrivateMode}
-              isPrivateMode={isPrivateMode}
-              showGamesMenu={showGamesMenu}
-              onToggleGamesMenu={() => setShowGamesMenu(prev => !prev)}
-              onOpenFiles={() => fileInputRef.current?.click()}
-              onOpenBackground={() => setShowBgModal(true)}
-              onStartVideo={() => handleStartCall(false)}
-              onStartCall={() => handleStartCall(true)}
-              onInviteGame={handleInviteGame}
-              onTogglePrivateMode={() => {
-                if (globalPrivateMode) {
-                  alert(t.chat.privateModeGlobalAlert);
-                } else {
-                  togglePrivateMode(activeChatId);
-                }
-              }}
-              onOpenSafetyModal={handleOpenSafetyModal}
-            />
-
+      <ChatWindow
+        activeChatId={activeChatId}
+        isNudging={isNudging}
+        onStartBotChat={() => openChat(SYSTEM_BOT_ID)}
+        tabs={
+          <ChatTabsBar
+            openChatIds={openChatIds}
+            contacts={contacts}
+            activeChatId={activeChatId}
+            draggedTabId={draggedTabId}
+            dragOverTabId={dragOverTabId}
+            dropPosition={dropPosition}
+            isGameTab={(id) => activeGame?.opponentId === id || resumableGames.some(g => g.opponentId === id)}
+            onSelectTab={setActiveChatId}
+            onCloseTab={closeChat}
+            onMobileBack={() => setActiveChatId(0)}
+            onDragStart={handleTabDragStart}
+            onDragOver={handleTabDragOver}
+            onDragLeave={handleTabDragLeave}
+            onDrop={handleTabDrop}
+            onDragEnd={handleTabDragEnd}
+          />
+        }
+        toolbar={
+          <ChatToolbar
+            activeChatId={activeChatId}
+            activeContact={activeContact}
+            globalPrivateMode={globalPrivateMode}
+            isPrivateMode={isPrivateMode}
+            showGamesMenu={showGamesMenu}
+            onToggleGamesMenu={() => setShowGamesMenu(prev => !prev)}
+            onOpenFiles={() => fileInputRef.current?.click()}
+            onOpenBackground={() => setShowBgModal(true)}
+            onStartVideo={() => handleStartCall(false)}
+            onStartCall={() => handleStartCall(true)}
+            onInviteGame={handleInviteGame}
+            onTogglePrivateMode={() => {
+              if (globalPrivateMode) {
+                alert(t.chat.privateModeGlobalAlert);
+              } else {
+                togglePrivateMode(activeChatId);
+              }
+            }}
+            onOpenSafetyModal={handleOpenSafetyModal}
+          />
+        }
+      >
             {/* Vue scindée : Chat à gauche, Jeu à droite */}
             <div className="conversation-split-view" onPaste={handlePaste}>
               <div className="conversation-chat-column">
@@ -4086,9 +4068,7 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
-      </>
-        )}
-      </div>
+      </ChatWindow>
 
       {/* --- MODALES --- */}
 

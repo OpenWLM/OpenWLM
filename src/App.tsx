@@ -45,6 +45,7 @@ import { FontModal, type FontSettings } from './components/FontModal';
 import { AllEmoticonsModal } from './components/AllEmoticonsModal';
 import { OptionsModal } from './components/OptionsModal';
 import { ContactRoster } from './components/ContactRoster';
+import { ChatTabsBar } from './components/ChatTabsBar';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { useI18n } from './i18n';
@@ -3743,40 +3744,23 @@ const App: React.FC = () => {
         ) : (
           <>
             {/* Barre d'onglets pour les discussions ouvertes */}
-            <div className="chat-tabs-bar">
-              <div className="mobile-back-btn" onClick={() => setActiveChatId(0)}>◀</div>
-              {openChatIds.map(id => {
-                const contact = id === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === id);
-                const isDragging = draggedTabId === id;
-                const isDragOver = dragOverTabId === id;
-                const dropClass = isDragOver && dropPosition ? (dropPosition === 'left' ? 'drop-target-left' : 'drop-target-right') : '';
-                return (
-                  <div 
-                    key={id} 
-                    draggable={true}
-                    onDragStart={(e) => handleTabDragStart(e, id)}
-                    onDragOver={(e) => handleTabDragOver(e, id)}
-                    onDragLeave={(e) => handleTabDragLeave(e, id)}
-                    onDrop={(e) => handleTabDrop(e, id)}
-                    onDragEnd={handleTabDragEnd}
-                    className={`chat-tab status-${contact?.status || 'online'} ${activeChatId === id ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${dropClass}`.trim()} 
-                    onClick={() => setActiveChatId(id)}
-                  >
-                    <span className="tab-name">
-                      {contact?.isBot ? '🤖 ' : ''}{formatNickname(contact?.nickname || contact?.username || 'Discussion')}{(activeGame?.opponentId === id || resumableGames.some(g => g.opponentId === id)) ? ' 🎮' : ''}
-                    </span>
-                    <span 
-                      className="chat-tab-close" 
-                      draggable={false}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => closeChat(e, id)}
-                    >
-                      ✕
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <ChatTabsBar
+              openChatIds={openChatIds}
+              contacts={contacts}
+              activeChatId={activeChatId}
+              draggedTabId={draggedTabId}
+              dragOverTabId={dragOverTabId}
+              dropPosition={dropPosition}
+              isGameTab={(id) => activeGame?.opponentId === id || resumableGames.some(g => g.opponentId === id)}
+              onSelectTab={setActiveChatId}
+              onCloseTab={closeChat}
+              onMobileBack={() => setActiveChatId(0)}
+              onDragStart={handleTabDragStart}
+              onDragOver={handleTabDragOver}
+              onDragLeave={handleTabDragLeave}
+              onDrop={handleTabDrop}
+              onDragEnd={handleTabDragEnd}
+            />
 
             {/* Barre d'actions du chat (Haut) */}
             <div className="chat-top-actions">

@@ -141,7 +141,9 @@ test('UX & État - La fermeture d’un onglet fonctionne sans régression après
 });
 
 test('Vérification statique - Intégration dans App.tsx et WLM.css', () => {
-  const appTsx = fs.readFileSync(path.join(__dirname, '../src/App.tsx'), 'utf-8');
+  // Le rendu des onglets vit désormais dans src/components/ChatTabsBar.tsx : on lit les deux.
+  const appTsx = fs.readFileSync(path.join(__dirname, '../src/App.tsx'), 'utf-8')
+    + '\n' + fs.readFileSync(path.join(__dirname, '../src/components/ChatTabsBar.tsx'), 'utf-8');
   const wlmCss = fs.readFileSync(path.join(__dirname, '../src/WLM.css'), 'utf-8');
   const tabUtilsTs = fs.readFileSync(path.join(__dirname, '../src/utils/TabUtils.ts'), 'utf-8');
 

@@ -99,7 +99,6 @@ export const ChatToolbar: React.FC<ChatToolbarProps> = ({
           </>
         )}
       </div>
-      <span onClick={() => onInviteGame('checkers')} style={{cursor:'pointer'}} title={t.games.checkersTitle.replace('{name}', contactName)}>{t.chat.activities}</span>
       <span
         onClick={onTogglePrivateMode}
         style={{ cursor: 'pointer', fontWeight: (globalPrivateMode || isPrivateMode[activeChatId]) ? 'bold' : 'normal', color: (globalPrivateMode || isPrivateMode[activeChatId]) ? '#00FF00' : 'inherit' }}

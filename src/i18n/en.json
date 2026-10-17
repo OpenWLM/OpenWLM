@@ -129,7 +129,6 @@
     "call": "Call",
     "gamesMenu": "Games ▾",
     "gamesMenuTooltip": "Play a game with this contact",
-    "activities": "Activities",
     "privateMode": "Private Mode",
     "privateModeActive": "Private mode enabled (messages not recorded)",
     "privateModeTooltip": "Messages sent in this mode are not saved on the server.",

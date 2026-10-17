@@ -96,9 +96,7 @@ async function auditEnforcement() {
 
   await Promise.all([safeConnect(socketAlice), safeConnect(socketBob), safeConnect(socketCharlie)]);
 
-  socketAlice.emit('identify', 9201);
-  socketBob.emit('identify', 9202);
-  socketCharlie.emit('identify', 9203);
+  // L'enregistrement des sessions se fait à la connexion authentifiée (plus d'« identify »)
   await new Promise(r => setTimeout(r, 300));
 
   const results = [];

@@ -25,7 +25,7 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
    * l'ancien comportement : un compte « offline » repasse « online ». Un « offline » demandé
    * (« Apparaître hors ligne ») reste hors ligne : rien n'est diffusé en ligne aux contacts.
    */
-  const applyStatusOnConnect = (userId, requestedStatus, alwaysBroadcast = false) => {
+  const applyStatusOnConnect = (userId, requestedStatus) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     if (!user) return;
     const requested = CONNECT_STATUSES.includes(requestedStatus) ? requestedStatus : null;
@@ -37,7 +37,7 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
       db.prepare('UPDATE users SET status = ? WHERE id = ?').run(target, userId);
       user.status = target;
     }
-    if (changed || alwaysBroadcast) broadcastStatusToContacts(userId, { ...toPublicUserDTO(user), signedIn });
+    if (changed) broadcastStatusToContacts(userId, { ...toPublicUserDTO(user), signedIn });
   };
 
   // Middleware d'authentification Socket.IO
@@ -125,25 +125,6 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
         }
       }
     }
-
-    // Gestion rétrocompatible de 'identify'
-    socket.on('identify', (userId) => {
-      try {
-        if (!socket.user || socket.user.id !== userId) return;
-        socket.join(getUserRoom(userId));
-        const wasAlreadyOnline = isUserOnline(userId);
-        addUserSocket(userId, socket.id);
-
-        if (disconnectTimers.has(userId)) {
-          clearTimeout(disconnectTimers.get(userId));
-          disconnectTimers.delete(userId);
-        }
-
-        if (!wasAlreadyOnline) applyStatusOnConnect(userId, socket.handshake.auth?.status, true);
-      } catch (err) {
-        console.error("[Session] Erreur identify:", err);
-      }
-    });
 
     // Enregistrement des sous-domaines Socket
     registerMessageHandlers(io, socket);

@@ -18,6 +18,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Coups de jeu** : chaque gestionnaire de coup (Morpion, Dames, Puissance 4, Démineur) revérifie la relation de contact (un contact bloqué ou supprimé en cours de partie ne peut plus jouer) et est limité en débit (40 coups / 10 s par utilisateur).
 - **Client du Démineur** : le plateau ne peut plus rester bloqué après une réponse perdue (déverrouillé après 5 s, à la reconnexion et à la resynchronisation) ; la bombe armée est désarmée au changement de main, à la nouvelle manche et sur erreur ; une erreur de jeu déclenche une resynchronisation. Les règles du plateau (taille, mines, objectif, bombe) viennent de l'état serveur au lieu de constantes dupliquées. La bombe est documentée comme une par manche (comme sur MSN), conformément au comportement.
 - **Sons** : les erreurs de reprise du contexte audio sont interceptées ; les minuteries du Démineur sont nettoyées au démontage.
+- **Nettoyage** : l'ancien événement socket `identify` est supprimé (gestionnaire serveur, émission client et chemin mort `alwaysBroadcast`) : les sessions sont enregistrées par la connexion authentifiée elle-même.
 
 ### Jeux
 - **Barre d'outils** : le bouton « Activités », qui n'ouvrait qu'une invitation aux Dames, est supprimé (tous les jeux sont dans le menu Jeux).

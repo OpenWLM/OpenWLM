@@ -18,6 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Game moves**: every move handler (Tic-Tac-Toe, Checkers, Connect Four, Minesweeper) re-checks the contact relationship (a contact blocked or removed mid-game can no longer play) and is rate-limited (40 moves / 10 s per user).
 - **Minesweeper client**: the board can no longer stay locked after a lost response (released after 5 s, on reconnect and on resync); the armed bomb is cleared on turn change, new round and error; a game error triggers a resync. Board rules (size, mines, target, bomb) come from the server state instead of duplicated constants. The bomb is documented as one per round (as on MSN), matching the behavior.
 - **Sounds**: audio context resume errors are caught; Minesweeper timers are cleared on unmount.
+- **Cleanup**: the legacy `identify` socket event is removed (server handler, client emit and the dead `alwaysBroadcast` path): sessions are registered by the authenticated connection itself.
 
 ### Games
 - **Toolbar**: the "Activities" button, which only opened a Checkers invitation, is removed (all games are in the Games menu).

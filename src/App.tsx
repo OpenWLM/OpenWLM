@@ -1763,7 +1763,6 @@ const App: React.FC = () => {
       let signInQuietUntil = Date.now() + 10000;
       newSocket.on('connect', () => {
         signInQuietUntil = Date.now() + 10000;
-        newSocket.emit('identify', user.id);
         refreshResumableGames();
         // Reconnexion : récupérer ce qui a été reçu pendant la coupure
         if (hasConnectedOnce) resyncOpenChatsRef.current(true);

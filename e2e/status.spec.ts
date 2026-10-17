@@ -134,3 +134,29 @@ test('absence automatique (inactivité) → repasse « Disponible » au redémar
   const me = await (await a.request.get('/api/user/me')).json();
   expect(me.user.status).toBe('online');
 });
+
+test('options : délai d\'inactivité modifiable, borné, et désactivé quand la case est décochée', async ({ browser }) => {
+  test.setTimeout(120000);
+  const a = await newUserPage(browser, `stopt_${Date.now()}`);
+  await a.locator('.status-trigger').click();
+  await a.locator('.dropdown-item', { hasText: 'Options' }).first().click();
+  const field = a.locator('#away-timeout');
+  await expect(field).toHaveValue('5');
+
+  // Effacer puis retaper : on obtient bien la valeur tapée (avant : « 15 » ou « 110 »)
+  await field.fill('');
+  await field.pressSequentially('10');
+  await expect(field).toHaveValue('10');
+  expect(await a.evaluate(() => localStorage.getItem('wlm_away_timeout'))).toBe('10');
+
+  // Valeur négative ou nulle : ramenée au minimum (1) en quittant le champ
+  await field.fill('-5');
+  await field.blur();
+  await expect(field).toHaveValue('1');
+  expect(await a.evaluate(() => localStorage.getItem('wlm_away_timeout'))).toBe('1');
+
+  // Case décochée : champ désactivé, préférence enregistrée
+  await a.locator('#check-away').uncheck();
+  await expect(field).toBeDisabled();
+  expect(await a.evaluate(() => localStorage.getItem('wlm_enable_auto_away'))).toBe('false');
+});

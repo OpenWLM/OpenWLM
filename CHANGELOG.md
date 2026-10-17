@@ -30,6 +30,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Tests: `tests/test_minesweeper_logic.js` (rules), `tests/test_minesweeper_server.js` (full game over sockets, no leak before the end), `e2e/minesweeper.spec.ts` (two browsers, synchronized boards, WebSocket frames inspected).
 
 ### Presence status
+- **Auto-away setting**: the inactivity delay field can be cleared and retyped (it used to snap to 1, giving "15" or "110"), is bounded to 1–120 minutes (a negative value used to switch to Away almost at once) and is disabled when the option is unchecked. Touch, wheel and scrolling inside the conversation or contact list now count as activity (mobile). Activity tracking no longer re-renders the whole app on every mouse move.
 - **Status restored on restart**: the status you picked by hand (menu or sign-in screen) is remembered on the device and restored when the app restarts. Inactivity auto-away is never remembered, so the app comes back "Available"; an intentional "Away", "Busy" or "Appear offline" is kept. The sign-in screen preselects your last status.
 - **Server**: on the first connection of an account, the client sends the wanted status in the socket handshake and the server applies it, instead of forcing "online" — "Appear offline" no longer shows you online to your contacts on reconnection.
 - **Fix**: profile updates (nickname, personal message, avatar, scene) no longer resend a stale status, which could set you "offline" or flap your status right after signing in.

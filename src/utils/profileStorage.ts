@@ -162,10 +162,20 @@ export function savePreferredStatus(userId: number | undefined, status: string):
 
 // --- Absence automatique (auto-away) ------------------------------------------------
 
+// Délai d'inactivité borné : une valeur invalide, nulle ou négative (qui passait « Absent »
+// presque immédiatement) retombe sur une valeur sûre.
+export const AWAY_TIMEOUT_MIN = 1;
+export const AWAY_TIMEOUT_MAX = 120;
+export const clampAwayTimeout = (minutes: unknown, fallback = 5): number => {
+  const n = typeof minutes === 'number' ? minutes : parseInt(String(minutes), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(AWAY_TIMEOUT_MAX, Math.max(AWAY_TIMEOUT_MIN, Math.round(n)));
+};
+
 export function loadAwayTimeout(defaultMinutes = 5): number {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.awayTimeout);
-    return saved ? parseInt(saved) : defaultMinutes;
+    return saved ? clampAwayTimeout(saved, defaultMinutes) : defaultMinutes;
   } catch {
     return defaultMinutes;
   }
@@ -173,7 +183,7 @@ export function loadAwayTimeout(defaultMinutes = 5): number {
 
 export function saveAwayTimeout(minutes: number): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.awayTimeout, minutes.toString());
+    localStorage.setItem(STORAGE_KEYS.awayTimeout, clampAwayTimeout(minutes).toString());
   } catch { /* ignore */ }
 }
 

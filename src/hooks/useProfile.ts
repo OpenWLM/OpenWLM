@@ -83,10 +83,14 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [isEditingPSM, setIsEditingPSM] = useState(false);
 
-  const [lastActivity, setLastActivity] = useState(() => Date.now());
+  // Dernière activité dans un ref : la stocker dans un état re-rendait toute l'application
+  // à chaque mouvement de souris
+  const lastActivityRef = useRef(0);
   const [awayTimeout, setAwayTimeout] = useState(() => loadAwayTimeout(5));
   const [enableAutoAway, setEnableAutoAway] = useState(() => loadEnableAutoAway(true));
   const [isAutoAway, setIsAutoAway] = useState(false);
+  const isAutoAwayRef = useRef(false);
+  useEffect(() => { isAutoAwayRef.current = isAutoAway; }, [isAutoAway]);
   const myStatusRef = useRef(myStatus);
   useEffect(() => { myStatusRef.current = myStatus; }, [myStatus]);
 
@@ -122,9 +126,12 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
    * DÉTECTION D'INACTIVITÉ (AUTO-AWAY)
    */
   useEffect(() => {
+    // Point de départ de l'inactivité : le montage (puis chaque changement de réglage)
+    if (!lastActivityRef.current) lastActivityRef.current = Date.now();
     const resetActivity = () => {
-      setLastActivity(Date.now());
-      if (isAutoAway) {
+      lastActivityRef.current = Date.now();
+      if (isAutoAwayRef.current) {
+        isAutoAwayRef.current = false;
         setIsAutoAway(false);
         if (myStatusRef.current === 'away') {
           setMyStatus('online');
@@ -133,15 +140,17 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       }
     };
 
-    window.addEventListener('mousemove', resetActivity);
-    window.addEventListener('keydown', resetActivity);
-    window.addEventListener('mousedown', resetActivity);
-    window.addEventListener('scroll', resetActivity);
+    // Souris, clavier, toucher (mobile), molette ; `scroll` en capture pour compter aussi le
+    // défilement des zones internes (conversation, liste de contacts), qui ne remonte pas.
+    const events: (keyof WindowEventMap)[] = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'pointerdown'];
+    events.forEach(ev => window.addEventListener(ev, resetActivity, { passive: true }));
+    window.addEventListener('scroll', resetActivity, { passive: true, capture: true });
 
     const interval = setInterval(() => {
-      if (enableAutoAway && !isAutoAway && myStatusRef.current === 'online') {
-        const inactiveTime = Date.now() - lastActivity;
+      if (enableAutoAway && !isAutoAwayRef.current && myStatusRef.current === 'online') {
+        const inactiveTime = Date.now() - lastActivityRef.current;
         if (inactiveTime > awayTimeout * 60 * 1000) {
+          isAutoAwayRef.current = true;
           setIsAutoAway(true);
           setMyStatus('away');
           syncProfile({ status: 'away' });
@@ -150,13 +159,11 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
     }, 10000); // Vérification toutes les 10s
 
     return () => {
-      window.removeEventListener('mousemove', resetActivity);
-      window.removeEventListener('keydown', resetActivity);
-      window.removeEventListener('mousedown', resetActivity);
-      window.removeEventListener('scroll', resetActivity);
+      events.forEach(ev => window.removeEventListener(ev, resetActivity));
+      window.removeEventListener('scroll', resetActivity, { capture: true });
       clearInterval(interval);
     };
-  }, [lastActivity, awayTimeout, enableAutoAway, isAutoAway, syncProfile]);
+  }, [awayTimeout, enableAutoAway, syncProfile]);
 
   /**
    * CHANGEMENT DE MOT DE PASSE (re-chiffrement Zero-Knowledge de la clé privée)

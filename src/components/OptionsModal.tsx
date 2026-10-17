@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useI18n } from '../i18n';
 import { isSystemNotificationSupported } from '../utils/NotificationManager';
 import { isAndroidDevice, isPushSupported, type PushBackendStatus } from '../utils/PushNotificationManager';
-import { saveAwayTimeout, saveEnableAutoAway } from '../utils/profileStorage';
+import { saveAwayTimeout, saveEnableAutoAway, clampAwayTimeout, AWAY_TIMEOUT_MIN, AWAY_TIMEOUT_MAX } from '../utils/profileStorage';
 import type { User } from '../types';
 
 /**
@@ -64,6 +64,8 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
 }) => {
   const { t, language, setLanguage } = useI18n();
   const [optionsTab, setOptionsTab] = useState<'personal' | 'alerts'>('personal');
+  // Brouillon du délai d'inactivité : permet d'effacer le champ pour retaper une valeur
+  const [awayTimeoutDraft, setAwayTimeoutDraft] = useState(() => String(awayTimeout));
 
   return (
     <div className="modal-bg">
@@ -140,14 +142,30 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     <label htmlFor="check-away">{t.settings.autoAwayPrefix}</label>
                     <input
                       type="number"
+                      id="away-timeout"
                       className="win-input-small"
-                      value={awayTimeout}
+                      min={AWAY_TIMEOUT_MIN}
+                      max={AWAY_TIMEOUT_MAX}
+                      step={1}
+                      value={awayTimeoutDraft}
+                      disabled={!enableAutoAway}
+                      aria-label={`${t.settings.autoAwayPrefix}${t.settings.autoAwaySuffix}`}
                       onChange={e => {
-                        const val = parseInt(e.target.value) || 1;
-                        setAwayTimeout(val);
-                        saveAwayTimeout(val);
+                        // Saisie libre (on peut effacer pour retaper) ; appliquée si valide
+                        setAwayTimeoutDraft(e.target.value);
+                        const n = parseInt(e.target.value, 10);
+                        if (Number.isFinite(n) && n >= AWAY_TIMEOUT_MIN && n <= AWAY_TIMEOUT_MAX) {
+                          setAwayTimeout(n);
+                          saveAwayTimeout(n);
+                        }
                       }}
-                      style={{ width: '40px', textAlign: 'center', margin: '0 5px' }}
+                      onBlur={() => {
+                        const n = clampAwayTimeout(awayTimeoutDraft, awayTimeout);
+                        setAwayTimeoutDraft(String(n));
+                        setAwayTimeout(n);
+                        saveAwayTimeout(n);
+                      }}
+                      style={{ width: '44px', textAlign: 'center', margin: '0 5px' }}
                     />
                     <span>{t.settings.autoAwaySuffix}</span>
                   </div>

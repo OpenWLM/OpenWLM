@@ -15,6 +15,7 @@ export const getGamePlayers = (game) => {
   if (!game) return [];
   if (game.gameType === 'checkers') return [game.playerWhite, game.playerBlack];
   if (game.gameType === 'puissance4') return [game.playerRed, game.playerYellow];
+  if (game.gameType === 'minesweeper') return [game.playerBlue, game.playerRed];
   return [game.playerX, game.playerO];
 };
 
@@ -110,6 +111,8 @@ export const createGamesRouter = () => {
         entry.myColor = (game.playerWhite === userId) ? 'white' : 'black';
       } else if (game.gameType === 'puissance4') {
         entry.myColor = (game.playerRed === userId) ? 'red' : 'yellow';
+      } else if (game.gameType === 'minesweeper') {
+        entry.myColor = (game.playerBlue === userId) ? 'blue' : 'red';
       } else {
         entry.mySymbol = (game.playerX === userId) ? 'X' : 'O';
       }

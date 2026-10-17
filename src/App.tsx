@@ -34,6 +34,7 @@ import { type FileDataPayload } from './components/FileTransferCard';
 import MorpionGame from './components/MorpionGame';
 import CheckersGame from './components/CheckersGame';
 import Puissance4Game from './components/Puissance4Game';
+import MinesweeperGame from './components/MinesweeperGame';
 import CustomEmoticonsModal from './components/CustomEmoticonsModal';
 import { SceneModal } from './components/SceneModal';
 import { AvatarModal } from './components/AvatarModal';
@@ -89,6 +90,10 @@ import {
 } from './utils/profileStorage';
 
 axios.defaults.withCredentials = true;
+
+// Icône d'un type de jeu (invitations, barre réduite)
+const gameIcon = (gameType?: string) =>
+  gameType === 'checkers' ? '⚪' : gameType === 'puissance4' ? '🔴' : gameType === 'minesweeper' ? '💣' : '🎮';
 
 /**
  * INTERFACES (types de domaine partagés, cf. src/types.ts)
@@ -4026,13 +4031,14 @@ const App: React.FC = () => {
                   <div className="wlm-game-invite-banner">
                     <div className="wlm-game-invite-info">
                       <span className="wlm-game-invite-icon">
-                        {incomingGameInvite.gameType === 'checkers' ? '⚪' : (incomingGameInvite.gameType === 'puissance4' ? '🔴' : '🎮')}
+                        {gameIcon(incomingGameInvite.gameType)}
                       </span>
                       <div className="wlm-game-invite-text">
                         <span className="wlm-game-invite-title">
-                          {incomingGameInvite.gameType === 'checkers' 
-                            ? t.games.inviteCheckersTitle 
-                            : (incomingGameInvite.gameType === 'puissance4' ? t.games.invitePuissance4Title : t.games.inviteMorpionTitle)}
+                          {incomingGameInvite.gameType === 'checkers' ? t.games.inviteCheckersTitle
+                            : incomingGameInvite.gameType === 'puissance4' ? t.games.invitePuissance4Title
+                            : incomingGameInvite.gameType === 'minesweeper' ? t.games.inviteMinesweeperTitle
+                            : t.games.inviteMorpionTitle}
                         </span>
                         <span className="wlm-game-invite-sub">{formatNickname(t.games.inviteLivePrompt.replace('{name}', incomingGameInvite.fromName))}</span>
                       </div>
@@ -4051,9 +4057,10 @@ const App: React.FC = () => {
                       <span className="wlm-game-invite-icon">⏳</span>
                       <div className="wlm-game-invite-text">
                         <span className="wlm-game-invite-title">
-                          {outgoingGameInvite.gameType === 'checkers' 
-                            ? t.games.invitePendingCheckers 
-                            : (outgoingGameInvite.gameType === 'puissance4' ? t.games.invitePendingPuissance4 : t.games.invitePendingMorpion)}
+                          {outgoingGameInvite.gameType === 'checkers' ? t.games.invitePendingCheckers
+                            : outgoingGameInvite.gameType === 'puissance4' ? t.games.invitePendingPuissance4
+                            : outgoingGameInvite.gameType === 'minesweeper' ? t.games.invitePendingMinesweeper
+                            : t.games.invitePendingMorpion}
                         </span>
                         <span className="wlm-game-invite-sub">{formatNickname(t.games.inviteSentWaiting.replace('{name}', outgoingGameInvite.targetName))}</span>
                       </div>
@@ -4072,11 +4079,11 @@ const App: React.FC = () => {
                   >
                     <div className="docked-pill-info">
                       <span className="docked-pill-icon">
-                        {activeGame.gameType === 'checkers' ? '⚪' : (activeGame.gameType === 'puissance4' ? '🔴' : '🎮')}
+                        {gameIcon(activeGame.gameType)}
                       </span>
                       <div className="docked-pill-texts">
                         <span className="docked-pill-title">
-                          {formatNickname(t.games.dockedTitle.replace('{game}', activeGame.gameType === 'checkers' ? t.games.checkers : (activeGame.gameType === 'puissance4' ? t.games.puissance4 : t.games.morpion)).replace('{name}', activeGame.opponentName))}
+                          {formatNickname(t.games.dockedTitle.replace('{game}', activeGame.gameType === 'checkers' ? t.games.checkers : activeGame.gameType === 'puissance4' ? t.games.puissance4 : activeGame.gameType === 'minesweeper' ? t.games.minesweeper : t.games.morpion).replace('{name}', activeGame.opponentName))}
                         </span>
                         <span className="docked-pill-score">
                           {t.games.dockedScore.replace('{myScore}', gameSummary.myScore.toString()).replace('{opponentScore}', gameSummary.opponentScore.toString())}
@@ -4268,11 +4275,26 @@ const App: React.FC = () => {
                   socket={socket}
                   opponentId={activeGame.opponentId}
                   opponentName={activeGame.opponentName}
-                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar || undefined}
                   myId={user?.id || 0}
                   myName={myNickname || user?.nickname || 'Moi'}
                   myAvatar={myAvatar}
                   myColor={(activeGame.myColor === 'white' || activeGame.myColor === 'black') ? activeGame.myColor : (activeGame.mySymbol === 'W' ? 'white' : 'black')}
+                  initialIsMyTurn={activeGame.isMyTurn}
+                  onClose={handleGameClose}
+                  onMinimize={handleGameMinimize}
+                  onGameStateChange={handleGameStateChange}
+                />
+              ) : activeGame.gameType === 'minesweeper' && activeGame.opponentId !== SYSTEM_BOT_ID ? (
+                <MinesweeperGame
+                  socket={socket}
+                  opponentId={activeGame.opponentId}
+                  opponentName={activeGame.opponentName}
+                  opponentAvatar={contacts.find(c => c.id === activeGame.opponentId)?.avatar || undefined}
+                  myId={user?.id || 0}
+                  myName={myNickname || user?.nickname || 'Moi'}
+                  myAvatar={myAvatar}
+                  myColor={activeGame.myColor === 'red' ? 'red' : 'blue'}
                   initialIsMyTurn={activeGame.isMyTurn}
                   onClose={handleGameClose}
                   onMinimize={handleGameMinimize}
@@ -4284,7 +4306,7 @@ const App: React.FC = () => {
                   isBotOpponent={activeGame.opponentId === SYSTEM_BOT_ID}
                   opponentId={activeGame.opponentId}
                   opponentName={activeGame.opponentName}
-                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar || undefined}
                   myId={user?.id || 0}
                   myName={myNickname || user?.nickname || 'Moi'}
                   myAvatar={myAvatar}
@@ -4300,7 +4322,7 @@ const App: React.FC = () => {
                   isBotOpponent={activeGame.opponentId === SYSTEM_BOT_ID}
                   opponentId={activeGame.opponentId}
                   opponentName={activeGame.opponentName}
-                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar}
+                  opponentAvatar={activeGame.opponentId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : contacts.find(c => c.id === activeGame.opponentId)?.avatar || undefined}
                   myId={user?.id || 0}
                   myName={myNickname || user?.nickname || 'Moi'}
                   myAvatar={myAvatar}

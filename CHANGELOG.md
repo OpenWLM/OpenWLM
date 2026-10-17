@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Games
+- **Minesweeper Flags (two-player Minesweeper)**: the MSN version where you have to FIND the mines. 16×16 board, 51 mines, first to 26 wins (no draw possible). A mine gives 1 point and you play again; a number or an empty area (flood fill) passes the turn. One 5×5 bomb per game, usable when at least 3 mines behind; you keep the turn if it finds a mine. Central mine counter, rounds score, Aero styling, available from the Games menu, invitations, docked bar and game resume.
+- **Anti-cheat**: the board is generated server-side (`crypto.randomInt`) and the mine positions never leave the server — clients only receive revealed cells, including on resync; remaining mines are shown only once the round is over.
+- **Hardening**: the Tic-Tac-Toe move handler now checks the game type (it could be sent against another game). Game panels no longer show a broken image for a contact without an avatar.
+- Tests: `tests/test_minesweeper_logic.js` (rules), `tests/test_minesweeper_server.js` (full game over sockets, no leak before the end), `e2e/minesweeper.spec.ts` (two browsers, synchronized boards, WebSocket frames inspected).
+
 ### Presence status
 - **Status restored on restart**: the status you picked by hand (menu or sign-in screen) is remembered on the device and restored when the app restarts. Inactivity auto-away is never remembered, so the app comes back "Available"; an intentional "Away", "Busy" or "Appear offline" is kept. The sign-in screen preselects your last status.
 - **Server**: on the first connection of an account, the client sends the wanted status in the socket handshake and the server applies it, instead of forcing "online" — "Appear offline" no longer shows you online to your contacts on reconnection.

@@ -11,6 +11,14 @@ import {
   isPuissance4BoardFull, 
   checkPuissance4Winner 
 } from '../routes/games.js';
+import {
+  createMinesweeperGame,
+  restartMinesweeperGame,
+  playMinesweeperMove,
+  minesweeperPublicState
+} from '../games/minesweeper.js';
+
+const GAME_TYPES = ['checkers', 'puissance4', 'minesweeper'];
 
 export const registerGameHandlers = (io, socket) => {
   // 1. Envoi d'une invitation à jouer
@@ -27,7 +35,7 @@ export const registerGameHandlers = (io, socket) => {
       const senderUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(socket.user.id);
       if (!senderUser) return;
 
-      const safeGameType = (gameType === 'checkers' || gameType === 'puissance4') ? gameType : 'morpion';
+      const safeGameType = GAME_TYPES.includes(gameType) ? gameType : 'morpion';
       
       // SÉCURITÉ : Enregistrer l'invitation avec expiration (60 secondes)
       const inviteKey = `${socket.user.id}_${target}`;
@@ -71,9 +79,27 @@ export const registerGameHandlers = (io, socket) => {
 
     if (isUserOnline(target) && acceptorUser && targetUser) {
       const gameKey = getGameKey(target, socket.user.id);
-      const chosenGameType = invite.gameType || (gameType === 'checkers' ? 'checkers' : gameType === 'puissance4' ? 'puissance4' : 'morpion');
+      const chosenGameType = invite.gameType || (GAME_TYPES.includes(gameType) ? gameType : 'morpion');
 
-      if (chosenGameType === 'checkers') {
+      if (chosenGameType === 'minesweeper') {
+        // L'initiateur joue Bleu et ouvre la première manche ; l'accepteur joue Rouge
+        const game = createMinesweeperGame(target, socket.user.id);
+        activeGames.set(gameKey, game);
+        io.to(getUserRoom(target)).emit('game_started', {
+          opponentId: socket.user.id,
+          opponentName: acceptorUser.nickname || acceptorUser.username,
+          myColor: 'blue',
+          isMyTurn: true,
+          gameType: 'minesweeper'
+        });
+        socket.emit('game_started', {
+          opponentId: target,
+          opponentName: targetUser.nickname || targetUser.username,
+          myColor: 'red',
+          isMyTurn: false,
+          gameType: 'minesweeper'
+        });
+      } else if (chosenGameType === 'checkers') {
         const initialBoard = createInitialCheckersBoard();
         activeGames.set(gameKey, {
           gameType: 'checkers',
@@ -197,8 +223,8 @@ export const registerGameHandlers = (io, socket) => {
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
 
-    // SÉCURITÉ 1 : Vérifier qu'une session de jeu active existe
-    if (!game || game.status !== 'playing') {
+    // SÉCURITÉ 1 : Vérifier qu'une session de jeu active existe (et que c'est bien un Morpion)
+    if (!game || game.status !== 'playing' || game.gameType !== 'morpion') {
       return socket.emit('game_error', { message: "Aucune partie active trouvée avec ce contact." });
     }
 
@@ -454,6 +480,27 @@ export const registerGameHandlers = (io, socket) => {
     });
   });
 
+  // 4d. Démineur à deux : clic ou bombe. Le serveur seul connaît les mines ; les deux
+  // joueurs (toutes leurs sessions) reçoivent les cases révélées et l'état public.
+  socket.on('minesweeper_move', (data) => {
+    if (!socket.user || !socket.user.id) return;
+    const userId = socket.user.id;
+    const { target, index, bomb } = data || {};
+
+    const gameKey = getGameKey(userId, target);
+    const game = activeGames.get(gameKey);
+    if (!game || game.gameType !== 'minesweeper' || ![game.playerBlue, game.playerRed].includes(userId)) {
+      return socket.emit('game_error', { message: "Aucune partie de Démineur active avec ce contact." });
+    }
+
+    const result = playMinesweeperMove(game, userId, index, bomb === true);
+    if (result.error) return socket.emit('game_error', { message: result.error });
+
+    const payload = { from: userId, revealed: result.revealed, bomb: bomb === true, state: minesweeperPublicState(game) };
+    io.to(getUserRoom(game.playerBlue)).emit('minesweeper_update', payload);
+    io.to(getUserRoom(game.playerRed)).emit('minesweeper_update', payload);
+  });
+
   // 5. Demande de redémarrage de la partie
   socket.on('game_restart', (data) => {
     if (!socket.user || !socket.user.id) return;
@@ -468,7 +515,12 @@ export const registerGameHandlers = (io, socket) => {
     if (!game) return;
 
     // SÉCURITÉ : la grille suit le TYPE ENREGISTRÉ de la partie (jamais le type fourni par le client).
-    if (game.gameType === 'checkers') {
+    if (game.gameType === 'minesweeper') {
+      restartMinesweeperGame(game);
+      const state = minesweeperPublicState(game);
+      io.to(getUserRoom(game.playerBlue)).emit('minesweeper_update', { from: userId, revealed: [], restart: true, state });
+      io.to(getUserRoom(game.playerRed)).emit('minesweeper_update', { from: userId, revealed: [], restart: true, state });
+    } else if (game.gameType === 'checkers') {
       game.board = createInitialCheckersBoard();
       game.status = 'playing';
       game.turn = game.playerWhite;
@@ -519,6 +571,17 @@ export const registerGameHandlers = (io, socket) => {
     const game = activeGames.get(gameKey);
     if (!game) {
       return socket.emit('game_resync_state', { active: false });
+    }
+
+    if (game.gameType === 'minesweeper') {
+      // Jamais la matrice des mines : uniquement l'état public (cases révélées)
+      return socket.emit('game_resync_state', {
+        active: true,
+        gameType: 'minesweeper',
+        isMyTurn: game.turn === userId,
+        status: game.status,
+        state: minesweeperPublicState(game)
+      });
     }
 
     socket.emit('game_resync_state', {

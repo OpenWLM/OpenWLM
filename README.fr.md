@@ -30,7 +30,7 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage aux logi
 - **Audio & vidéo (WebRTC)** : appels vocaux et vidéo en pair-à-pair, avec signalisation chiffrée ; pendant un appel audio, chacun peut activer sa caméra ou partager son écran.
 - **Messages vocaux** : enregistrement et lecture de clips vocaux chiffrés.
 - **Winks & Wizz** : clins d'œil animés et Wizz qui secoue la fenêtre.
-- **Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers) et Puissance 4 (Connect Four, grille 7x6) en temps réel, avec validation des coups côté serveur contre la triche, animations de gravité et panneau de jeu réductible.
+- **Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers), Puissance 4 (Connect Four, grille 7x6) et Démineur à deux (Minesweeper Flags : trouver les mines, 16x16, 51 mines, premier à 26, une bombe 5x5) en temps réel, avec validation des coups côté serveur contre la triche — l'emplacement des mines ne quitte jamais le serveur — et panneau de jeu réductible.
 - **Transfert de fichiers chiffré** : partage temporaire entre contacts (expiration 4 h), déchiffré dans le navigateur, avec aperçu des images.
 - **Interface français / anglais** : la langue se change sans rechargement et est détectée depuis le navigateur ; les deux langues tiennent dans la mise en page Aero sans débordement.
 

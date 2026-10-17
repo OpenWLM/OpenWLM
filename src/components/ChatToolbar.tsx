@@ -81,6 +81,14 @@ export const ChatToolbar: React.FC<ChatToolbarProps> = ({
               </div>
               <div
                 className="wlm-game-menu-item"
+                onClick={() => onInviteGame('minesweeper')}
+                title={t.games.minesweeperTitle.replace('{name}', contactName)}
+              >
+                <span className="msn-game-icon">💣</span>
+                <span>{t.games.minesweeper}</span>
+              </div>
+              <div
+                className="wlm-game-menu-item"
                 onClick={() => onInviteGame('morpion')}
                 title={t.games.morpionTitle.replace('{name}', contactName)}
               >

@@ -15,6 +15,9 @@ server/
 ├── clientIdentity.js         # Résolution certifiée de l'IP cliente (Cloudflare CIDRs)
 ├── accountRateLimiter.js     # Rate limiting logique par compte utilisateur
 │
+├── games/
+│   └── minesweeper.js        # Démineur à deux : logique pure (plateau, coups, bombe, état public)
+│
 ├── utils/
 │   ├── rateWindow.js         # Fenêtres glissantes partagées (Wizz, Winks, messages, signalisation)
 │   └── signupGuard.js        # Preuve de travail (hashcash) et plafond d'inscriptions par IP
@@ -36,7 +39,7 @@ server/
     ├── index.js              # Handshake, authentification des sockets et routage des événements
     ├── messages.js           # send_message, wizz, wink, accusés remis/lu, mode privé par conversation
     ├── webrtc.js             # Signalisation audio/vidéo P2P WebRTC
-    └── games.js              # Moteur temps réel : Morpion, Puissance 4 et Dames (anti-triche serveur)
+    └── games.js              # Moteur temps réel : Morpion, Puissance 4, Dames et Démineur (anti-triche serveur)
 ```
 
 ---
@@ -79,7 +82,7 @@ Chaque domaine métier est encapsulé dans une fonction usine injectant les dép
 ### E. Gestionnaires Socket.IO (`server/sockets/`)
 - `registerMessageHandlers` : Contrôle de débit, validation de taille (trames socket bornées à 1 Mo), persistance conditionnelle (neutralisée si la conversation est privée : mode global de l'un des deux, ou préférence de conversation de l'un des deux, persistée dans `conversation_privacy` ; le `isPrivate` envoyé par le client est ignoré), émission des notifications Web Push. `toggle_private_mode` n'écrit que la ligne de l'utilisateur authentifié.
 - `registerWebRtcHandlers` : Validation stricte des trames SDP / ICE (taille <= 64 Ko, structure autorisée) et relais vers le pair.
-- `registerGameHandlers` : Validation côté serveur du Morpion, du Puissance 4 (tour, gravité, colonne pleine, victoire/nul) et des Dames (déplacements diagonaux, sauts, prises, promotions en dame, fin de partie), avec invitation, reprise et abandon.
+- `registerGameHandlers` : Validation côté serveur du Morpion, du Puissance 4 (tour, gravité, colonne pleine, victoire/nul), des Dames (déplacements diagonaux, sauts, prises, promotions en dame, fin de partie) et du Démineur (`minesweeper_move` : la matrice des mines reste sur le serveur, les clients ne reçoivent que les cases révélées, y compris à la resynchronisation), avec invitation, reprise et abandon.
 
 ---
 

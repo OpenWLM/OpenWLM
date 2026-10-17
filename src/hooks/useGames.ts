@@ -5,7 +5,7 @@ import axios from 'axios';
 import { SYSTEM_BOT_ID, type Contact, type Message, type User } from '../types';
 
 /**
- * DOMAINE JEUX MULTI-JOUEURS (Morpion, Dames, Puissance 4)
+ * DOMAINE JEUX MULTI-JOUEURS (Morpion, Dames, Puissance 4, Démineur)
  *
  * Regroupe l'état et les actions des activités MSN :
  * - partie active, invitations entrante/sortante, parties reprenables, résumé de partie ;
@@ -21,7 +21,7 @@ export interface ActiveGame {
   opponentId: number;
   opponentName: string;
   mySymbol?: string;
-  myColor?: 'white' | 'black' | 'red' | 'yellow';
+  myColor?: 'white' | 'black' | 'red' | 'yellow' | 'blue';
   isMyTurn: boolean;
   gameType: string;
 }
@@ -43,7 +43,7 @@ export interface ResumableGame {
   opponentName: string;
   gameType: string;
   mySymbol?: string;
-  myColor?: 'white' | 'black' | 'red' | 'yellow';
+  myColor?: 'white' | 'black' | 'red' | 'yellow' | 'blue';
   isMyTurn: boolean;
 }
 
@@ -214,7 +214,10 @@ export function useGames(options: UseGamesOptions): GamesApi {
     if (!socket) return;
     const contact = contacts.find(c => c.id === activeChatId);
     if (!contact || contact.status === 'offline') {
-      const gameLabel = gameType === 'checkers' ? 'au Jeu de dames' : (gameType === 'puissance4' ? 'au Puissance 4' : 'au Morpion');
+      const gameLabel = gameType === 'checkers' ? 'au Jeu de dames'
+        : gameType === 'puissance4' ? 'au Puissance 4'
+        : gameType === 'minesweeper' ? 'au Démineur'
+        : 'au Morpion';
       alert(`Ce contact doit être en ligne pour jouer ${gameLabel}.`);
       return;
     }

@@ -4565,3 +4565,88 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   font-style: italic;
   color: #8a5a00;
 }
+
+/* ===================================================================
+   DÉMINEUR À DEUX (Minesweeper Flags) — plateau 16 × 16, style Aero
+   =================================================================== */
+.ms-flag { font-size: 12px; line-height: 1; font-weight: bold; }
+.ms-flag-blue { color: #1f5fbf; text-shadow: 0 1px 1px rgba(31, 95, 191, 0.3); }
+.ms-flag-red { color: #d0202a; text-shadow: 0 1px 1px rgba(208, 32, 42, 0.3); }
+.ms-found-badge { white-space: nowrap; }
+.ms-remaining { font-size: 20px; color: #004b8d; }
+
+.ms-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 2px;
+  flex-wrap: wrap;
+}
+.ms-bomb-btn { font-size: 11px; padding: 3px 10px; }
+.ms-bomb-btn.armed {
+  background: linear-gradient(to bottom, #ffe2b8, #ffb347);
+  border-color: #d9822b;
+  font-weight: bold;
+}
+.ms-bomb-btn:disabled { opacity: 0.55; cursor: default; }
+.ms-rule-note { flex: 1 1 160px; font-size: 10px; color: #5a6b7d; line-height: 1.3; }
+
+.ms-board-wrapper {
+  display: flex;
+  justify-content: center;
+  padding: 6px 10px 8px;
+}
+.ms-grid {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 1px;
+  width: 100%;
+  max-width: 400px;
+  padding: 4px;
+  background: linear-gradient(to bottom, #a9c6e6, #7fa3cc);
+  border: 1px solid #5f86b3;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 6px rgba(0, 40, 90, 0.15);
+  box-sizing: border-box;
+  user-select: none;
+}
+.ms-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(8px, 2.6vw, 12px);
+  font-weight: bold;
+  line-height: 1;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+.ms-hidden {
+  background: linear-gradient(to bottom, #f4f9ff 0%, #d6e6f7 55%, #bcd3ec 100%);
+  border: 1px solid #8fb0d4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.ms-grid-active .ms-hidden { cursor: pointer; }
+.ms-grid-active .ms-hidden:hover {
+  background: linear-gradient(to bottom, #ffffff 0%, #e6f1fc 55%, #cfe2f6 100%);
+  border-color: #5f9be0;
+}
+.ms-open {
+  background: #eef4fb;
+  border: 1px solid #d3e0ee;
+}
+.ms-n1 { color: #1f5fbf; }
+.ms-n2 { color: #2e8b2e; }
+.ms-n3 { color: #d0202a; }
+.ms-n4 { color: #1b2f8a; }
+.ms-n5 { color: #8a1b1b; }
+.ms-n6 { color: #1b8a87; }
+.ms-n7 { color: #222; }
+.ms-n8 { color: #777; }
+.ms-flagged { font-size: clamp(9px, 3vw, 13px); }
+.ms-flagged-blue { color: #1f5fbf; background: linear-gradient(to bottom, #e7f0ff, #c9dcf7); }
+.ms-flagged-red { color: #d0202a; background: linear-gradient(to bottom, #ffecec, #f7cccc); }
+.ms-mine-end { color: #555; font-size: clamp(8px, 2.6vw, 12px); }
+.ms-last { outline: 2px solid #ffb347; outline-offset: -1px; }
+.ms-bomb-area { box-shadow: inset 0 0 0 2px rgba(255, 140, 0, 0.85); }
+.ms-grid-bomb .ms-cell { cursor: crosshair; }

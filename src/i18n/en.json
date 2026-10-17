@@ -270,7 +270,22 @@
     "dockedDraw": "🤝 Draw",
     "dockedYourTurn": "👉 Your turn!",
     "dockedOpponentTurn": "⏳ {name}'s turn",
-    "dockedExpand": "🗖 Expand game"
+    "dockedExpand": "🗖 Expand game",
+    "minesweeper": "Minesweeper Flags",
+    "minesweeperTitle": "Minesweeper Flags — vs {name}",
+    "inviteMinesweeperTitle": "Invitation to Minesweeper Flags!",
+    "invitePendingMinesweeper": "Minesweeper Flags game pending...",
+    "blueLabel": "Blue",
+    "minesLeftLabel": "MINES",
+    "minesFound": "{n} / {target} mines",
+    "roundsScore": "Rounds {me} - {opp}",
+    "bannerMineFound": "🚩 Mine found! Play again.",
+    "bombBtn": "Bomb",
+    "bombCancel": "Cancel bomb",
+    "bombUsed": "Bomb used",
+    "bombHint": "Opens a 5×5 area. Once per game, when you are at least 3 mines behind.",
+    "bombArmed": "💣 Click the board to drop the bomb (5×5 area)",
+    "minesweeperRule": "Find the mines: a mine = 1 point and you play again. First to 26 wins."
   },
   "fileTransfer": {
     "expiredBadge": "Expired",

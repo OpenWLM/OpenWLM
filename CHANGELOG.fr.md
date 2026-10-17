@@ -11,6 +11,12 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Jeux
+- **Démineur à deux (Minesweeper Flags)** : la version MSN où il faut TROUVER les mines. Plateau 16×16, 51 mines, le premier à 26 gagne (match nul impossible). Une mine rapporte 1 point et on rejoue ; un chiffre ou une zone vide (remplissage par diffusion) passe la main. Une bombe 5×5 par partie, utilisable avec au moins 3 mines de retard ; on garde la main si elle trouve une mine. Compteur central de mines, score des manches, style Aero, accessible depuis le menu Jeux, les invitations, la barre réduite et la reprise de partie.
+- **Anti-triche** : le plateau est généré côté serveur (`crypto.randomInt`) et l'emplacement des mines ne quitte jamais le serveur — les clients ne reçoivent que les cases révélées, y compris à la resynchronisation ; les mines restantes ne sont montrées qu'à la fin de la manche.
+- **Durcissement** : le gestionnaire des coups du Morpion vérifie désormais le type de partie (il pouvait être envoyé contre un autre jeu). Les panneaux de jeu n'affichent plus d'image cassée pour un contact sans avatar.
+- Tests : `tests/test_minesweeper_logic.js` (règles), `tests/test_minesweeper_server.js` (partie complète par sockets, aucune fuite avant la fin), `e2e/minesweeper.spec.ts` (deux navigateurs, plateaux synchronisés, trames WebSocket inspectées).
+
 ### Statut de présence
 - **Statut restauré au redémarrage** : le statut choisi à la main (menu ou écran de connexion) est mémorisé sur l'appareil et restauré au redémarrage de l'app. L'absence automatique pour inactivité n'est jamais mémorisée : l'app revient « Disponible » ; un « Absent », « Occupé » ou « Apparaître hors ligne » volontaire est conservé. L'écran de connexion présélectionne le dernier statut.
 - **Serveur** : à la première connexion d'un compte, le client transmet le statut voulu dans le handshake du socket et le serveur l'applique, au lieu de forcer « en ligne » — « Apparaître hors ligne » ne vous fait plus réapparaître en ligne auprès de vos contacts à la reconnexion.

@@ -270,7 +270,22 @@
     "dockedDraw": "🤝 Match nul",
     "dockedYourTurn": "👉 À vous de jouer !",
     "dockedOpponentTurn": "⏳ Tour de {name}",
-    "dockedExpand": "🗖 Agrandir le jeu"
+    "dockedExpand": "🗖 Agrandir le jeu",
+    "minesweeper": "Démineur",
+    "minesweeperTitle": "Démineur — contre {name}",
+    "inviteMinesweeperTitle": "Invitation au Démineur !",
+    "invitePendingMinesweeper": "Partie de Démineur en attente...",
+    "blueLabel": "Bleu",
+    "minesLeftLabel": "MINES",
+    "minesFound": "{n} / {target} mines",
+    "roundsScore": "Manches {me} - {opp}",
+    "bannerMineFound": "🚩 Mine trouvée ! Rejouez.",
+    "bombBtn": "Bombe",
+    "bombCancel": "Annuler la bombe",
+    "bombUsed": "Bombe utilisée",
+    "bombHint": "Ouvre une zone de 5×5. Une fois par partie, avec au moins 3 mines de retard.",
+    "bombArmed": "💣 Cliquez sur le plateau pour lâcher la bombe (zone 5×5)",
+    "minesweeperRule": "Trouvez les mines : une mine = 1 point et vous rejouez. Le premier à 26 gagne."
   },
   "fileTransfer": {
     "expiredBadge": "Expiré",

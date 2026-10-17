@@ -11,6 +11,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Presence status
+- **Status restored on restart**: the status you picked by hand (menu or sign-in screen) is remembered on the device and restored when the app restarts. Inactivity auto-away is never remembered, so the app comes back "Available"; an intentional "Away", "Busy" or "Appear offline" is kept. The sign-in screen preselects your last status.
+- **Server**: on the first connection of an account, the client sends the wanted status in the socket handshake and the server applies it, instead of forcing "online" — "Appear offline" no longer shows you online to your contacts on reconnection.
+- **Fix**: profile updates (nickname, personal message, avatar, scene) no longer resend a stale status, which could set you "offline" or flap your status right after signing in.
+
 ### Notifications
 - **Contact sign-in notification**: when a contact signs in, an Aero toast "<name> has just signed in" is shown (desktop, app in the foreground), or a system notification when the app is in the background and notifications are allowed — same rules as message notifications. Clicking it opens the conversation. Silent for 10 s after your own (re)connection, so a server restart does not trigger a burst.
 

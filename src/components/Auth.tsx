@@ -4,6 +4,7 @@ import { deriveZeroKnowledgeKeys } from '../utils/Security';
 import { useI18n } from '../i18n';
 import { evaluatePassword, type PasswordStrengthLevel } from '../utils/PasswordStrength';
 import { solveProofOfWork, type PowChallenge } from '../utils/ProofOfWork';
+import { loadLastStatus } from '../utils/profileStorage';
 
 /**
  * Interface pour les propriétés du composant Auth
@@ -41,7 +42,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
   const [username, setUsername] = useState(initialUsername);
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
-  const [status, setStatus] = useState('online');
+  // Pré-rempli avec le dernier statut choisi (« Apparaître hors ligne » compris)
+  const [status, setStatus] = useState<string>(() => loadLastStatus());
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isDeriving, setIsDeriving] = useState(false);

@@ -19,6 +19,7 @@ export const STORAGE_KEYS = {
   enableToasts: 'wlm_enable_toasts',
   awayTimeout: 'wlm_away_timeout',
   enableAutoAway: 'wlm_enable_auto_away',
+  statusPref: 'wlm_status_pref',
   user: 'wlm_user'
 } as const;
 
@@ -119,6 +120,47 @@ export function loadEnableDesktopToasts(defaultValue = true): boolean {
 export function saveEnableDesktopToasts(enabled: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEYS.enableToasts, enabled.toString());
+  } catch { /* ignore */ }
+}
+
+// --- Statut choisi (restauré au redémarrage) -----------------------------------------
+// Seul un statut choisi À LA MAIN (menu ou écran de connexion) est mémorisé : l'absence
+// automatique pour inactivité ne l'est jamais, l'app repart donc « Disponible » après une
+// inactivité, mais reste « Absent » / « Occupé » / « Apparaître hors ligne » si c'était voulu.
+// Format : { "<userId>": statut, "last": statut } (« last » pré-remplit l'écran de connexion).
+
+export type PresenceStatus = 'online' | 'busy' | 'away' | 'offline';
+const PRESENCE_STATUSES: readonly string[] = ['online', 'busy', 'away', 'offline'];
+export const isPresenceStatus = (s: unknown): s is PresenceStatus =>
+  typeof s === 'string' && PRESENCE_STATUSES.includes(s);
+
+const readStatusPrefs = (): Record<string, string> => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.statusPref) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+export function loadPreferredStatus(userId: number | undefined): PresenceStatus | null {
+  if (!userId) return null;
+  const s = readStatusPrefs()[String(userId)];
+  return isPresenceStatus(s) ? s : null;
+}
+
+export function loadLastStatus(): PresenceStatus {
+  const s = readStatusPrefs().last;
+  return isPresenceStatus(s) ? s : 'online';
+}
+
+export function savePreferredStatus(userId: number | undefined, status: string): void {
+  if (!userId || !isPresenceStatus(status)) return;
+  try {
+    const prefs = readStatusPrefs();
+    prefs[String(userId)] = status;
+    prefs.last = status;
+    localStorage.setItem(STORAGE_KEYS.statusPref, JSON.stringify(prefs));
   } catch { /* ignore */ }
 }
 

@@ -11,6 +11,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Statut de présence
+- **Statut restauré au redémarrage** : le statut choisi à la main (menu ou écran de connexion) est mémorisé sur l'appareil et restauré au redémarrage de l'app. L'absence automatique pour inactivité n'est jamais mémorisée : l'app revient « Disponible » ; un « Absent », « Occupé » ou « Apparaître hors ligne » volontaire est conservé. L'écran de connexion présélectionne le dernier statut.
+- **Serveur** : à la première connexion d'un compte, le client transmet le statut voulu dans le handshake du socket et le serveur l'applique, au lieu de forcer « en ligne » — « Apparaître hors ligne » ne vous fait plus réapparaître en ligne auprès de vos contacts à la reconnexion.
+- **Correctif** : les mises à jour de profil (pseudo, message perso, avatar, scène) ne renvoient plus un statut périmé, qui pouvait vous passer « hors ligne » ou faire clignoter votre statut juste après la connexion.
+
 ### Notifications
 - **Notification de connexion d'un contact** : quand un contact se connecte, un toast Aero « <pseudo> vient de se connecter » s'affiche (PC, app au premier plan), ou une notification système quand l'app est en arrière-plan et que les notifications sont autorisées — mêmes règles que pour les messages. Un clic ouvre la conversation. Silence pendant 10 s après votre propre (re)connexion, pour éviter une rafale au redémarrage du serveur.
 

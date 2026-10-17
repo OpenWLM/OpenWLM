@@ -102,7 +102,10 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
         psm: updates.psm !== undefined ? updates.psm : myPSM,
         avatar: updates.avatar !== undefined ? updates.avatar : myAvatar,
         scene: updates.scene !== undefined ? updates.scene : myScene,
-        status: updates.status !== undefined ? updates.status : myStatus
+        // Le statut n'est envoyé que s'il est demandé : renvoyer l'état local à chaque
+        // modification de profil pouvait écraser le vrai statut avec une valeur périmée
+        // (ex. « offline » resté en mémoire après une déconnexion).
+        ...(updates.status !== undefined ? { status: updates.status } : {})
       });
       const newUser = { ...user, ...updates };
       setUser(newUser);
@@ -113,7 +116,7 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
     } catch (err) {
       console.error("Échec de synchronisation du profil:", err);
     }
-  }, [user, setUser, myNickname, myPSM, myAvatar, myScene, myStatus]);
+  }, [user, setUser, myNickname, myPSM, myAvatar, myScene]);
 
   /**
    * DÉTECTION D'INACTIVITÉ (AUTO-AWAY)

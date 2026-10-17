@@ -15,7 +15,29 @@ import { registerGameHandlers } from './games.js';
 
 export const disconnectTimers = new Map();
 
+const CONNECT_STATUSES = ['online', 'busy', 'away', 'offline'];
+
 export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
+  /**
+   * Statut appliqué quand la PREMIÈRE session d'un compte se connecte.
+   * Le client indique le statut voulu (handshake `auth.status` : dernier statut choisi à la
+   * main, ou celui de l'écran de connexion). Sans indication valide (ancien client), on garde
+   * l'ancien comportement : un compte « offline » repasse « online ». Un « offline » demandé
+   * (« Apparaître hors ligne ») reste hors ligne : rien n'est diffusé en ligne aux contacts.
+   */
+  const applyStatusOnConnect = (userId, requestedStatus, alwaysBroadcast = false) => {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user) return;
+    const requested = CONNECT_STATUSES.includes(requestedStatus) ? requestedStatus : null;
+    const target = requested ?? (user.status === 'offline' ? 'online' : user.status);
+    const changed = target !== user.status;
+    if (changed) {
+      db.prepare('UPDATE users SET status = ? WHERE id = ?').run(target, userId);
+      user.status = target;
+    }
+    if (changed || alwaysBroadcast) broadcastStatusToContacts(userId, toPublicUserDTO(user));
+  };
+
   // Middleware d'authentification Socket.IO
   io.use((socket, next) => {
     let token = socket.handshake.auth?.token;
@@ -95,12 +117,7 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
 
       if (!wasAlreadyOnline) {
         try {
-          const user = db.prepare('SELECT * FROM users WHERE id = ?').get(authUserId);
-          if (user && user.status === 'offline') {
-            db.prepare('UPDATE users SET status = ? WHERE id = ?').run('online', authUserId);
-            user.status = 'online';
-            broadcastStatusToContacts(authUserId, toPublicUserDTO(user));
-          }
+          applyStatusOnConnect(authUserId, socket.handshake.auth?.status);
         } catch (err) {
           console.error("[Session] Erreur passage online:", err);
         }
@@ -120,16 +137,7 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
           disconnectTimers.delete(userId);
         }
 
-        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-        if (user && !wasAlreadyOnline) {
-          let finalStatus = user.status;
-          if (user.status === 'offline') {
-            finalStatus = 'online';
-            db.prepare('UPDATE users SET status = ? WHERE id = ?').run('online', userId);
-            user.status = 'online';
-          }
-          broadcastStatusToContacts(userId, toPublicUserDTO(user));
-        }
+        if (!wasAlreadyOnline) applyStatusOnConnect(userId, socket.handshake.auth?.status, true);
       } catch (err) {
         console.error("[Session] Erreur identify:", err);
       }

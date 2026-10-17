@@ -82,7 +82,10 @@ import {
   savePrivateModes,
   loadGlobalPrivateMode,
   saveGlobalPrivateMode,
-  sanitizeUserForStorage
+  sanitizeUserForStorage,
+  loadPreferredStatus,
+  savePreferredStatus,
+  isPresenceStatus
 } from './utils/profileStorage';
 
 axios.defaults.withCredentials = true;
@@ -801,6 +804,10 @@ const App: React.FC = () => {
     forgetDeviceSuccessText: t.auth.forgetDeviceSuccess
   });
 
+  // Statut courant lisible hors rendu (handshake socket à la reconnexion)
+  const myStatusLiveRef = useRef(myStatus);
+  useEffect(() => { myStatusLiveRef.current = myStatus; }, [myStatus]);
+
   // Domaine clins d'œil & Wizz — extrait dans un hook dédié.
   const {
     activeWink,
@@ -1046,6 +1053,8 @@ const App: React.FC = () => {
    *    EXIGENCE ABSOLUE : Si la persistance échoue, la connexion RÉUSSIT quand même sans blocage.
    */
   const handleUserLogin = async (loggedInUser: any, vaultKey: CryptoKey, authKeyHex: string) => {
+    // Statut choisi sur l'écran de connexion : devient la préférence de ce compte
+    if (isPresenceStatus(loggedInUser?.status)) savePreferredStatus(loggedInUser.id, loggedInUser.status);
     if (loggedInUser.token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${loggedInUser.token}`;
     }
@@ -1182,7 +1191,13 @@ const App: React.FC = () => {
       setMyPSM(currentUser.psm || 'Disponible');
       setMyAvatar(currentUser.avatar || '/assets/usertiles/chess.png');
       setMyScene(currentUser.scene || '/assets/scenes/0006.png');
-      setMyStatus(currentUser.status || 'online');
+      // Statut : dernier choix manuel mémorisé (jamais l'absence automatique), sinon
+      // « Disponible ». Le serveur (et donc les contacts) est aligné s'il diffère.
+      const wantedStatus = loadPreferredStatus(currentUser.id) ?? 'online';
+      setMyStatus(wantedStatus);
+      if (currentUser.status !== wantedStatus) {
+        axios.post('/api/user/update', { userId: currentUser.id, status: wantedStatus }).catch(() => { /* resynchronisé à la reconnexion */ });
+      }
     };
 
     syncAndInit();
@@ -1712,12 +1727,26 @@ const App: React.FC = () => {
    */
   useEffect(() => {
     if (user?.id) {
-      const newSocket = io({ auth: { token: user.token } });
+      // Statut demandé au serveur à chaque (re)connexion : préférence mémorisée à la
+      // première connexion de la session, puis le statut courant (absence auto comprise).
+      let socketConnectedOnce = false;
+      const newSocket = io({
+        auth: (cb) => cb({
+          token: user.token,
+          status: socketConnectedOnce ? myStatusLiveRef.current : (loadPreferredStatus(user.id) ?? 'online')
+        })
+      });
+      newSocket.on('connect', () => { socketConnectedOnce = true; });
 
       let hasConnectedOnce = false;
       // Fenêtre de silence après notre propre (re)connexion : les contacts qui se
       // reconnectent en masse (ex. redémarrage du serveur) ne déclenchent pas une rafale.
       let signInQuietUntil = Date.now() + 10000;
+      // Dernier statut reçu par contact, enregistré immédiatement (contactsRef ne suit qu'après
+      // le rendu) : deux annonces « en ligne » rapprochées (connexion du socket puis mise à
+      // jour du profil) ne produisent qu'une notification. Valable 3 s, ensuite la liste des
+      // contacts (rafraîchie périodiquement) fait foi.
+      const recentStatus = new Map<number, { status: string; at: number }>();
       newSocket.on('connect', () => {
         signInQuietUntil = Date.now() + 10000;
         newSocket.emit('identify', user.id);
@@ -2062,7 +2091,10 @@ const App: React.FC = () => {
         // NOTIFICATION DE CONNEXION : « Pseudo vient de se connecter » (même mécanique que
         // les messages : toast Aero au premier plan sur PC, notification système sinon).
         const knownContact = contactsRef.current.find(c => c.id === contactId);
-        const isSignIn = !!knownContact && knownContact.status === 'offline' && !!data.status && data.status !== 'offline';
+        const recent = recentStatus.get(contactId);
+        const previousStatus = recent && Date.now() - recent.at < 3000 ? recent.status : knownContact?.status;
+        if (data.status) recentStatus.set(contactId, { status: data.status, at: Date.now() });
+        const isSignIn = !!knownContact && previousStatus === 'offline' && !!data.status && data.status !== 'offline';
         if (isSignIn && Date.now() > signInQuietUntil) {
           const signInName = knownContact.nickname || knownContact.username;
           const signInAvatar = data.avatar || knownContact.avatar || '/assets/usertiles/chess.png';
@@ -3773,7 +3805,7 @@ const App: React.FC = () => {
                 {showStatusMenu && (
                   <div className="wlm-status-dropdown">
                     {STATUS_OPTIONS.map(opt => (
-                      <div key={opt.id} className="dropdown-item" onClick={() => { setMyStatus(opt.id); setShowStatusMenu(false); syncProfile({ status: opt.id }); }}>
+                      <div key={opt.id} className="dropdown-item" onClick={() => { setMyStatus(opt.id); savePreferredStatus(user?.id, opt.id); setShowStatusMenu(false); syncProfile({ status: opt.id }); }}>
                         <div className={`status-icon-box ${opt.id}`}></div>{getStatusLabel(opt.id)}
                       </div>
                     ))}

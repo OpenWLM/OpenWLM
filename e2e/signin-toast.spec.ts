@@ -73,13 +73,17 @@ test('connexion d\'un contact → toast « has just signed in »', async ({ brow
   await b.locator('.auth-field input[type="text"]').first().fill(nameB);
   await b.locator('.auth-field input[type="password"]').fill(PASSWORD);
   await b.locator('button.wlm-btn-auth').click();
-  await expect(b.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
 
+  // Le toast arrive dès la connexion du socket de B (il disparaît seul après 4,5 s) :
+  // on le guette tout de suite et on le survole pour le garder affiché.
   const toast = a.locator('.wlm-desktop-toast', { hasText: nameB });
-  await expect(toast).toBeVisible({ timeout: 20000 });
+  await expect(toast).toBeVisible({ timeout: 30000 });
+  await toast.hover();
   await expect(toast).toContainText('has just signed in');
+  await expect(b.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
   await expect(toast.locator('.wlm-desktop-toast-message')).toHaveCount(0);
   await toast.locator('.wlm-desktop-toast-close-btn').click();
+  await a.mouse.move(0, 0);
   await expect(a.locator('.wlm-desktop-toast')).toHaveCount(0);
 
   // « Apparaître hors ligne » puis « Disponible » : même notification (comme sur MSN)

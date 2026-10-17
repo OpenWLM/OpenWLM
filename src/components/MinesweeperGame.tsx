@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
-import SoundManager from '../utils/SoundManager';
+import GameSfx from '../utils/GameSfx';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
 import GameDialog from './GameDialog';
@@ -117,11 +117,17 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
         if (data.from !== myId) setTimeout(() => setStatusMessage(''), 4000);
         return;
       }
+      // Bruitages de jeu synthétisés (distincts des sons de messagerie)
       const foundMine = data.revealed?.some((x) => x.f !== undefined);
-      try {
-        if (data.state.winner !== null) SoundManager.play(data.state.winner === myId ? 'ONLINE' : 'NUDGE');
-        else SoundManager.play(foundMine ? 'ONLINE' : 'TYPING');
-      } catch { /* ignore */ }
+      const mine = data.from === myId;
+      if (data.bomb) GameSfx.bomb();
+      if (data.state.winner !== null) {
+        setTimeout(() => (data.state.winner === myId ? GameSfx.win() : GameSfx.lose()), data.bomb ? 450 : 120);
+      } else if (foundMine) {
+        setTimeout(() => (mine ? GameSfx.mineFound() : GameSfx.opponentMine()), data.bomb ? 350 : 0);
+      } else if (!data.bomb) {
+        if ((data.revealed?.length ?? 0) > 1) GameSfx.cascade(); else GameSfx.reveal();
+      }
     };
 
     const onGameQuit = (data: { from: number }) => {

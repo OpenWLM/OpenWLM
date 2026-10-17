@@ -69,6 +69,7 @@ import {
 } from './utils/ConversationBackgrounds';
 import {
   type User,
+  type Contact,
   type Message,
   type CustomEmoticonPayload,
   SYSTEM_BOT_ID,
@@ -88,6 +89,7 @@ import {
   savePreferredStatus,
   isPresenceStatus
 } from './utils/profileStorage';
+import { useAppPrefs, getAppPrefs, setPresenceForSounds } from './utils/appPrefs';
 
 axios.defaults.withCredentials = true;
 
@@ -820,12 +822,20 @@ const App: React.FC = () => {
 
   // Statut courant lisible hors rendu (handshake socket à la reconnexion)
   const myStatusLiveRef = useRef(myStatus);
-  useEffect(() => { myStatusLiveRef.current = myStatus; }, [myStatus]);
+  useEffect(() => {
+    myStatusLiveRef.current = myStatus;
+    setPresenceForSounds(myStatus); // Options → Sons : « couper les sons en Occupé »
+  }, [myStatus]);
+
+  // Préférences locales (Options → Disposition, Messages, Sons)
+  const appPrefs = useAppPrefs();
 
   // Domaine clins d'œil & Wizz — extrait dans un hook dédié.
   const {
     activeWink,
+    setActiveWink,
     winkCounter,
+    setWinkCounter,
     isNudging,
     setIsNudging,
     handleSendWink,
@@ -1572,8 +1582,8 @@ const App: React.FC = () => {
     loadingChatsRef.current.add(chatId);
 
     try {
-      // 1. Préchargement du cache local rapide (IndexedDB)
-      if (!incremental) try {
+      // 1. Préchargement du cache local rapide (IndexedDB) — sauf si l'option est désactivée
+      if (!incremental && getAppPrefs().messages.keepLocalHistory) try {
         const cached = await LocalDB.getMessages<Message>(`${user.id}_${chatId}`, keys.privateKeyJwk);
         if (cached && cached.length > 0) {
           // Le cache local contient des messages DÉJÀ authentifiés et déchiffrés (chiffrés
@@ -1638,7 +1648,7 @@ const App: React.FC = () => {
           });
 
           // Remplacer le cache local avec l'historique officiel propre
-          await LocalDB.setHistory(`${user.id}_${chatId}`, validServerMsgs, keys.publicKeyJwk);
+          if (getAppPrefs().messages.keepLocalHistory) await LocalDB.setHistory(`${user.id}_${chatId}`, validServerMsgs, keys.publicKeyJwk);
         }
       } catch (err) {
         console.warn(`Erreur récupération messages serveur pour ${chatId}:`, err);
@@ -1859,7 +1869,7 @@ const App: React.FC = () => {
 
         // Sauvegarde locale dans IndexedDB (Chiffré)
         if (myKeysRef.current) {
-          LocalDB.saveMessage(`${user?.id}_${conversationContactId}`, finalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
+          if (getAppPrefs().messages.keepLocalHistory) LocalDB.saveMessage(`${user?.id}_${conversationContactId}`, finalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
         }
 
         // Accusé de réception ("remis") émis par la session destinataire vers le serveur
@@ -2423,7 +2433,7 @@ const App: React.FC = () => {
           : m)
       }));
       if (myKeysRef.current) {
-        LocalDB.saveMessage(`${user?.id}_${chatId}`, confirmed, myKeysRef.current.publicKeyJwk).catch(console.error);
+        if (getAppPrefs().messages.keepLocalHistory) LocalDB.saveMessage(`${user?.id}_${chatId}`, confirmed, myKeysRef.current.publicKeyJwk).catch(console.error);
       }
     });
   };
@@ -3488,7 +3498,9 @@ const App: React.FC = () => {
     let parts: (string | React.ReactNode)[] = [text];
     
     // 1. Émoticônes personnalisées (E2EE) - Triées par longueur décroissante
-    const customShortcuts = Object.keys(customEmoticonsMap).sort((a, b) => b.length - a.length);
+    // Options → Messages : émoticônes en images, ou laissées en texte (« :) »)
+    const showEmoticonImages = appPrefs.messages.emoticonImages;
+    const customShortcuts = showEmoticonImages ? Object.keys(customEmoticonsMap).sort((a, b) => b.length - a.length) : [];
     customShortcuts.forEach(shortcut => {
       const emoInfo = customEmoticonsMap[shortcut];
       if (!emoInfo || !emoInfo.url) return; // Fallback texte brut si l'asset n'est pas encore disponible
@@ -3519,7 +3531,7 @@ const App: React.FC = () => {
     });
 
     // 2. Émoticônes de base (Standard) - Triées par longueur décroissante
-    const sortedShortcuts = Object.keys(EMOTICON_MAP).sort((a, b) => b.length - a.length);
+    const sortedShortcuts = showEmoticonImages ? Object.keys(EMOTICON_MAP).sort((a, b) => b.length - a.length) : [];
     
     sortedShortcuts.forEach(shortcut => {
       const newParts: (string | React.ReactNode)[] = [];
@@ -3741,16 +3753,25 @@ const App: React.FC = () => {
   const convBg = activeChatId ? (conversationBackgrounds[activeChatId] || '') : '';
 
   // Filtrage des contacts pour la liste (En ligne / Hors ligne / Recherche)
-  const onlineContacts = Array.isArray(contacts) ? contacts.filter(c => 
+  // Options → Disposition : tri (par statut puis nom, ou par nom) et contacts hors ligne.
+  // Les contacts BLOQUÉS restent toujours visibles (c'est là qu'on les débloque).
+  const contactName = (c: Contact) => (c.nickname || c.username || '').toLowerCase();
+  const STATUS_RANK: Record<string, number> = { online: 0, busy: 1, away: 2 };
+  const byName = (a: Contact, b: Contact) => contactName(a).localeCompare(contactName(b));
+  const sortContacts = (list: Contact[]) => [...list].sort(appPrefs.layout.sortBy === 'name'
+    ? byName
+    : (a, b) => (STATUS_RANK[a.status || 'online'] ?? 3) - (STATUS_RANK[b.status || 'online'] ?? 3) || byName(a, b));
+
+  const onlineContacts = Array.isArray(contacts) ? sortContacts(contacts.filter(c => 
     Number(c.blocked) === 0 && 
     (c.status || 'online') !== 'offline' && 
-    (c.nickname || c.username || '').toLowerCase().includes(searchQuery.toLowerCase())
-  ) : [];
+    contactName(c).includes(searchQuery.toLowerCase())
+  )) : [];
 
-  const offlineContacts = Array.isArray(contacts) ? contacts.filter(c => 
-    (Number(c.blocked) === 1 || (c.status || 'online') === 'offline') && 
-    (c.nickname || c.username || '').toLowerCase().includes(searchQuery.toLowerCase())
-  ) : [];
+  const offlineContacts = Array.isArray(contacts) ? sortContacts(contacts.filter(c => 
+    (Number(c.blocked) === 1 || ((c.status || 'online') === 'offline' && appPrefs.layout.showOffline)) && 
+    contactName(c).includes(searchQuery.toLowerCase())
+  )) : [];
 
   return (
     <div className={`wlm-desktop ${activeChatId !== 0 ? 'chat-open' : ''} ${isNudging ? 'wlm-nudge' : ''}`}>
@@ -4140,6 +4161,7 @@ const App: React.FC = () => {
                  onResend={handleResendMessage}
                  onAssistantAction={handleAssistantAction}
                  renderMessageContent={renderMessageContent}
+                 onPlayWink={(winkId) => { setActiveWink(winkId); setWinkCounter(c => c + 1); }}
                />
 
                {/* Pied de page (Saisie du message) */}

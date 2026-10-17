@@ -64,6 +64,8 @@ export interface Message {
   audio?: string | null;
   type?: string;
   isWink?: boolean;
+  /** Clin d'œil reçu non joué automatiquement : identifiant pour le bouton « Voir ». */
+  winkId?: string;
   _isPending?: boolean;
   clientMsgId?: string;
   fileData?: FileDataPayload;

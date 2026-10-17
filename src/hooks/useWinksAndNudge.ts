@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
+import { getAppPrefs } from '../utils/appPrefs';
 import { SYSTEM_BOT_ID, type Message, type User } from '../types';
 
 /**
@@ -108,8 +109,12 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
     const winkTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     setShowWinksModal(false);
-    setActiveWink(winkId);
-    setWinkCounter(prev => prev + 1);
+    // Options → Messages : un clin d'œil reçu n'est joué que si la lecture automatique est
+    // activée ; sinon la ligne de la conversation propose de le voir (winkId).
+    if (!received || getAppPrefs().messages.autoPlayWinks) {
+      setActiveWink(winkId);
+      setWinkCounter(prev => prev + 1);
+    }
 
     // Réception : simple ligne système (le clin d'œil reçu a déjà été remis par le serveur).
     if (received) {
@@ -117,7 +122,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
         ...prev,
         [targetId]: [...(prev[targetId] || []), {
           text: `Vous avez reçu un clin d'œil (${winkName}).`,
-          sender: 'Système', time: winkTime(), isWink: true, style: null
+          sender: 'Système', time: winkTime(), isWink: true, winkId, style: null
         }]
       }));
       return;
@@ -222,6 +227,12 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
       }
       setNudgeTimestamps([...recentNudges, now]);
       if (socket) socket.emit('send_wizz', { senderId: user?.id, receiverId: activeChatId });
+    }
+
+    // Options → Messages : Wizz reçus sans secousse ni son, une simple ligne
+    if (received && !getAppPrefs().messages.receiveNudges) {
+      setMessages(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), { text: 'Vous avez reçu un Wizz (secousse désactivée dans vos options).', sender: 'Système' }] }));
+      return;
     }
 
     SoundManager.play('NUDGE');

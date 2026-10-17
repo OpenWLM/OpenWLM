@@ -11,6 +11,13 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Options : Disposition, Messages, Sons
+- Les onglets **Disposition**, **Messages** et **Sons**, vides et non cliquables, fonctionnent désormais. Les réglages sont enregistrés sur l'appareil (`wlm_prefs`), pas sur le serveur.
+- **Disposition** : afficher ou masquer les contacts hors ligne (les contacts bloqués restent toujours visibles), les messages personnels et le contact de test « OpenWLM » ; tri par statut puis par nom, ou par nom.
+- **Messages** : émoticônes en images ou en texte ; heure des messages ; secousse de la fenêtre à la réception d'un Wizz (sinon une simple ligne) ; lecture automatique des clins d'œil reçus (sinon un bouton « Voir » dans la conversation) ; copie locale chiffrée des conversations (la désactiver l'efface) et bouton « Effacer la copie locale ».
+- **Sons** : activation générale, volume (avec bouton de test), un interrupteur par événement (message, connexion d'un contact, Wizz, clin d'œil, sonnerie d'appel, jeux) et « couper les sons en Occupé » (la sonnerie reste active). Tous les sons de l'app passent désormais par ces règles : SoundManager, sons des jeux, sonnerie d'appel, son des clins d'œil.
+- Code : `src/utils/appPrefs.ts` ; test E2E `e2e/options-prefs.spec.ts` (trois comptes, effet réel de chaque réglage vérifié).
+
 ### Correctifs (revue de code du 2026-10-17)
 - **Statut sur un second appareil** : un appareil sans préférence mémorisée n'impose plus « Disponible » au statut choisi sur un autre appareil encore connecté ; il adopte le statut en cours (et le mémorise comme sa propre préférence). Le handshake du socket n'impose plus de statut quand l'appareil n'en a pas.
 - **Poste partagé** : l'écran de connexion ne présélectionne plus un statut hérité d'un autre compte (le « dernier statut » global est supprimé) ; il ne présélectionne que la préférence du compte mémorisé, et le choix n'est envoyé que si le sélecteur a été modifié. Le champ `status` de la réponse de login n'est plus pris pour un choix de l'utilisateur.

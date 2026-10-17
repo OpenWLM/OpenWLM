@@ -2,6 +2,7 @@ import React from 'react';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
 import { SYSTEM_BOT_ID, type Contact } from '../types';
+import { useAppPrefs } from '../utils/appPrefs';
 
 /**
  * Liste des contacts (roster) : invitations en attente, groupes « En ligne » / « Hors ligne »
@@ -49,6 +50,7 @@ export const ContactRoster: React.FC<ContactRosterProps> = ({
   onContextMenu
 }) => {
   const { t } = useI18n();
+  const { showPsm, showOffline, showBot } = useAppPrefs().layout;
 
   const caret = (open: boolean) => (
     <span style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block', fontSize: '8px', marginRight: '5px' }}>▼</span>
@@ -88,16 +90,16 @@ export const ContactRoster: React.FC<ContactRosterProps> = ({
           <div className={`status-square ${contact.status || 'online'}`}></div>
           <div className="contact-name-txt">
             {formatNickname(contact.nickname || contact.username)}
-            {contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>}
+            {showPsm && contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>}
           </div>
         </div>
       ))}
 
-      {/* Contacts hors ligne ou bloqués */}
-      <div className="group-header" onClick={onToggleOfflineGroup}>
+      {/* Contacts hors ligne ou bloqués (hors ligne masquables : Options → Disposition) */}
+      {(showOffline || offlineContacts.length > 0) && <div className="group-header" onClick={onToggleOfflineGroup}>
         {caret(isOfflineGroupOpen)}
         {t.roster.offlineGroup} ({offlineContacts.length})
-      </div>
+      </div>}
       {isOfflineGroupOpen && offlineContacts.map(contact => (
         <div
           key={contact.id}
@@ -108,18 +110,18 @@ export const ContactRoster: React.FC<ContactRosterProps> = ({
           <div className={`status-square offline`}></div>
           <div className="contact-name-txt" style={{color: contact.blocked ? '#f44336' : '#999'}}>
             {formatNickname(contact.nickname || contact.username)}
-            {contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>}
+            {showPsm && contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>}
             {contact.blocked ? <span style={{fontSize:'10px', marginLeft: '5px'}}>{t.roster.blockedSuffix}</span> : ''}
           </div>
         </div>
       ))}
 
-      {/* Bot (Repliable, sobre et fidèle à WLM) */}
-      <div className="group-header" onClick={onToggleServicesGroup}>
+      {/* Contact de test « OpenWLM » (masquable : Options → Disposition) */}
+      {showBot && <div className="group-header" onClick={onToggleServicesGroup}>
         {caret(isServicesGroupOpen)}
         {t.roster.botSection} (1)
-      </div>
-      {isServicesGroupOpen && (
+      </div>}
+      {showBot && isServicesGroupOpen && (
         <div
           className={`contact-row ${activeChatId === SYSTEM_BOT_ID ? 'active' : ''}`}
           onClick={() => onOpenChat(SYSTEM_BOT_ID)}

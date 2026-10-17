@@ -3,6 +3,23 @@
  * Centralise le chargement et la reproduction des effets sonores MSN/WLM.
  */
 
+import { isSoundAllowed, soundVolume, type SoundCategory } from './appPrefs';
+
+// Catégorie de chaque son (Options → Sons). Clé inconnue : traitée comme un son de message.
+const SOUND_CATEGORY: Record<string, SoundCategory> = {
+  ONLINE: 'contactOnline',
+  NEW_MESSAGE: 'message',
+  TYPING: 'message',
+  OUTGOING: 'message',
+  NUDGE: 'nudge',
+  BOUNCY_BALL: 'nudge',
+  KNOCK: 'nudge',
+  KISS: 'winks',
+  ALIEN: 'winks',
+  GONG: 'winks',
+  GUITAR_SMASH: 'winks',
+};
+
 const SOUND_PATHS: Record<string, string> = {
   ONLINE: '/assets/sounds/online.mp3',
   NUDGE: '/assets/sounds/nudge.mp3',
@@ -58,6 +75,8 @@ class SoundManager {
    */
   public play(soundKey: string) {
     const key = soundKey.toUpperCase();
+    // Réglages de l'utilisateur : sons coupés, catégorie désactivée, ou « Occupé »
+    if (!isSoundAllowed(SOUND_CATEGORY[key] ?? 'message')) return;
     const path = SOUND_PATHS[key] || `/assets/sounds/${soundKey}.mp3`;
     
     console.log(`[SoundManager] Reproduction : ${key} (${path})`);
@@ -65,7 +84,7 @@ class SoundManager {
     try {
       // Instancier un nouvel objet Audio pour éviter les conflits d'état ou coupures
       const audio = new Audio(path);
-      audio.volume = 1.0;
+      audio.volume = soundVolume();
       
       const playPromise = audio.play();
       if (playPromise !== undefined) {

@@ -5,6 +5,9 @@ import { isAndroidDevice, isPushSupported, type PushBackendStatus } from '../uti
 import { saveAwayTimeout, saveEnableAutoAway, clampAwayTimeout, AWAY_TIMEOUT_MIN, AWAY_TIMEOUT_MAX } from '../utils/profileStorage';
 import type { SystemIdlePermission, SystemIdleSupport } from '../utils/systemIdle';
 import type { User } from '../types';
+import { useAppPrefs, updateAppPrefs } from '../utils/appPrefs';
+import LocalDB from '../utils/LocalDB';
+import SoundManager from '../utils/SoundManager';
 
 /**
  * Modale d'options (Paramètres). Onglets « Personnel » et « Alertes ».
@@ -74,7 +77,9 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   onClose
 }) => {
   const { t, language, setLanguage } = useI18n();
-  const [optionsTab, setOptionsTab] = useState<'personal' | 'alerts'>('personal');
+  const [optionsTab, setOptionsTab] = useState<'personal' | 'layout' | 'messages' | 'alerts' | 'sounds'>('personal');
+  const prefs = useAppPrefs();
+  const [cacheCleared, setCacheCleared] = useState(false);
   // Brouillon du délai d'inactivité : permet d'effacer le champ pour retaper une valeur
   const [awayTimeoutDraft, setAwayTimeoutDraft] = useState(() => String(awayTimeout));
   const [systemIdleDenied, setSystemIdleDenied] = useState(false);
@@ -90,10 +95,10 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
         <div className="options-body">
           <div className="options-sidebar">
             <div className={`options-nav-item ${optionsTab === 'personal' ? 'active' : ''}`} onClick={() => setOptionsTab('personal')}>{t.settings.tabPersonal}</div>
-            <div className="options-nav-item">{t.settings.tabLayout}</div>
-            <div className="options-nav-item">{t.settings.tabMessages}</div>
+            <div className={`options-nav-item ${optionsTab === 'layout' ? 'active' : ''}`} onClick={() => setOptionsTab('layout')}>{t.settings.tabLayout}</div>
+            <div className={`options-nav-item ${optionsTab === 'messages' ? 'active' : ''}`} onClick={() => setOptionsTab('messages')}>{t.settings.tabMessages}</div>
             <div className={`options-nav-item ${optionsTab === 'alerts' ? 'active' : ''}`} onClick={() => setOptionsTab('alerts')}>{t.settings.tabAlerts}</div>
-            <div className="options-nav-item">{t.settings.tabSounds}</div>
+            <div className={`options-nav-item ${optionsTab === 'sounds' ? 'active' : ''}`} onClick={() => setOptionsTab('sounds')}>{t.settings.tabSounds}</div>
             <div className="options-nav-item">{t.settings.tabSecurity}</div>
             <div className="options-nav-item">{t.settings.tabConnection}</div>
           </div>
@@ -210,6 +215,108 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   </div>
                 </div>
 
+              </div>
+            )}
+
+            {optionsTab === 'layout' && (
+              <div className="options-section">
+                <div className="options-title">{t.settings.tabLayout}</div>
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.layoutContactList}</label>
+                  <PrefCheckbox id="pref-show-offline" checked={prefs.layout.showOffline} onChange={v => updateAppPrefs('layout', { showOffline: v })} label={t.settings.layoutShowOffline} />
+                  <PrefCheckbox id="pref-show-psm" checked={prefs.layout.showPsm} onChange={v => updateAppPrefs('layout', { showPsm: v })} label={t.settings.layoutShowPsm} />
+                  <PrefCheckbox id="pref-show-bot" checked={prefs.layout.showBot} onChange={v => updateAppPrefs('layout', { showBot: v })} label={t.settings.layoutShowBot} />
+                </div>
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.layoutSort}</label>
+                  <div className="options-checkbox-line">
+                    <input type="radio" id="pref-sort-status" name="pref-sort" checked={prefs.layout.sortBy === 'status'} onChange={() => updateAppPrefs('layout', { sortBy: 'status' })} />
+                    <label htmlFor="pref-sort-status">{t.settings.layoutSortStatus}</label>
+                  </div>
+                  <div className="options-checkbox-line">
+                    <input type="radio" id="pref-sort-name" name="pref-sort" checked={prefs.layout.sortBy === 'name'} onChange={() => updateAppPrefs('layout', { sortBy: 'name' })} />
+                    <label htmlFor="pref-sort-name">{t.settings.layoutSortName}</label>
+                  </div>
+                </div>
+                <div className="options-hint">{t.settings.prefsDeviceNote}</div>
+              </div>
+            )}
+
+            {optionsTab === 'messages' && (
+              <div className="options-section">
+                <div className="options-title">{t.settings.tabMessages}</div>
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.messagesDisplay}</label>
+                  <PrefCheckbox id="pref-emoticons" checked={prefs.messages.emoticonImages} onChange={v => updateAppPrefs('messages', { emoticonImages: v })} label={t.settings.messagesEmoticons} />
+                  <PrefCheckbox id="pref-timestamps" checked={prefs.messages.showTimestamps} onChange={v => updateAppPrefs('messages', { showTimestamps: v })} label={t.settings.messagesTimestamps} />
+                </div>
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.messagesFun}</label>
+                  <PrefCheckbox id="pref-nudges" checked={prefs.messages.receiveNudges} onChange={v => updateAppPrefs('messages', { receiveNudges: v })} label={t.settings.messagesNudges} />
+                  <PrefCheckbox id="pref-winks" checked={prefs.messages.autoPlayWinks} onChange={v => updateAppPrefs('messages', { autoPlayWinks: v })} label={t.settings.messagesWinks} />
+                </div>
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.messagesHistory}</label>
+                  <PrefCheckbox
+                    id="pref-local-history"
+                    checked={prefs.messages.keepLocalHistory}
+                    onChange={v => {
+                      updateAppPrefs('messages', { keepLocalHistory: v });
+                      // Désactivé : la copie déjà enregistrée sur l'appareil est effacée
+                      if (!v) { LocalDB.clearAll().then(() => setCacheCleared(true)).catch(() => {}); }
+                    }}
+                    label={t.settings.messagesLocalHistory}
+                  />
+                  <div className="options-hint">{t.settings.messagesLocalHistoryHint}</div>
+                  <button
+                    type="button"
+                    className="win-btn"
+                    id="pref-clear-cache"
+                    style={{ marginTop: '6px' }}
+                    onClick={() => { LocalDB.clearAll().then(() => setCacheCleared(true)).catch(() => {}); }}
+                  >
+                    {t.settings.messagesClearCache}
+                  </button>
+                  {cacheCleared && <span className="options-hint" role="status" style={{ marginLeft: '8px' }}>{t.settings.messagesCacheCleared}</span>}
+                </div>
+              </div>
+            )}
+
+            {optionsTab === 'sounds' && (
+              <div className="options-section">
+                <div className="options-title">{t.settings.tabSounds}</div>
+                <div className="options-subsection">
+                  <PrefCheckbox id="pref-sounds" checked={prefs.sounds.enabled} onChange={v => updateAppPrefs('sounds', { enabled: v })} label={t.settings.soundsEnable} />
+                  <div className="options-checkbox-line">
+                    <label htmlFor="pref-volume">{t.settings.soundsVolume}</label>
+                    <input
+                      type="range"
+                      id="pref-volume"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={Math.round(prefs.sounds.volume * 100)}
+                      disabled={!prefs.sounds.enabled}
+                      onChange={e => updateAppPrefs('sounds', { volume: Number(e.target.value) / 100 })}
+                      style={{ margin: '0 8px', flex: '1 1 120px', maxWidth: '180px' }}
+                    />
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.round(prefs.sounds.volume * 100)} %</span>
+                    <button type="button" className="win-btn" style={{ marginLeft: '8px' }} disabled={!prefs.sounds.enabled} onClick={() => SoundManager.play('NEW_MESSAGE')}>{t.settings.soundsTest}</button>
+                  </div>
+                </div>
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.soundsEvents}</label>
+                  <PrefCheckbox id="pref-snd-message" disabled={!prefs.sounds.enabled} checked={prefs.sounds.message} onChange={v => updateAppPrefs('sounds', { message: v })} label={t.settings.soundsMessage} />
+                  <PrefCheckbox id="pref-snd-online" disabled={!prefs.sounds.enabled} checked={prefs.sounds.contactOnline} onChange={v => updateAppPrefs('sounds', { contactOnline: v })} label={t.settings.soundsContactOnline} />
+                  <PrefCheckbox id="pref-snd-nudge" disabled={!prefs.sounds.enabled} checked={prefs.sounds.nudge} onChange={v => updateAppPrefs('sounds', { nudge: v })} label={t.settings.soundsNudge} />
+                  <PrefCheckbox id="pref-snd-winks" disabled={!prefs.sounds.enabled} checked={prefs.sounds.winks} onChange={v => updateAppPrefs('sounds', { winks: v })} label={t.settings.soundsWinks} />
+                  <PrefCheckbox id="pref-snd-call" disabled={!prefs.sounds.enabled} checked={prefs.sounds.call} onChange={v => updateAppPrefs('sounds', { call: v })} label={t.settings.soundsCall} />
+                  <PrefCheckbox id="pref-snd-games" disabled={!prefs.sounds.enabled} checked={prefs.sounds.games} onChange={v => updateAppPrefs('sounds', { games: v })} label={t.settings.soundsGames} />
+                </div>
+                <div className="options-subsection">
+                  <PrefCheckbox id="pref-snd-busy" disabled={!prefs.sounds.enabled} checked={prefs.sounds.muteWhenBusy} onChange={v => updateAppPrefs('sounds', { muteWhenBusy: v })} label={t.settings.soundsMuteBusy} />
+                </div>
+                <div className="options-hint">{t.settings.prefsDeviceNote}</div>
               </div>
             )}
 
@@ -442,3 +549,11 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
     </div>
   );
 };
+
+/** Case à cocher d'option (libellé cliquable, désactivable). */
+const PrefCheckbox: React.FC<{ id: string; checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }> = ({ id, checked, onChange, label, disabled }) => (
+  <div className="options-checkbox-line">
+    <input type="checkbox" id={id} checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
+    <label htmlFor={id}>{label}</label>
+  </div>
+);

@@ -5,6 +5,7 @@ import { resolveMessageSide } from '../utils/MessageIdentity';
 import FileTransferCard, { isImageFile } from './FileTransferCard';
 import VoiceClipPlayer from './VoiceClipPlayer';
 import { SYSTEM_BOT_ID, SYSTEM_BOT_CONTACT, type Contact, type Message } from '../types';
+import { useAppPrefs } from '../utils/appPrefs';
 
 /**
  * Journal des messages de la conversation active + actions rapides de test pour OpenWLM.
@@ -25,6 +26,8 @@ interface ChatMessageLogProps {
   onResend: (chatId: number, clientMsgId: string) => void;
   onAssistantAction: (action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'puissance4' | 'help') => void;
   renderMessageContent: (text: string, style?: any) => React.ReactNode;
+  /** Rejoue un clin d'œil reçu (quand la lecture automatique est désactivée). */
+  onPlayWink?: (winkId: string) => void;
 }
 
 export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
@@ -37,9 +40,12 @@ export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
   chatEndRef,
   onResend,
   onAssistantAction,
-  renderMessageContent
+  renderMessageContent,
+  onPlayWink
 }) => {
   const { t } = useI18n();
+  // Options → Messages : afficher l'heure des messages
+  const showTimestamps = useAppPrefs().messages.showTimestamps;
 
   return (
     <>
@@ -63,12 +69,17 @@ export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
           return (
           <div key={i} className="msg-line">
              {m.sender === 'Système' ? (
-               <div className="msg-system">{m.text}</div>
+               <div className="msg-system">
+                 {m.text}
+                 {m.winkId && onPlayWink && (
+                   <button type="button" className="msg-wink-play" onClick={() => onPlayWink(m.winkId!)}>{t.chat.playWink}</button>
+                 )}
+               </div>
              ) : (
                <>
                  <div className={`msg-name ${isSender ? 'me' : ''}`}>
                    <span>{m.fileData ? formatNickname(fileHeaderLabel) : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}</span>
-                   {m.time && <span className="msg-time">{m.time}</span>}
+                   {m.time && showTimestamps && <span className="msg-time">{m.time}</span>}
                    {isSender && activeChatId !== SYSTEM_BOT_ID && m._failed && (
                      <span className="msg-send-failed" role="alert">
                        <span

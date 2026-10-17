@@ -11,6 +11,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Options: Layout, Messages, Sounds
+- The **Layout**, **Messages** and **Sounds** tabs, which were empty and not clickable, now work. Settings are stored on the device (`wlm_prefs`), not on the server.
+- **Layout**: show/hide offline contacts (blocked contacts always remain visible), personal messages and the "OpenWLM" test contact; sort by status then name, or by name.
+- **Messages**: emoticons as pictures or text; message times; window shake on a received nudge (otherwise a plain line); automatic playback of received winks (otherwise a "Watch" button in the conversation); encrypted local copy of conversations (turning it off deletes it) and a "Delete the local copy" button.
+- **Sounds**: master switch, volume (with a test button), per-event switches (message, contact sign-in, nudge, wink, call ringtone, games) and "mute while Busy" (the ringtone stays on). Every sound in the app now goes through these rules: SoundManager, game sounds, call ringtone, wink audio.
+- Code: `src/utils/appPrefs.ts`; E2E test `e2e/options-prefs.spec.ts` (three accounts, each setting checked for its real effect).
+
 ### Fixes (code review of 2026-10-17)
 - **Status on a second device**: a device without a stored preference no longer forces "Available" over the status chosen on another device still connected; it adopts the current status (and remembers it as its own preference). The socket handshake no longer imposes a status when the device has none.
 - **Shared computer**: the sign-in screen no longer pre-selects a status inherited from another account (the global "last status" is gone); it only pre-selects the remembered account's own preference, and the choice is sent only if the selector was changed. The server's `status` field in the login response is no longer mistaken for a user choice.

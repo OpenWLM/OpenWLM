@@ -23,7 +23,11 @@ const getCtx = (): Ctx | null => {
   }
 };
 
-const MASTER = 0.22;
+import { isSoundAllowed, soundVolume } from './appPrefs';
+
+const BASE_GAIN = 0.22;
+// Gain général = niveau de base × volume choisi dans les Options
+const masterGain = () => BASE_GAIN * soundVolume();
 
 /** Note simple avec enveloppe (attaque rapide, déclin exponentiel). */
 const tone = (c: Ctx, freq: number, start: number, duration: number, opts: { type?: OscillatorType; gain?: number; slideTo?: number } = {}) => {
@@ -32,7 +36,7 @@ const tone = (c: Ctx, freq: number, start: number, duration: number, opts: { typ
   osc.type = opts.type ?? 'sine';
   osc.frequency.setValueAtTime(freq, start);
   if (opts.slideTo) osc.frequency.exponentialRampToValueAtTime(opts.slideTo, start + duration);
-  const peak = MASTER * (opts.gain ?? 1);
+  const peak = Math.max(0.0002, masterGain() * (opts.gain ?? 1));
   g.gain.setValueAtTime(0.0001, start);
   g.gain.exponentialRampToValueAtTime(peak, start + 0.008);
   g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
@@ -54,13 +58,14 @@ const noise = (c: Ctx, start: number, duration: number, opts: { from: number; to
   filter.frequency.setValueAtTime(opts.from, start);
   filter.frequency.exponentialRampToValueAtTime(opts.to, start + duration);
   const g = c.createGain();
-  g.gain.setValueAtTime(MASTER * (opts.gain ?? 1), start);
+  g.gain.setValueAtTime(Math.max(0.0002, masterGain() * (opts.gain ?? 1)), start);
   g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
   src.connect(filter).connect(g).connect(c.destination);
   src.start(start);
 };
 
 const play = (fn: (c: Ctx, t: number) => void) => {
+  if (!isSoundAllowed('games') || soundVolume() === 0) return;
   const c = getCtx();
   if (!c) return;
   try { fn(c, c.currentTime + 0.01); } catch { /* audio indisponible */ }

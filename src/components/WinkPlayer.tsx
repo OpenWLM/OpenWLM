@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 
 /**
  * Lecteur de Clins d'œil (Winks) MSN.
@@ -63,6 +64,9 @@ const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
     const a = audioRef.current;
     if (a) {
       try {
+        // Réglages « Sons → Clins d'œil » et volume général
+        a.muted = !isSoundAllowed('winks');
+        a.volume = soundVolume();
         a.currentTime = (meta?.a ?? 0) / 1000;
         a.play().catch(() => { /* autoplay bloqué */ });
       } catch { /* ignore */ }

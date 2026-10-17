@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { Socket } from 'socket.io-client';
 import { useI18n } from '../i18n';
+import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 import { formatNickname } from '../utils/NicknameFormatter';
 import {
   encryptMessagePayload,
@@ -534,9 +535,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       if (ringAudioRef.current) { ringAudioRef.current.pause(); ringAudioRef.current.currentTime = 0; ringAudioRef.current = null; }
       return;
     }
+    // Sonnerie : réglage « Sons → Appels » (toujours active en « Occupé »)
+    if (!isSoundAllowed('call')) return;
     const audio = new Audio('/assets/sounds/phone.mp3');
     audio.loop = true;
-    audio.volume = 1.0;
+    audio.volume = soundVolume();
     ringAudioRef.current = audio;
     audio.play().catch((e) => { console.warn('[WebRTC] Sonnerie bloquée par la politique autoplay:', e); });
     return () => { audio.pause(); audio.currentTime = 0; if (ringAudioRef.current === audio) ringAudioRef.current = null; };

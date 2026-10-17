@@ -4765,3 +4765,16 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .msf-resign:focus-visible { outline: 2px solid #ffd84a; outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) { .msf-player { transition: none; } }
+
+/* Clin d'œil reçu non joué automatiquement (Options → Messages) */
+.msg-wink-play {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid #7fa3cc;
+  background: linear-gradient(to bottom, #ffffff, #dbe9f8);
+  color: #004b8d;
+  cursor: pointer;
+}
+.msg-wink-play:hover { background: linear-gradient(to bottom, #ffffff, #c9def5); }

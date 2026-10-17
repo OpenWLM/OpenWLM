@@ -53,6 +53,16 @@ Le mode « tout l'ordinateur » repose sur l'[API Idle Detection](https://develo
 - **Prérequis** : HTTPS (ou `localhost`) ; le serveur envoie `Permissions-Policy: idle-detection=(self)`. Le seuil minimal de l'API est d'une minute, ce qui correspond au délai le plus court de l'option.
 - **Code** : `src/utils/systemIdle.ts` (accès à l'API), `src/hooks/useProfile.ts` (les deux modes, jamais actifs en même temps).
 
+### Options enregistrées sur l'appareil
+
+Options → **Disposition**, **Messages** et **Sons** sont enregistrées dans le navigateur (`wlm_prefs`), par appareil, jamais sur le serveur :
+
+- **Disposition** : afficher les contacts hors ligne (les contacts bloqués restent toujours visibles, pour pouvoir les débloquer), afficher les messages personnels, afficher le contact de test « OpenWLM », trier par statut puis par nom, ou par nom.
+- **Messages** : émoticônes en images ou en texte, heure des messages, secousse de la fenêtre à la réception d'un Wizz (sinon une simple ligne), lecture automatique des clins d'œil reçus (sinon un bouton « Voir »), copie chiffrée des conversations sur cet appareil (la désactiver efface la copie ; l'historique est alors toujours rechargé depuis le serveur).
+- **Sons** : activation, volume, un interrupteur par événement (message, connexion d'un contact, Wizz, clin d'œil, sonnerie d'appel, jeux), sons coupés en « Occupé » (la sonnerie des appels reste active).
+
+Code : `src/utils/appPrefs.ts` (stockage, hook React, règles des sons), utilisé par `SoundManager`, `GameSfx`, la liste de contacts et la conversation.
+
 ---
 
 ## Sécurité & Architecture

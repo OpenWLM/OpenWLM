@@ -3,6 +3,7 @@ import { useI18n } from '../i18n';
 import { isSystemNotificationSupported } from '../utils/NotificationManager';
 import { isAndroidDevice, isPushSupported, type PushBackendStatus } from '../utils/PushNotificationManager';
 import { saveAwayTimeout, saveEnableAutoAway, clampAwayTimeout, AWAY_TIMEOUT_MIN, AWAY_TIMEOUT_MAX } from '../utils/profileStorage';
+import type { SystemIdlePermission, SystemIdleSupport } from '../utils/systemIdle';
 import type { User } from '../types';
 
 /**
@@ -22,6 +23,11 @@ interface OptionsModalProps {
   setEnableAutoAway: (value: boolean) => void;
   awayTimeout: number;
   setAwayTimeout: (value: number) => void;
+  systemIdleEnabled: boolean;
+  systemIdleRunning: boolean;
+  systemIdleSupport: SystemIdleSupport;
+  enableSystemIdle: () => Promise<SystemIdlePermission>;
+  disableSystemIdle: () => void;
   enableDesktopToasts: boolean;
   setEnableDesktopToasts: (value: boolean) => void;
   systemPermission: NotificationPermission | 'unsupported';
@@ -47,6 +53,11 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   setEnableAutoAway,
   awayTimeout,
   setAwayTimeout,
+  systemIdleEnabled,
+  systemIdleRunning,
+  systemIdleSupport,
+  enableSystemIdle,
+  disableSystemIdle,
   enableDesktopToasts,
   setEnableDesktopToasts,
   systemPermission,
@@ -66,6 +77,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   const [optionsTab, setOptionsTab] = useState<'personal' | 'alerts'>('personal');
   // Brouillon du délai d'inactivité : permet d'effacer le champ pour retaper une valeur
   const [awayTimeoutDraft, setAwayTimeoutDraft] = useState(() => String(awayTimeout));
+  const [systemIdleDenied, setSystemIdleDenied] = useState(false);
 
   return (
     <div className="modal-bg">
@@ -168,6 +180,33 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                       style={{ width: '44px', textAlign: 'center', margin: '0 5px' }}
                     />
                     <span>{t.settings.autoAwaySuffix}</span>
+                  </div>
+                  {/* Inactivité de tout l'ordinateur (API Idle Detection), comme sur MSN */}
+                  <div className="options-checkbox-line">
+                    <input
+                      type="checkbox"
+                      id="check-system-idle"
+                      checked={systemIdleEnabled}
+                      disabled={!enableAutoAway || systemIdleSupport !== 'available'}
+                      onChange={async e => {
+                        if (e.target.checked) {
+                          const permission = await enableSystemIdle();
+                          setSystemIdleDenied(permission !== 'granted');
+                        } else {
+                          setSystemIdleDenied(false);
+                          disableSystemIdle();
+                        }
+                      }}
+                    />
+                    <label htmlFor="check-system-idle">{t.settings.systemIdleLabel}</label>
+                  </div>
+                  <div className="options-hint" id="system-idle-hint">
+                    {systemIdleSupport === 'unsupported' ? t.settings.systemIdleUnsupported
+                      : systemIdleSupport === 'insecure' ? t.settings.systemIdleInsecure
+                      : systemIdleDenied ? t.settings.systemIdleDenied
+                      : systemIdleEnabled && systemIdleRunning ? t.settings.systemIdleActive
+                      : systemIdleEnabled ? t.settings.systemIdleBlocked
+                      : t.settings.systemIdleHint}
                   </div>
                 </div>
 

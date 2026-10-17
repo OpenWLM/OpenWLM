@@ -30,9 +30,28 @@ OpenWLM is an independent educational, open-source project and a tribute to 2000
 - **Audio & video calls (WebRTC)**: peer-to-peer voice and video calls with encrypted signaling; during an audio call, either side can turn on their camera or share their screen.
 - **Voice clips**: record and stream end-to-end encrypted audio messages.
 - **Winks & nudges**: animated full-screen winks and the screen-shaking Wizz.
+- **Presence**: Available, Busy, Away and Appear offline; the status you pick is restored when the app restarts; automatic "Away" after a configurable inactivity delay, optionally based on the inactivity of the whole computer (see [Automatic "Away" status](#automatic-away-status)).
 - **1v1 mini-games**: real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), Connect Four (Puissance 4, 7x6 board) and Minesweeper Flags (find the mines: 16x16, 51 mines, first to 26, one 5x5 bomb per round), with server-side move validation against cheating — the mine positions never leave the server — and collapsible game panels.
 - **Encrypted file transfer**: temporary file sharing between contacts (4-hour TTL), decrypted in the browser, with image previews in a lightbox.
 - **English / French interface**: the language can be switched without reloading and is detected from the browser; both languages fit the Aero layout without overflow.
+
+### Automatic "Away" status
+
+Options → *Show status "Away" after N minutes of inactivity* (1 to 120 minutes, 5 by default, stored per device). Only an "Available" status is switched automatically; it comes back to "Available" as soon as you are active again. A status chosen by hand (Busy, Away, Appear offline) is never changed. Unchecking the option keeps you "Available" until you change your status yourself.
+
+Two ways of measuring inactivity:
+
+| Mode | What counts as activity | Where it works |
+|---|---|---|
+| **OpenWLM window** (default) | Mouse, keyboard, touch, wheel and scrolling inside OpenWLM | Every browser, PWA, mobile |
+| **Whole computer** (opt-in: *Detect inactivity of the whole computer*) | Any keyboard or mouse use on the computer, in any application. A **locked screen** switches to "Away" right away | Chromium-based desktop browsers (Chrome, Edge, Opera) and the Electron client; **not** Firefox or Safari |
+
+The whole-computer mode relies on the [Idle Detection API](https://developer.mozilla.org/docs/Web/API/Idle_Detection_API), as MSN did with the system idle time:
+
+- **Permission**: the browser asks for the `idle-detection` permission when you tick the option. If it is refused, or later withdrawn in the site settings, OpenWLM falls back to the OpenWLM-window mode and the Options page says so.
+- **Privacy**: the page only learns two states, *active / idle* and *screen locked / unlocked*. It never sees which application you use or what you type. Nothing is sent to the server except the resulting status (Away / Available), exactly like the default mode.
+- **Requirements**: HTTPS (or `localhost`); the server sends `Permissions-Policy: idle-detection=(self)`. The API's minimum threshold is 1 minute, which matches the shortest delay of the option.
+- **Code**: `src/utils/systemIdle.ts` (API access), `src/hooks/useProfile.ts` (both modes, never active at the same time).
 
 ---
 

@@ -122,7 +122,8 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), payment=(), usb=()');
+  // idle-detection=(self) : détection d'inactivité système (option « inactivité de tout l'ordinateur »)
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), idle-detection=(self), geolocation=(), payment=(), usb=()');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
 
   next();

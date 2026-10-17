@@ -19,6 +19,7 @@ export const STORAGE_KEYS = {
   enableToasts: 'wlm_enable_toasts',
   awayTimeout: 'wlm_away_timeout',
   enableAutoAway: 'wlm_enable_auto_away',
+  systemIdle: 'wlm_system_idle',
   statusPref: 'wlm_status_pref',
   user: 'wlm_user'
 } as const;
@@ -184,6 +185,21 @@ export function loadAwayTimeout(defaultMinutes = 5): number {
 export function saveAwayTimeout(minutes: number): void {
   try {
     localStorage.setItem(STORAGE_KEYS.awayTimeout, clampAwayTimeout(minutes).toString());
+  } catch { /* ignore */ }
+}
+
+/** Détection de l'inactivité de tout l'ordinateur (API Idle Detection), opt-in, par appareil. */
+export function loadSystemIdleEnabled(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.systemIdle) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function saveSystemIdleEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.systemIdle, enabled.toString());
   } catch { /* ignore */ }
 }
 

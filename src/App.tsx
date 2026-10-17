@@ -796,6 +796,11 @@ const App: React.FC = () => {
     setAwayTimeout,
     enableAutoAway,
     setEnableAutoAway,
+    systemIdleEnabled,
+    systemIdleRunning,
+    systemIdleSupport,
+    enableSystemIdle,
+    disableSystemIdle,
     syncProfile,
     handleChangePassword,
     handleForgetDevice
@@ -4696,6 +4701,11 @@ const App: React.FC = () => {
           setEnableAutoAway={setEnableAutoAway}
           awayTimeout={awayTimeout}
           setAwayTimeout={setAwayTimeout}
+          systemIdleEnabled={systemIdleEnabled}
+          systemIdleRunning={systemIdleRunning}
+          systemIdleSupport={systemIdleSupport}
+          enableSystemIdle={enableSystemIdle}
+          disableSystemIdle={disableSystemIdle}
           enableDesktopToasts={enableDesktopToasts}
           setEnableDesktopToasts={setEnableDesktopToasts}
           systemPermission={systemPermission}

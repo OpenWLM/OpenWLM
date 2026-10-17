@@ -30,6 +30,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Tests: `tests/test_minesweeper_logic.js` (rules), `tests/test_minesweeper_server.js` (full game over sockets, no leak before the end), `e2e/minesweeper.spec.ts` (two browsers, synchronized boards, WebSocket frames inspected).
 
 ### Presence status
+- **Whole-computer inactivity (Idle Detection API)**: new opt-in option *Detect inactivity of the whole computer*. Instead of activity inside the OpenWLM window, the automatic "Away" follows keyboard/mouse use in any application, like MSN, and a locked screen switches to "Away" immediately; activity brings back "Available". A status chosen by hand is never changed.
+  - Availability: Chromium-based desktop browsers (Chrome, Edge, Opera) and the Electron client; not Firefox or Safari. HTTPS required.
+  - Permission: `idle-detection`, requested when the option is ticked; resumed automatically at startup if already granted. Refused or withdrawn → automatic fallback to in-window inactivity, explained in Options.
+  - Privacy: the page only gets *active/idle* and *locked/unlocked*; only the resulting status reaches the server.
+  - Server sends `Permissions-Policy: idle-detection=(self)`; the Electron client allows the `idle-detection` permission.
+  - Fix found while testing: the detector was restarted on every profile update, and the restarted detector first reported "active", cancelling the "Away" it had just set. The detection effects no longer depend on callback identity.
+  - Code: `src/utils/systemIdle.ts`, `src/hooks/useProfile.ts`, `src/components/OptionsModal.tsx`; E2E test simulating idle, active and locked screen through the Chromium DevTools protocol.
 - **Auto-away setting**: the inactivity delay field can be cleared and retyped (it used to snap to 1, giving "15" or "110"), is bounded to 1–120 minutes (a negative value used to switch to Away almost at once) and is disabled when the option is unchecked. Touch, wheel and scrolling inside the conversation or contact list now count as activity (mobile). Activity tracking no longer re-renders the whole app on every mouse move.
 - **Status restored on restart**: the status you picked by hand (menu or sign-in screen) is remembered on the device and restored when the app restarts. Inactivity auto-away is never remembered, so the app comes back "Available"; an intentional "Away", "Busy" or "Appear offline" is kept. The sign-in screen preselects your last status.
 - **Server**: on the first connection of an account, the client sends the wanted status in the socket handshake and the server applies it, instead of forcing "online" — "Appear offline" no longer shows you online to your contacts on reconnection.

@@ -10,8 +10,9 @@ const APP_ORIGIN = new URL(APP_URL).origin;
 // Permissions strictement nécessaires à l'application :
 // - media : appels audio/vidéo WebRTC (getUserMedia)
 // - notifications : alertes système et notifications push
+// - idle-detection : option « inactivité de tout l'ordinateur » (statut Absent automatique)
 // Tout le reste (géolocalisation, USB, Bluetooth, MIDI, etc.) est refusé.
-const ALLOWED_PERMISSIONS = new Set(['media', 'notifications']);
+const ALLOWED_PERMISSIONS = new Set(['media', 'notifications', 'idle-detection']);
 
 /**
  * Indique si une URL est une URL web externe chargeable dans le navigateur système.

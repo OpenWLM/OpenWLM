@@ -10,8 +10,18 @@ import {
 import {
   loadAwayTimeout,
   loadEnableAutoAway,
+  loadSystemIdleEnabled,
+  saveSystemIdleEnabled,
   sanitizeUserForStorage
 } from '../utils/profileStorage';
+import {
+  getSystemIdleSupport,
+  querySystemIdlePermission,
+  requestSystemIdlePermission,
+  startSystemIdleDetection,
+  type SystemIdlePermission,
+  type SystemIdleSupport
+} from '../utils/systemIdle';
 import type { User } from '../types';
 
 /**
@@ -59,6 +69,14 @@ export interface ProfileApi {
   setAwayTimeout: Dispatch<SetStateAction<number>>;
   enableAutoAway: boolean;
   setEnableAutoAway: Dispatch<SetStateAction<boolean>>;
+  /** Inactivité de tout l'ordinateur (API Idle Detection) : préférence de l'appareil. */
+  systemIdleEnabled: boolean;
+  /** true quand la détection système tourne réellement (permission accordée, API disponible). */
+  systemIdleRunning: boolean;
+  systemIdleSupport: SystemIdleSupport;
+  /** Active l'option : demande la permission (à appeler depuis un clic). */
+  enableSystemIdle: () => Promise<SystemIdlePermission>;
+  disableSystemIdle: () => void;
   syncProfile: (updates: Partial<User>) => Promise<void>;
   handleChangePassword: (e: React.FormEvent) => Promise<void>;
   handleForgetDevice: () => Promise<void>;
@@ -91,6 +109,10 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
   const [isAutoAway, setIsAutoAway] = useState(false);
   const isAutoAwayRef = useRef(false);
   useEffect(() => { isAutoAwayRef.current = isAutoAway; }, [isAutoAway]);
+  const [systemIdleEnabled, setSystemIdleEnabled] = useState(() => loadSystemIdleEnabled());
+  const [systemIdleRunning, setSystemIdleRunning] = useState(false);
+  const systemIdleRunningRef = useRef(false);
+  const systemIdleSupport = getSystemIdleSupport();
   const myStatusRef = useRef(myStatus);
   useEffect(() => { myStatusRef.current = myStatus; }, [myStatus]);
 
@@ -124,20 +146,48 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
 
   /**
    * DÉTECTION D'INACTIVITÉ (AUTO-AWAY)
+   * Deux sources, jamais en même temps :
+   * - par défaut, l'activité dans la page OpenWLM (souris, clavier, toucher, défilement) ;
+   * - si l'option est activée et autorisée, l'inactivité de tout l'ordinateur et le
+   *   verrouillage de l'écran (API Idle Detection, voir src/utils/systemIdle.ts).
+   * Seul un statut « Disponible » passe en absence automatique ; il revient « Disponible » au
+   * retour de l'activité. Un statut choisi à la main n'est jamais modifié.
    */
+  const goAutoAway = useCallback(() => {
+    if (isAutoAwayRef.current || myStatusRef.current !== 'online') return;
+    isAutoAwayRef.current = true;
+    setIsAutoAway(true);
+    setMyStatus('away');
+    syncProfile({ status: 'away' });
+  }, [syncProfile]);
+
+  const leaveAutoAway = useCallback(() => {
+    if (!isAutoAwayRef.current) return;
+    isAutoAwayRef.current = false;
+    setIsAutoAway(false);
+    if (myStatusRef.current === 'away') {
+      setMyStatus('online');
+      syncProfile({ status: 'online' });
+    }
+  }, [syncProfile]);
+
+  // Callbacks lus par référence : les effets ci-dessous ne doivent PAS redémarrer quand le
+  // profil change (sinon le détecteur système, relancé, signale d'abord « actif » et annule
+  // l'absence qu'il venait de déclencher)
+  const goAutoAwayRef = useRef(goAutoAway);
+  const leaveAutoAwayRef = useRef(leaveAutoAway);
+  useEffect(() => {
+    goAutoAwayRef.current = goAutoAway;
+    leaveAutoAwayRef.current = leaveAutoAway;
+  }, [goAutoAway, leaveAutoAway]);
+
+  // Source 1 : activité dans la page (ignorée quand la détection système tourne)
   useEffect(() => {
     // Point de départ de l'inactivité : le montage (puis chaque changement de réglage)
     if (!lastActivityRef.current) lastActivityRef.current = Date.now();
     const resetActivity = () => {
       lastActivityRef.current = Date.now();
-      if (isAutoAwayRef.current) {
-        isAutoAwayRef.current = false;
-        setIsAutoAway(false);
-        if (myStatusRef.current === 'away') {
-          setMyStatus('online');
-          syncProfile({ status: 'online' });
-        }
-      }
+      if (!systemIdleRunningRef.current) leaveAutoAwayRef.current();
     };
 
     // Souris, clavier, toucher (mobile), molette ; `scroll` en capture pour compter aussi le
@@ -147,15 +197,8 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
     window.addEventListener('scroll', resetActivity, { passive: true, capture: true });
 
     const interval = setInterval(() => {
-      if (enableAutoAway && !isAutoAwayRef.current && myStatusRef.current === 'online') {
-        const inactiveTime = Date.now() - lastActivityRef.current;
-        if (inactiveTime > awayTimeout * 60 * 1000) {
-          isAutoAwayRef.current = true;
-          setIsAutoAway(true);
-          setMyStatus('away');
-          syncProfile({ status: 'away' });
-        }
-      }
+      if (!enableAutoAway || systemIdleRunningRef.current) return;
+      if (Date.now() - lastActivityRef.current > awayTimeout * 60 * 1000) goAutoAwayRef.current();
     }, 10000); // Vérification toutes les 10s
 
     return () => {
@@ -163,7 +206,48 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       window.removeEventListener('scroll', resetActivity, { capture: true });
       clearInterval(interval);
     };
-  }, [awayTimeout, enableAutoAway, syncProfile]);
+  }, [awayTimeout, enableAutoAway]);
+
+  // Source 2 : inactivité de tout l'ordinateur (opt-in). Reprise automatique au démarrage si
+  // la permission a déjà été accordée ; sinon retour à la détection dans la page.
+  useEffect(() => {
+    if (!enableAutoAway || !systemIdleEnabled || systemIdleSupport !== 'available') return;
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+    (async () => {
+      const permission = await querySystemIdlePermission();
+      if (cancelled || permission !== 'granted') return;
+      stop = await startSystemIdleDetection(awayTimeout * 60 * 1000, (idle) => {
+        if (idle) goAutoAwayRef.current(); else leaveAutoAwayRef.current();
+      });
+      if (cancelled) { stop?.(); return; }
+      if (stop) {
+        systemIdleRunningRef.current = true;
+        setSystemIdleRunning(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stop?.();
+      systemIdleRunningRef.current = false;
+      setSystemIdleRunning(false);
+      lastActivityRef.current = Date.now();
+    };
+  }, [enableAutoAway, systemIdleEnabled, systemIdleSupport, awayTimeout]);
+
+  const enableSystemIdle = useCallback(async (): Promise<SystemIdlePermission> => {
+    const permission = await requestSystemIdlePermission();
+    if (permission === 'granted') {
+      saveSystemIdleEnabled(true);
+      setSystemIdleEnabled(true);
+    }
+    return permission;
+  }, []);
+
+  const disableSystemIdle = useCallback(() => {
+    saveSystemIdleEnabled(false);
+    setSystemIdleEnabled(false);
+  }, []);
 
   /**
    * CHANGEMENT DE MOT DE PASSE (re-chiffrement Zero-Knowledge de la clé privée)
@@ -265,6 +349,11 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
     setAwayTimeout,
     enableAutoAway,
     setEnableAutoAway,
+    systemIdleEnabled,
+    systemIdleRunning,
+    systemIdleSupport,
+    enableSystemIdle,
+    disableSystemIdle,
     syncProfile,
     handleChangePassword,
     handleForgetDevice

@@ -30,9 +30,28 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage aux logi
 - **Audio & vidéo (WebRTC)** : appels vocaux et vidéo en pair-à-pair, avec signalisation chiffrée ; pendant un appel audio, chacun peut activer sa caméra ou partager son écran.
 - **Messages vocaux** : enregistrement et lecture de clips vocaux chiffrés.
 - **Winks & Wizz** : clins d'œil animés et Wizz qui secoue la fenêtre.
+- **Présence** : Disponible, Occupé, Absent et Apparaître hors ligne ; le statut choisi est restauré au redémarrage de l'app ; passage automatique en « Absent » après un délai d'inactivité réglable, éventuellement basé sur l'inactivité de tout l'ordinateur (voir [Statut « Absent » automatique](#statut--absent--automatique)).
 - **Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers), Puissance 4 (Connect Four, grille 7x6) et Démineur à deux (Minesweeper Flags : trouver les mines, 16x16, 51 mines, premier à 26, une bombe 5x5 par manche) en temps réel, avec validation des coups côté serveur contre la triche — l'emplacement des mines ne quitte jamais le serveur — et panneau de jeu réductible.
 - **Transfert de fichiers chiffré** : partage temporaire entre contacts (expiration 4 h), déchiffré dans le navigateur, avec aperçu des images.
 - **Interface français / anglais** : la langue se change sans rechargement et est détectée depuis le navigateur ; les deux langues tiennent dans la mise en page Aero sans débordement.
+
+### Statut « Absent » automatique
+
+Options → *Afficher le statut « Absent » après N minutes d'inactivité* (de 1 à 120 minutes, 5 par défaut, réglage par appareil). Seul un statut « Disponible » est modifié automatiquement ; il redevient « Disponible » dès que vous êtes de nouveau actif. Un statut choisi à la main (Occupé, Absent, Apparaître hors ligne) n'est jamais modifié. Décocher l'option vous laisse « Disponible » jusqu'à ce que vous changiez vous-même de statut.
+
+Deux façons de mesurer l'inactivité :
+
+| Mode | Ce qui compte comme activité | Où ça fonctionne |
+|---|---|---|
+| **Fenêtre OpenWLM** (par défaut) | Souris, clavier, toucher, molette et défilement dans OpenWLM | Tous les navigateurs, PWA, mobile |
+| **Tout l'ordinateur** (option : *Détecter l'inactivité de tout l'ordinateur*) | Toute utilisation du clavier ou de la souris sur l'ordinateur, dans n'importe quelle application. Un **écran verrouillé** fait passer « Absent » immédiatement | Navigateurs Chromium sur ordinateur (Chrome, Edge, Opera) et client Electron ; **pas** Firefox ni Safari |
+
+Le mode « tout l'ordinateur » repose sur l'[API Idle Detection](https://developer.mozilla.org/fr/docs/Web/API/Idle_Detection_API), comme MSN avec le temps d'inactivité du système :
+
+- **Autorisation** : le navigateur demande la permission `idle-detection` quand vous cochez l'option. Si elle est refusée, ou retirée plus tard dans les paramètres du site, OpenWLM revient au mode « fenêtre OpenWLM » et la page Options l'indique.
+- **Confidentialité** : la page ne connaît que deux états, *actif / inactif* et *écran verrouillé / déverrouillé*. Elle ne voit jamais quelle application vous utilisez ni ce que vous tapez. Rien d'autre que le statut obtenu (Absent / Disponible) n'est envoyé au serveur, exactement comme en mode par défaut.
+- **Prérequis** : HTTPS (ou `localhost`) ; le serveur envoie `Permissions-Policy: idle-detection=(self)`. Le seuil minimal de l'API est d'une minute, ce qui correspond au délai le plus court de l'option.
+- **Code** : `src/utils/systemIdle.ts` (accès à l'API), `src/hooks/useProfile.ts` (les deux modes, jamais actifs en même temps).
 
 ---
 

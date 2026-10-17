@@ -160,3 +160,46 @@ test('options : délai d\'inactivité modifiable, borné, et désactivé quand l
   await expect(field).toBeDisabled();
   expect(await a.evaluate(() => localStorage.getItem('wlm_enable_auto_away'))).toBe('false');
 });
+
+test('inactivité de tout l\'ordinateur (API Idle Detection) : Absent si inactif ou écran verrouillé, Disponible au retour', async ({ browser }) => {
+  test.setTimeout(150000);
+  const a = await newUserPage(browser, `stidle_${Date.now()}`);
+  // Autorisation et état d'inactivité simulés par Chromium (protocole DevTools)
+  const cdp = await a.context().newCDPSession(a);
+  const { targetInfo } = await cdp.send('Target.getTargetInfo');
+  await cdp.send('Browser.grantPermissions', {
+    permissions: ['idleDetection'],
+    origin: new URL(a.url()).origin,
+    browserContextId: targetInfo.browserContextId
+  });
+  await cdp.send('Emulation.setIdleOverride', { isUserActive: true, isScreenUnlocked: true });
+
+  await a.locator('.status-trigger').click();
+  await a.locator('.dropdown-item', { hasText: 'Options' }).first().click();
+  await expect(a.locator('#check-system-idle')).toBeEnabled();
+  // La case n'est cochée qu'après la réponse (asynchrone) de la demande d'autorisation
+  await a.locator('#check-system-idle').click();
+  await expect(a.locator('#check-system-idle')).toBeChecked({ timeout: 10000 });
+  await expect(a.locator('#system-idle-hint')).toContainText('Active', { timeout: 10000 });
+  expect(await a.evaluate(() => localStorage.getItem('wlm_system_idle'))).toBe('true');
+  await a.getByRole('button', { name: 'OK', exact: true }).click();
+
+  // Utilisateur inactif sur tout l'ordinateur → Absent
+  await cdp.send('Emulation.setIdleOverride', { isUserActive: false, isScreenUnlocked: true });
+  await expect(a.locator('.status-label')).toContainText('Away', { timeout: 15000 });
+  // Retour d'activité → Disponible
+  await cdp.send('Emulation.setIdleOverride', { isUserActive: true, isScreenUnlocked: true });
+  await expect(a.locator('.status-label')).toContainText('Available', { timeout: 15000 });
+  // Écran verrouillé → Absent
+  await cdp.send('Emulation.setIdleOverride', { isUserActive: true, isScreenUnlocked: false });
+  await expect(a.locator('.status-label')).toContainText('Away', { timeout: 15000 });
+  await cdp.send('Emulation.setIdleOverride', { isUserActive: true, isScreenUnlocked: true });
+  await expect(a.locator('.status-label')).toContainText('Available', { timeout: 15000 });
+
+  // Un statut choisi à la main n'est jamais modifié par la détection
+  await a.locator('.status-trigger').click();
+  await a.locator('.dropdown-item', { hasText: 'Busy' }).first().click();
+  await cdp.send('Emulation.setIdleOverride', { isUserActive: false, isScreenUnlocked: true });
+  await a.waitForTimeout(2000);
+  await expect(a.locator('.status-label')).toContainText('Busy');
+});

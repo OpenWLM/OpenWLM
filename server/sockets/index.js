@@ -30,12 +30,14 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
     if (!user) return;
     const requested = CONNECT_STATUSES.includes(requestedStatus) ? requestedStatus : null;
     const target = requested ?? (user.status === 'offline' ? 'online' : user.status);
+    // Vraie connexion (vue par les contacts) : passage de hors ligne à un statut visible
+    const signedIn = user.status === 'offline' && target !== 'offline';
     const changed = target !== user.status;
     if (changed) {
       db.prepare('UPDATE users SET status = ? WHERE id = ?').run(target, userId);
       user.status = target;
     }
-    if (changed || alwaysBroadcast) broadcastStatusToContacts(userId, toPublicUserDTO(user));
+    if (changed || alwaysBroadcast) broadcastStatusToContacts(userId, { ...toPublicUserDTO(user), signedIn });
   };
 
   // Middleware d'authentification Socket.IO

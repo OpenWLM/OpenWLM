@@ -282,7 +282,7 @@
     "bombBtn": "Bombe",
     "bombCancel": "Annuler la bombe",
     "bombUsed": "Bombe utilisée",
-    "bombHint": "Ouvre une zone de 5×5. Une fois par partie, avec au moins 3 mines de retard.",
+    "bombHint": "Ouvre une zone de 5×5. Une fois par manche, avec au moins 3 mines de retard.",
     "bombArmed": "💣 Cliquez sur le plateau pour lâcher la bombe (zone 5×5)",
     "minesweeperRule": "Trouvez les mines : une mine = 1 point et vous rejouez. Le premier à 26 gagne."
   },

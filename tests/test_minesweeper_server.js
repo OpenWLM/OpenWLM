@@ -115,7 +115,7 @@ const assertNoHiddenMines = (msg, where) => {
   assert.ok(!/adjacent|"mines":\s*\[/.test(json) || msg.state?.winner, `${where} : matrice ou liste de mines exposée avant la fin`);
 };
 
-test('partie complète : tours respectés, rien ne fuit avant la fin, mines dévoilées à la fin', { timeout: 60000 }, async () => {
+test('partie complète : tours respectés, rien ne fuit avant la fin, mines dévoilées à la fin', { timeout: 180000 }, async () => {
   const a = await connect(aliceId);
   const b = await connect(bobId);
   try {
@@ -155,10 +155,18 @@ test('partie complète : tours respectés, rien ne fuit avant la fin, mines dév
       const turnSock = state.turn === aliceId ? a : b;
       const target = state.turn === aliceId ? bobId : aliceId;
       const hidden = state.revealed.findIndex((v) => v === null);
-      const updA = once(a, 'minesweeper_update');
-      const updB = once(b, 'minesweeper_update');
-      turnSock.emit('minesweeper_move', { target, index: hidden });
-      const [ua, ub] = await Promise.all([updA, updB]);
+      // Le serveur limite le débit des coups (40 / 10 s) : on patiente si on le dépasse
+      let ua, ub;
+      for (;;) {
+        const updA = once(a, 'minesweeper_update', 2000).catch(() => null);
+        const updB = once(b, 'minesweeper_update', 2000).catch(() => null);
+        const limited = once(turnSock, 'game_error', 2000).catch(() => null);
+        turnSock.emit('minesweeper_move', { target, index: hidden });
+        const first = await Promise.race([updA, limited]);
+        if (first && first.message) { await new Promise((r) => setTimeout(r, 1000)); continue; }
+        [ua, ub] = await Promise.all([updA, updB]);
+        break;
+      }
       assert.deepEqual(ua, ub, 'les deux joueurs reçoivent le même état');
       if (ua.state.winner === null) assertNoHiddenMines(ua, `coup ${moves}`);
       // Cohérence : une mine trouvée garde la main, sinon elle passe
@@ -192,4 +200,31 @@ test('un tiers ne peut ni jouer ni lire la partie', async () => {
     const rs = await Promise.race([once(c, 'game_resync_state', 800).catch(() => null)]);
     assert.ok(!rs || rs.active === false, 'aucun état de partie pour un non-contact');
   } finally { c.disconnect(); }
+});
+
+test('coups : contact bloqué en cours de partie refusé ; débit des coups limité', { timeout: 30000 }, async () => {
+  const a = await connect(aliceId);
+  const b = await connect(bobId);
+  try {
+    a.emit('game_invite', { target: bobId, gameType: 'minesweeper' });
+    await once(b, 'game_invite_received');
+    const started = once(a, 'game_started');
+    b.emit('game_accept', { target: aliceId, gameType: 'minesweeper' });
+    await started;
+
+    // Débit : une rafale de coups (hors tour pour B) finit par être limitée
+    const errors = [];
+    b.on('game_error', (e) => errors.push(e.message));
+    for (let k = 0; k < 45; k++) b.emit('minesweeper_move', { target: aliceId, index: k });
+    await new Promise((r) => setTimeout(r, 600));
+    assert.ok(errors.some((m) => /Trop de coups/.test(m)), 'la rafale est limitée');
+    b.off('game_error');
+
+    // Bob bloque Alice : Alice ne peut plus jouer, même à son tour
+    withDb((db) => db.prepare('UPDATE contacts SET blocked = 1 WHERE user_id = ? AND contact_id = ?').run(bobId, aliceId));
+    a.emit('minesweeper_move', { target: bobId, index: 0 });
+    const err = await once(a, 'game_error');
+    assert.ok(err.message && !/tour/.test(err.message), 'refusé pour la relation, pas pour le tour');
+    withDb((db) => db.prepare('UPDATE contacts SET blocked = 0 WHERE user_id = ? AND contact_id = ?').run(bobId, aliceId));
+  } finally { a.disconnect(); b.disconnect(); }
 });

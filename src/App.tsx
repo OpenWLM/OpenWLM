@@ -809,6 +809,10 @@ const App: React.FC = () => {
     forgetDeviceSuccessText: t.auth.forgetDeviceSuccess
   });
 
+  // Traductions courantes lisibles depuis les handlers socket (enregistrés une fois par session)
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
+
   // Statut courant lisible hors rendu (handshake socket à la reconnexion)
   const myStatusLiveRef = useRef(myStatus);
   useEffect(() => { myStatusLiveRef.current = myStatus; }, [myStatus]);
@@ -1058,8 +1062,9 @@ const App: React.FC = () => {
    *    EXIGENCE ABSOLUE : Si la persistance échoue, la connexion RÉUSSIT quand même sans blocage.
    */
   const handleUserLogin = async (loggedInUser: any, vaultKey: CryptoKey, authKeyHex: string) => {
-    // Statut choisi sur l'écran de connexion : devient la préférence de ce compte
-    if (isPresenceStatus(loggedInUser?.status)) savePreferredStatus(loggedInUser.id, loggedInUser.status);
+    // Statut CHOISI sur l'écran de connexion (pas le statut renvoyé par le serveur) : devient
+    // la préférence de ce compte sur cet appareil
+    if (isPresenceStatus(loggedInUser?.loginStatus)) savePreferredStatus(loggedInUser.id, loggedInUser.loginStatus);
     if (loggedInUser.token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${loggedInUser.token}`;
     }
@@ -1196,9 +1201,17 @@ const App: React.FC = () => {
       setMyPSM(currentUser.psm || 'Disponible');
       setMyAvatar(currentUser.avatar || '/assets/usertiles/chess.png');
       setMyScene(currentUser.scene || '/assets/scenes/0006.png');
-      // Statut : dernier choix manuel mémorisé (jamais l'absence automatique), sinon
+      // Statut : dernier choix manuel mémorisé sur CET appareil (jamais l'absence automatique) ;
+      // sans préférence locale (autre appareil, stockage vidé), on garde le statut actuel du
+      // serveur s'il est en ligne (choisi sur un autre appareil encore connecté), sinon
       // « Disponible ». Le serveur (et donc les contacts) est aligné s'il diffère.
-      const wantedStatus = loadPreferredStatus(currentUser.id) ?? 'online';
+      const serverStatus = isPresenceStatus(currentUser.status) && currentUser.status !== 'offline' ? currentUser.status : null;
+      const storedStatus = loadPreferredStatus(currentUser.id);
+      const wantedStatus = storedStatus ?? serverStatus ?? 'online';
+      // Première session sur cet appareil : on mémorise le statut adopté, pour qu'un futur
+      // redémarrage pendant une absence automatique revienne bien à ce statut (l'absence
+      // automatique n'est jamais mémorisée)
+      if (!storedStatus) savePreferredStatus(currentUser.id, wantedStatus);
       setMyStatus(wantedStatus);
       if (currentUser.status !== wantedStatus) {
         axios.post('/api/user/update', { userId: currentUser.id, status: wantedStatus }).catch(() => { /* resynchronisé à la reconnexion */ });
@@ -1738,7 +1751,8 @@ const App: React.FC = () => {
       const newSocket = io({
         auth: (cb) => cb({
           token: user.token,
-          status: socketConnectedOnce ? myStatusLiveRef.current : (loadPreferredStatus(user.id) ?? 'online')
+          // Sans préférence locale : rien n'est imposé, le serveur garde le statut en cours
+          status: socketConnectedOnce ? myStatusLiveRef.current : (loadPreferredStatus(user.id) ?? undefined)
         })
       });
       newSocket.on('connect', () => { socketConnectedOnce = true; });
@@ -1747,11 +1761,6 @@ const App: React.FC = () => {
       // Fenêtre de silence après notre propre (re)connexion : les contacts qui se
       // reconnectent en masse (ex. redémarrage du serveur) ne déclenchent pas une rafale.
       let signInQuietUntil = Date.now() + 10000;
-      // Dernier statut reçu par contact, enregistré immédiatement (contactsRef ne suit qu'après
-      // le rendu) : deux annonces « en ligne » rapprochées (connexion du socket puis mise à
-      // jour du profil) ne produisent qu'une notification. Valable 3 s, ensuite la liste des
-      // contacts (rafraîchie périodiquement) fait foi.
-      const recentStatus = new Map<number, { status: string; at: number }>();
       newSocket.on('connect', () => {
         signInQuietUntil = Date.now() + 10000;
         newSocket.emit('identify', user.id);
@@ -2096,10 +2105,9 @@ const App: React.FC = () => {
         // NOTIFICATION DE CONNEXION : « Pseudo vient de se connecter » (même mécanique que
         // les messages : toast Aero au premier plan sur PC, notification système sinon).
         const knownContact = contactsRef.current.find(c => c.id === contactId);
-        const recent = recentStatus.get(contactId);
-        const previousStatus = recent && Date.now() - recent.at < 3000 ? recent.status : knownContact?.status;
-        if (data.status) recentStatus.set(contactId, { status: data.status, at: Date.now() });
-        const isSignIn = !!knownContact && previousStatus === 'offline' && !!data.status && data.status !== 'offline';
+        // Le serveur marque les vraies connexions (`signedIn`) : une mise à jour de profil ou un
+        // état local périmé ne déclenchent plus de faux « vient de se connecter »
+        const isSignIn = !!knownContact && data.signedIn === true;
         if (isSignIn && Date.now() > signInQuietUntil) {
           const signInName = knownContact.nickname || knownContact.username;
           const signInAvatar = data.avatar || knownContact.avatar || '/assets/usertiles/chess.png';
@@ -2114,7 +2122,7 @@ const App: React.FC = () => {
           if (signInDecision === 'system') {
             showSystemNotification({
               title: 'OpenWLM',
-              body: `${signInName} ${t.settings.toastSignedIn}`,
+              body: `${signInName} ${tRef.current.settings.toastSignedIn}`,
               icon: signInAvatar,
               tag: `openwlm-signin-${contactId}`,
               onClick: () => {
@@ -2128,7 +2136,7 @@ const App: React.FC = () => {
               senderName: signInName,
               avatar: signInAvatar,
               text: '',
-              actionText: t.settings.toastSignedIn
+              actionText: tRef.current.settings.toastSignedIn
             });
           }
         }
@@ -3704,11 +3712,13 @@ const App: React.FC = () => {
   // Redirection vers l'authentification si aucun utilisateur n'est connecté ou si les clés ne sont pas en mémoire
   if (!user || !myKeys) {
     let fallbackUsername = '';
+    let fallbackId: number | undefined;
     try {
       const saved = localStorage.getItem('wlm_user');
-      if (saved) fallbackUsername = JSON.parse(saved)?.username || '';
+      if (saved) { const su = JSON.parse(saved); fallbackUsername = su?.username || ''; fallbackId = Number(su?.id) || undefined; }
     } catch {}
-    return <Auth onLogin={handleUserLogin} initialUsername={user?.username || fallbackUsername} />;
+    const loginStatus = loadPreferredStatus(user?.id ?? fallbackId) ?? undefined;
+    return <Auth onLogin={handleUserLogin} initialUsername={user?.username || fallbackUsername} initialStatus={loginStatus} />;
   }
 
   // Détermination du contact actif pour l'affichage de la discussion

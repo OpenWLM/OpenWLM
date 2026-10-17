@@ -27,6 +27,7 @@ import { createGamesRouter, activeGames, getGamePlayers } from './routes/games.j
 import createRtcRouter from './routes/rtc.js';
 import { messageLimits, wizzLimits, winkLimits } from './sockets/messages.js';
 import { cleanupWindow } from './utils/rateWindow.js';
+import { gameMoveLimits, GAME_MOVE_WINDOW_MS } from './sockets/games.js';
 import { setupSocketHandlers } from './sockets/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -212,6 +213,7 @@ const cleanupMemoryMaps = () => {
   cleanupWindow(messageLimits, 10000, now);
   cleanupWindow(wizzLimits, 60000, now);
   cleanupWindow(winkLimits, 60000, now);
+  cleanupWindow(gameMoveLimits, GAME_MOVE_WINDOW_MS, now);
 
   for (const [key, game] of activeGames.entries()) {
     const players = getGamePlayers(game);

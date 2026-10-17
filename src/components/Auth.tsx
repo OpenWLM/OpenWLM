@@ -4,7 +4,6 @@ import { deriveZeroKnowledgeKeys } from '../utils/Security';
 import { useI18n } from '../i18n';
 import { evaluatePassword, type PasswordStrengthLevel } from '../utils/PasswordStrength';
 import { solveProofOfWork, type PowChallenge } from '../utils/ProofOfWork';
-import { loadLastStatus } from '../utils/profileStorage';
 
 /**
  * Interface pour les propriétés du composant Auth
@@ -16,6 +15,8 @@ interface AuthProps {
       username: string;
       token: string;
       status: string;
+      /** Statut choisi à l'écran de connexion (absent si le sélecteur n'a pas été touché). */
+      loginStatus?: string;
       rememberMe?: boolean;
       nickname?: string;
       avatar?: string;
@@ -28,13 +29,15 @@ interface AuthProps {
     authKeyHex: string
   ) => void;
   initialUsername?: string;
+  /** Statut mémorisé du compte `initialUsername` sur cet appareil (présélection). */
+  initialStatus?: string;
 }
 
 /**
  * Composant d'authentification (Connexion / Inscription)
  * Architecture Zero-Knowledge stricte : le mot de passe maître ne quitte JAMAIS le navigateur
  */
-const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
+const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatus }) => {
   const { t, language, setLanguage } = useI18n();
 
   // États locaux
@@ -42,8 +45,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
   const [username, setUsername] = useState(initialUsername);
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
-  // Pré-rempli avec le dernier statut choisi (« Apparaître hors ligne » compris)
-  const [status, setStatus] = useState<string>(() => loadLastStatus());
+  // Statut : présélection = statut mémorisé du compte affiché (jamais celui d'un autre compte).
+  // Il n'est transmis que si l'utilisateur le change ; sinon la préférence du compte s'applique.
+  const [chosenStatus, setChosenStatus] = useState<string | null>(null);
+  const status = chosenStatus ?? (initialStatus && username.trim() === initialUsername ? initialStatus : 'online');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isDeriving, setIsDeriving] = useState(false);
@@ -156,7 +161,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
         if (res.data && res.data.success && res.data.user && res.data.user.id) {
           onLogin({ 
             ...res.data.user, 
-            status, 
+            // Champ distinct : `status` de la réponse serveur n'est PAS un choix de l'utilisateur
+            ...(chosenStatus ? { loginStatus: chosenStatus } : {}),
             rememberMe: rememberMe
           }, vaultKey, authKeyHex);
         } else {
@@ -318,7 +324,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '' }) => {
                 <label>{t.auth.statusLabel}</label>
                 <select 
                   value={status} 
-                  onChange={e => setStatus(e.target.value)} 
+                  onChange={e => setChosenStatus(e.target.value)} 
                   className="wlm-auth-select"
                 >
                   <option value="online">{t.auth.statusOnline}</option>

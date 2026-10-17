@@ -30,7 +30,7 @@ OpenWLM is an independent educational, open-source project and a tribute to 2000
 - **Audio & video calls (WebRTC)**: peer-to-peer voice and video calls with encrypted signaling; during an audio call, either side can turn on their camera or share their screen.
 - **Voice clips**: record and stream end-to-end encrypted audio messages.
 - **Winks & nudges**: animated full-screen winks and the screen-shaking Wizz.
-- **1v1 mini-games**: real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), Connect Four (Puissance 4, 7x6 board) and Minesweeper Flags (find the mines: 16x16, 51 mines, first to 26, one 5x5 bomb), with server-side move validation against cheating — the mine positions never leave the server — and collapsible game panels.
+- **1v1 mini-games**: real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), Connect Four (Puissance 4, 7x6 board) and Minesweeper Flags (find the mines: 16x16, 51 mines, first to 26, one 5x5 bomb per round), with server-side move validation against cheating — the mine positions never leave the server — and collapsible game panels.
 - **Encrypted file transfer**: temporary file sharing between contacts (4-hour TTL), decrypted in the browser, with image previews in a lightbox.
 - **English / French interface**: the language can be switched without reloading and is detected from the browser; both languages fit the Aero layout without overflow.
 
@@ -65,7 +65,7 @@ OpenWLM applies the security measures below. They are checked by an automated te
    - Nothing is persisted: if either user enables private mode — globally (`global_private = 1`) or for that conversation (`conversation_privacy`) — messages are never written to disk. The server decides from this persisted state and ignores the client's `isPrivate` flag; each user can only change their own setting.
 7. **Rate Limiting & Abuse Prevention**:
    - **1 GB** storage quota per account for active shared files.
-   - Tiered rate limiters: authentication (10 req/min), file uploads (5 req/min), nudges (3/min), winks (7/min), messages (20 / 10s).
+   - Tiered rate limiters: authentication (10 req/min), file uploads (5 req/min), nudges (3/min), winks (7/min), messages (20 / 10s), game moves (40 / 10s).
    - In-memory cleanup every 5 minutes removes expired captchas and inactive client IPs.
 8. **Timing-Safe Cryptography**:
    - Password hashes are compared in constant time with `crypto.timingSafeEqual`, to prevent timing attacks.

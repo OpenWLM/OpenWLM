@@ -127,7 +127,8 @@ export function saveEnableDesktopToasts(enabled: boolean): void {
 // Seul un statut choisi À LA MAIN (menu ou écran de connexion) est mémorisé : l'absence
 // automatique pour inactivité ne l'est jamais, l'app repart donc « Disponible » après une
 // inactivité, mais reste « Absent » / « Occupé » / « Apparaître hors ligne » si c'était voulu.
-// Format : { "<userId>": statut, "last": statut } (« last » pré-remplit l'écran de connexion).
+// Format : { "<userId>": statut } — par compte, jamais global (sur un poste partagé, un compte
+// n'hérite pas du statut d'un autre).
 
 export type PresenceStatus = 'online' | 'busy' | 'away' | 'offline';
 const PRESENCE_STATUSES: readonly string[] = ['online', 'busy', 'away', 'offline'];
@@ -149,17 +150,12 @@ export function loadPreferredStatus(userId: number | undefined): PresenceStatus 
   return isPresenceStatus(s) ? s : null;
 }
 
-export function loadLastStatus(): PresenceStatus {
-  const s = readStatusPrefs().last;
-  return isPresenceStatus(s) ? s : 'online';
-}
-
 export function savePreferredStatus(userId: number | undefined, status: string): void {
   if (!userId || !isPresenceStatus(status)) return;
   try {
     const prefs = readStatusPrefs();
     prefs[String(userId)] = status;
-    prefs.last = status;
+    delete prefs.last; // ancienne clé globale (versions précédentes)
     localStorage.setItem(STORAGE_KEYS.statusPref, JSON.stringify(prefs));
   } catch { /* ignore */ }
 }

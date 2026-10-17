@@ -84,7 +84,8 @@ test('statut choisi conservé au redémarrage ; « Apparaître hors ligne » ne 
   await expect(aRowOnB).toHaveClass(/offline/);
   await expect(b.locator('.wlm-desktop-toast', { hasText: nameA })).toHaveCount(0);
 
-  // 3) Disponible → conservé, et l'écran de connexion reprend le dernier statut
+  // 3) Disponible → conservé ; puis « Occupé », déconnexion et reconnexion SANS toucher au
+  //    sélecteur de l'écran de connexion : la préférence du compte (Occupé) s'applique
   await setStatus(a, 'Available');
   await expect(aRowOnB).toHaveClass(/online/, { timeout: 20000 });
   await a.reload();
@@ -92,7 +93,27 @@ test('statut choisi conservé au redémarrage ; « Apparaître hors ligne » ne 
   await setStatus(a, 'Busy');
   await a.locator('.status-trigger').click();
   await a.getByText('Sign out', { exact: true }).click();
-  await expect(a.locator('.wlm-auth-form select')).toHaveValue('busy', { timeout: 15000 });
+  // Après déconnexion, rien ne trahit le compte précédent : pas de présélection héritée
+  await expect(a.locator('.wlm-auth-form select')).toHaveValue('online', { timeout: 15000 });
+  await a.locator('.auth-field input[type="text"]').first().fill(nameA);
+  await a.locator('.auth-field input[type="password"]').fill(PASSWORD);
+  await a.locator('button.wlm-btn-auth').click();
+  await expect(a.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
+  await expect(a.locator('.status-label')).toContainText('Busy', { timeout: 20000 });
+
+  // 4) Second appareil sans préférence locale : il garde le statut choisi ailleurs (Occupé),
+  //    au lieu d'imposer « Disponible »
+  const a2ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
+  const a2 = await a2ctx.newPage();
+  await a2.goto('/');
+  if ((await a2.locator('.auth-captcha-container').count()) > 0) await a2.locator('.auth-toggle').click();
+  await a2.locator('.auth-field input[type="text"]').first().fill(nameA);
+  await a2.locator('.auth-field input[type="password"]').fill(PASSWORD);
+  await a2.locator('button.wlm-btn-auth').click();
+  await expect(a2.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
+  await expect(a2.locator('.status-label')).toContainText('Busy', { timeout: 20000 });
+  await expect(a.locator('.status-label')).toContainText('Busy');
+  await expect(aRowOnB).toHaveClass(/busy/);
 });
 
 test('absence automatique (inactivité) → repasse « Disponible » au redémarrage', async ({ browser }) => {

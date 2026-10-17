@@ -377,7 +377,10 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
       stmt.run(newNickname, newPsm, newAvatar, newScene, newStatus, userId);
 
       const updatedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-      broadcastStatusToContacts(userId, toPublicUserDTO(updatedUser));
+      // `signedIn` : uniquement un vrai passage de hors ligne à visible (ex. « Apparaître hors
+      // ligne » → « Disponible ») — jamais une simple modification de pseudo ou d'avatar.
+      const signedIn = currentUser.status === 'offline' && newStatus !== 'offline';
+      broadcastStatusToContacts(userId, { ...toPublicUserDTO(updatedUser), signedIn });
 
       res.json({ success: true, user: toPublicUserDTO(updatedUser) });
     } catch (err) {

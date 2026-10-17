@@ -16,7 +16,7 @@ const getCtx = (): Ctx | null => {
       if (!AC) return null;
       ctx = new AC();
     }
-    if (ctx.state === 'suspended') void ctx.resume();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => { /* reprise refusée : le son suivant réessaiera */ });
     return ctx;
   } catch {
     return null;

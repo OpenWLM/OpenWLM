@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 import GameSfx from '../utils/GameSfx';
 import { useI18n } from '../i18n';
@@ -8,18 +8,18 @@ import GameDialog from './GameDialog';
 /**
  * DÉMINEUR À DEUX (« Minesweeper Flags » de MSN) — il faut TROUVER les mines.
  * 16 × 16, 51 mines, premier à 26. Une mine trouvée = 1 point et on rejoue ; une bombe 5 × 5
- * par partie, utilisable avec au moins 3 points de retard.
+ * par manche, utilisable avec au moins 3 points de retard.
  *
  * Le client ne connaît JAMAIS l'emplacement des mines : il n'affiche que l'état public envoyé
  * par le serveur (cases révélées), et n'envoie que l'index cliqué.
  */
 
-const SIZE = 16;
-const WIN_SCORE = 26;
-const BOMB_RADIUS = 2;
-const BOMB_MIN_DEFICIT = 3;
+// Valeurs par défaut, remplacées par les règles envoyées par le serveur (`state.config`)
+const DEFAULT_CONFIG = { size: 16, mines: 51, winScore: 26, bombRadius: 2, bombMinDeficit: 3 };
+const PENDING_TIMEOUT_MS = 5000;
 
 interface MinesweeperState {
+  config?: typeof DEFAULT_CONFIG;
   players: { blue: number; red: number };
   revealed: (number | 'B' | 'R' | null)[]; // null = cachée ; 0–8 = case sûre ; 'B'/'R' = mine trouvée par Bleu/Rouge
   found: Record<string, number>;
@@ -71,6 +71,10 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
   const [dialog, setDialog] = useState<{ message: string; onOk?: () => void } | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [pending, setPending] = useState(false);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cfg = state?.config ?? DEFAULT_CONFIG;
+  const SIZE = cfg.size;
 
   const opponentColor: 'blue' | 'red' = myColor === 'blue' ? 'red' : 'blue';
   const isMyTurn = state ? state.turn === myId && state.winner === null : initialIsMyTurn;
@@ -79,20 +83,34 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
   const myWins = state?.wins[myId] ?? 0;
   const oppWins = state?.wins[opponentId] ?? 0;
   const winner: 'me' | 'opponent' | null = !state || state.winner === null ? null : state.winner === myId ? 'me' : 'opponent';
-  const bombAvailable = !!state && isMyTurn && !state.bombUsed[myId] && oppFound - myFound >= BOMB_MIN_DEFICIT;
+  const bombAvailable = !!state && isMyTurn && !state.bombUsed[myId] && oppFound - myFound >= cfg.bombMinDeficit;
+
+  // Verrou anti double-clic : toujours relâché (réponse, erreur, reconnexion ou délai dépassé)
+  const releasePending = useCallback(() => {
+    if (pendingTimerRef.current) { clearTimeout(pendingTimerRef.current); pendingTimerRef.current = null; }
+    setPending(false);
+  }, []);
 
   const applyState = useCallback((next: MinesweeperState) => {
     // On n'accepte que l'état de NOTRE partie avec cet adversaire
     const ids = [next?.players?.blue, next?.players?.red];
     if (!ids.includes(myId) || !ids.includes(opponentId) || !Array.isArray(next.revealed)) return;
     setState(next);
-    setPending(false);
-  }, [myId, opponentId]);
+    releasePending();
+    // La bombe armée ne survit pas à un changement de main ni à une nouvelle manche
+    if (next.turn !== myId || next.winner !== null) setBombArmed(false);
+  }, [myId, opponentId, releasePending]);
 
   const handleCellClick = (index: number) => {
     if (!socket || !state || !isMyTurn || pending) return;
     if (!bombArmed && state.revealed[index] !== null) return;
     setPending(true);
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = setTimeout(() => {
+      pendingTimerRef.current = null;
+      setPending(false);
+      if (socket.connected) socket.emit('game_resync', { target: opponentId });
+    }, PENDING_TIMEOUT_MS);
     socket.emit('minesweeper_move', { target: opponentId, index, bomb: bombArmed });
     setBombArmed(false);
   };
@@ -113,8 +131,10 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
       if (!data?.state) return;
       applyState(data.state);
       if (data.restart) {
+        setBombArmed(false);
         setStatusMessage(data.from === myId ? '' : t.games.opponentRestarted.replace('{name}', opponentName));
-        if (data.from !== myId) setTimeout(() => setStatusMessage(''), 4000);
+        if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+        if (data.from !== myId) statusTimerRef.current = setTimeout(() => setStatusMessage(''), 4000);
         return;
       }
       // Bruitages de jeu synthétisés (distincts des sons de messagerie)
@@ -135,13 +155,17 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
       setDialog({ message: t.games.opponentQuit.replace('{name}', opponentName), onOk: onClose });
     };
 
+    // Erreur de jeu : on relâche le plateau, on désarme la bombe et on se recale sur le serveur
     const onGameError = (data: { message: string }) => {
-      setPending(false);
+      releasePending();
+      setBombArmed(false);
       if (data.message) setDialog({ message: data.message });
+      if (socket.connected) socket.emit('game_resync', { target: opponentId });
     };
 
     // État initial et resynchronisation après une reconnexion : uniquement l'état public
     const requestResync = () => {
+      releasePending();
       if (socket.connected) socket.emit('game_resync', { target: opponentId });
     };
     const onResync = (data: { active?: boolean; gameType?: string; state?: MinesweeperState }) => {
@@ -163,7 +187,13 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
       socket.off('connect', requestResync);
       socket.off('game_resync_state', onResync);
     };
-  }, [socket, myId, opponentId, opponentName, applyState, onClose, t]);
+  }, [socket, myId, opponentId, opponentName, applyState, releasePending, onClose, t]);
+
+  // Minuteries nettoyées au démontage
+  useEffect(() => () => {
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+  }, []);
 
   // Résumé pour la barre réduite : mines trouvées dans la manche en cours
   useEffect(() => {
@@ -174,7 +204,7 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
     if (!bombArmed || hoverIndex === null) return false;
     const r = Math.floor(index / SIZE), c = index % SIZE;
     const hr = Math.floor(hoverIndex / SIZE), hc = hoverIndex % SIZE;
-    return Math.abs(r - hr) <= BOMB_RADIUS && Math.abs(c - hc) <= BOMB_RADIUS;
+    return Math.abs(r - hr) <= cfg.bombRadius && Math.abs(c - hc) <= cfg.bombRadius;
   };
 
   const myColorLabel = myColor === 'blue' ? t.games.blueLabel : t.games.redLabel;
@@ -220,13 +250,13 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
               <span className={`ms-flag ms-flag-${myColor}`}>⚑</span>
               <span className="player-name">{formatNickname(myName)} {t.games.meLabel}</span>
             </div>
-            <span className="player-score-badge ms-found-badge">{t.games.minesFound.replace('{n}', String(myFound)).replace('{target}', String(WIN_SCORE))}</span>
+            <span className="player-score-badge ms-found-badge">{t.games.minesFound.replace('{n}', String(myFound)).replace('{target}', String(cfg.winScore))}</span>
           </div>
         </div>
 
         <div className="game-vs-badge">
           <div className="vs-label">{t.games.minesLeftLabel}</div>
-          <div className="score-numbers ms-remaining" data-testid="ms-remaining">{state?.remaining ?? 51}</div>
+          <div className="score-numbers ms-remaining" data-testid="ms-remaining">{state?.remaining ?? cfg.mines}</div>
           <div className="draws-count">{t.games.roundsScore.replace('{me}', String(myWins)).replace('{opp}', String(oppWins))}</div>
         </div>
 
@@ -239,7 +269,7 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
               <span className={`ms-flag ms-flag-${opponentColor}`}>⚑</span>
               <span className="player-name">{formatNickname(opponentName)}</span>
             </div>
-            <span className="player-score-badge ms-found-badge">{t.games.minesFound.replace('{n}', String(oppFound)).replace('{target}', String(WIN_SCORE))}</span>
+            <span className="player-score-badge ms-found-badge">{t.games.minesFound.replace('{n}', String(oppFound)).replace('{target}', String(cfg.winScore))}</span>
           </div>
         </div>
       </div>
@@ -262,7 +292,7 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
         )}
       </div>
 
-      {/* Bombe : une par partie, avec au moins 3 points de retard */}
+      {/* Bombe : une par manche, avec au moins 3 points de retard */}
       <div className="ms-toolbar">
         <button
           type="button"
@@ -279,6 +309,7 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
       <div className="ms-board-wrapper">
         <div
           className={`ms-grid ${isMyTurn && !winner ? 'ms-grid-active' : ''} ${bombArmed ? 'ms-grid-bomb' : ''}`}
+          style={{ gridTemplateColumns: `repeat(${SIZE}, 1fr)` }}
           onMouseLeave={() => setHoverIndex(null)}
           role="grid"
           aria-label={t.games.minesweeper}

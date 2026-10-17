@@ -11,6 +11,7 @@ import {
   isPuissance4BoardFull, 
   checkPuissance4Winner 
 } from '../routes/games.js';
+import { isAllowed } from '../utils/rateWindow.js';
 import {
   createMinesweeperGame,
   restartMinesweeperGame,
@@ -20,7 +21,30 @@ import {
 
 const GAME_TYPES = ['checkers', 'puissance4', 'minesweeper'];
 
+// Coups de jeu : 40 par 10 s et par utilisateur (largement au-dessus d'un jeu humain, y
+// compris les enchaînements de mines du Démineur ; borne l'amplification par un client).
+export const gameMoveLimits = new Map();
+export const GAME_MOVE_LIMIT = 40;
+export const GAME_MOVE_WINDOW_MS = 10000;
+
 export const registerGameHandlers = (io, socket) => {
+  /**
+   * Contrôles communs à tout coup de jeu : débit, et relation toujours valide (un contact
+   * bloqué ou supprimé en cours de partie ne peut plus jouer — comme pour resync/restart/quit).
+   */
+  const guardMove = (userId, target) => {
+    if (!isAllowed(gameMoveLimits, userId, GAME_MOVE_LIMIT, GAME_MOVE_WINDOW_MS)) {
+      socket.emit('game_error', { message: 'Trop de coups envoyés. Patientez un instant.' });
+      return false;
+    }
+    const check = canInteract(userId, target);
+    if (!check.allowed) {
+      socket.emit('game_error', { message: check.reason });
+      return false;
+    }
+    return true;
+  };
+
   // 1. Envoi d'une invitation à jouer
   socket.on('game_invite', (data) => {
     if (!socket.user || !socket.user.id) return;
@@ -83,7 +107,7 @@ export const registerGameHandlers = (io, socket) => {
 
       if (chosenGameType === 'minesweeper') {
         // L'initiateur joue Bleu et ouvre la première manche ; l'accepteur joue Rouge
-        const game = createMinesweeperGame(target, socket.user.id);
+        const game = createMinesweeperGame(Number(target), socket.user.id);
         activeGames.set(gameKey, game);
         io.to(getUserRoom(target)).emit('game_started', {
           opponentId: socket.user.id,
@@ -219,6 +243,7 @@ export const registerGameHandlers = (io, socket) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
     const { target, index } = data || {};
+    if (!guardMove(userId, target)) return;
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
@@ -304,6 +329,7 @@ export const registerGameHandlers = (io, socket) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
     const { target, from, to } = data || {};
+    if (!guardMove(userId, target)) return;
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
@@ -409,6 +435,7 @@ export const registerGameHandlers = (io, socket) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
     const { target, col } = data || {};
+    if (!guardMove(userId, target)) return;
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
@@ -485,7 +512,9 @@ export const registerGameHandlers = (io, socket) => {
   socket.on('minesweeper_move', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
-    const { target, index, bomb } = data || {};
+    const { index, bomb } = data || {};
+    const target = Number(data?.target);
+    if (!guardMove(userId, target)) return;
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);

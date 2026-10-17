@@ -282,7 +282,7 @@
     "bombBtn": "Bomb",
     "bombCancel": "Cancel bomb",
     "bombUsed": "Bomb used",
-    "bombHint": "Opens a 5×5 area. Once per game, when you are at least 3 mines behind.",
+    "bombHint": "Opens a 5×5 area. Once per round, when you are at least 3 mines behind.",
     "bombArmed": "💣 Click the board to drop the bomb (5×5 area)",
     "minesweeperRule": "Find the mines: a mine = 1 point and you play again. First to 26 wins."
   },

@@ -30,7 +30,7 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage aux logi
 - **Audio & vidéo (WebRTC)** : appels vocaux et vidéo en pair-à-pair, avec signalisation chiffrée ; pendant un appel audio, chacun peut activer sa caméra ou partager son écran.
 - **Messages vocaux** : enregistrement et lecture de clips vocaux chiffrés.
 - **Winks & Wizz** : clins d'œil animés et Wizz qui secoue la fenêtre.
-- **Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers), Puissance 4 (Connect Four, grille 7x6) et Démineur à deux (Minesweeper Flags : trouver les mines, 16x16, 51 mines, premier à 26, une bombe 5x5) en temps réel, avec validation des coups côté serveur contre la triche — l'emplacement des mines ne quitte jamais le serveur — et panneau de jeu réductible.
+- **Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers), Puissance 4 (Connect Four, grille 7x6) et Démineur à deux (Minesweeper Flags : trouver les mines, 16x16, 51 mines, premier à 26, une bombe 5x5 par manche) en temps réel, avec validation des coups côté serveur contre la triche — l'emplacement des mines ne quitte jamais le serveur — et panneau de jeu réductible.
 - **Transfert de fichiers chiffré** : partage temporaire entre contacts (expiration 4 h), déchiffré dans le navigateur, avec aperçu des images.
 - **Interface français / anglais** : la langue se change sans rechargement et est détectée depuis le navigateur ; les deux langues tiennent dans la mise en page Aero sans débordement.
 
@@ -65,7 +65,7 @@ OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées pa
    - Aucune persistance : si l'un des deux a activé le mode privé — global (`global_private = 1`) ou pour cette conversation (`conversation_privacy`) — les messages ne sont jamais écrits sur disque. Le serveur décide à partir de cet état persisté et ignore le drapeau `isPrivate` du client ; chacun ne peut modifier que son propre réglage.
 7. **Protection contre les abus & déni de service** :
    - Quota de stockage de **1 Go** par compte utilisateur pour les fichiers partagés.
-   - Rate limiting étagé : authentification (10 req/min), uploads (5 req/min), wizz (3/min), winks (7/min), messages (20 / 10s).
+   - Rate limiting étagé : authentification (10 req/min), uploads (5 req/min), wizz (3/min), winks (7/min), messages (20 / 10s), coups de jeu (40 / 10s).
    - Nettoyage automatique toutes les 5 minutes des structures mémoire (captchas, adresses IP inactives).
 8. **Comparaisons cryptographiques sécurisées** :
    - Vérification des hashs PBKDF2 en temps constant (`crypto.timingSafeEqual`), contre les attaques par analyse temporelle.

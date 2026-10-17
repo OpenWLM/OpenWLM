@@ -143,4 +143,6 @@ test('nouvelle manche : nouveau plateau, l\'autre joueur commence, manches gagn�
   assert.equal(g.round.turn, B);
   assert.equal(g.wins[A], 1);
   assert.equal(g.round.found[A], 0);
+  assert.equal(g.round.bombUsed[A], false, 'une bombe par manche : réarmée à la nouvelle manche');
+  assert.deepEqual(minesweeperPublicState(g).config, { size: 16, mines: 51, winScore: 26, bombRadius: 2, bombMinDeficit: 3 });
 });

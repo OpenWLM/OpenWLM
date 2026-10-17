@@ -8,7 +8,8 @@ import crypto from 'crypto';
  * - Mine cliquée : drapeau du joueur, +1 point, il rejoue.
  * - Chiffre : la case se révèle, la main passe.
  * - Case vide : remplissage par diffusion (cases vides + bordure de chiffres), la main passe.
- * - Bombe (une par joueur et par partie, seulement avec au moins 3 points de retard) :
+ * - Bombe (une par joueur et par manche — comme sur MSN, où une partie est une manche —,
+ *   seulement avec au moins 3 points de retard) :
  *   ouvre un carré 5 × 5 centré sur la case ; +1 point par mine ; le joueur garde la main
  *   s'il a trouvé au moins une mine.
  *
@@ -117,7 +118,7 @@ export const playMinesweeperMove = (game, userId, rawIndex, useBomb = false) => 
 
   let keepTurn;
   if (useBomb) {
-    if (!canUseBomb(game, userId)) return { error: 'Bombe indisponible (une par partie, avec au moins 3 points de retard).' };
+    if (!canUseBomb(game, userId)) return { error: 'Bombe indisponible (une par manche, avec au moins 3 points de retard).' };
     round.bombUsed[userId] = true;
     const r0 = Math.floor(index / MS_SIZE);
     const c0 = index % MS_SIZE;
@@ -167,6 +168,8 @@ export const minesweeperPublicState = (game) => {
   const round = game.round;
   const finished = round.winner !== null;
   return {
+    // Règles transmises au client (une seule source de vérité : le serveur)
+    config: { size: MS_SIZE, mines: MS_MINES, winScore: MS_WIN_SCORE, bombRadius: MS_BOMB_RADIUS, bombMinDeficit: MS_BOMB_MIN_DEFICIT },
     players: { blue: game.playerBlue, red: game.playerRed },
     revealed: round.revealed,
     found: round.found,

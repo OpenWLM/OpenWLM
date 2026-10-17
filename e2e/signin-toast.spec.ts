@@ -93,5 +93,18 @@ test('connexion d\'un contact → toast « has just signed in »', async ({ brow
   await expect(a.locator('.wlm-desktop-toast')).toHaveCount(0);
   await b.locator('.status-trigger').click();
   await b.locator('.dropdown-item', { hasText: 'Available' }).click();
-  await expect(a.locator('.wlm-desktop-toast', { hasText: nameB })).toBeVisible({ timeout: 20000 });
+  const toast2 = a.locator('.wlm-desktop-toast', { hasText: nameB });
+  await expect(toast2).toBeVisible({ timeout: 20000 });
+  await toast2.locator('.wlm-desktop-toast-close-btn').click();
+  await a.mouse.move(0, 0);
+  await expect(a.locator('.wlm-desktop-toast')).toHaveCount(0);
+
+  // Modifier son message perso n'est PAS une connexion : aucun toast, même si l'état local
+  // de A pour B était périmé (on le force à « hors ligne »)
+  await b.locator('.user-psm-display').click();
+  await b.keyboard.press('Control+A');
+  await b.keyboard.type(`psm ${stamp}`);
+  await b.keyboard.press('Enter');
+  await a.waitForTimeout(2500);
+  await expect(a.locator('.wlm-desktop-toast')).toHaveCount(0);
 });

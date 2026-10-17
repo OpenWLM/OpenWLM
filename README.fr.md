@@ -46,7 +46,7 @@ Deux façons de mesurer l'inactivité :
 | **Fenêtre OpenWLM** (par défaut) | Souris, clavier, toucher, molette et défilement dans OpenWLM | Tous les navigateurs, PWA, mobile |
 | **Tout l'ordinateur** (option : *Détecter l'inactivité de tout l'ordinateur*) | Toute utilisation du clavier ou de la souris sur l'ordinateur, dans n'importe quelle application. Un **écran verrouillé** fait passer « Absent » immédiatement | Navigateurs Chromium sur ordinateur (Chrome, Edge, Opera) et client Electron ; **pas** Firefox ni Safari |
 
-Le mode « tout l'ordinateur » repose sur l'[API Idle Detection](https://developer.mozilla.org/fr/docs/Web/API/Idle_Detection_API), comme MSN avec le temps d'inactivité du système :
+Le mode « tout l'ordinateur » repose sur l'[API Idle Detection](https://developer.mozilla.org/fr/docs/Web/API/Idle_Detection_API) :
 
 - **Autorisation** : le navigateur demande la permission `idle-detection` quand vous cochez l'option. Si elle est refusée, ou retirée plus tard dans les paramètres du site, OpenWLM revient au mode « fenêtre OpenWLM » et la page Options l'indique.
 - **Confidentialité** : la page ne connaît que deux états, *actif / inactif* et *écran verrouillé / déverrouillé*. Elle ne voit jamais quelle application vous utilisez ni ce que vous tapez. Rien d'autre que le statut obtenu (Absent / Disponible) n'est envoyé au serveur, exactement comme en mode par défaut.

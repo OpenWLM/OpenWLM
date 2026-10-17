@@ -46,7 +46,7 @@ Two ways of measuring inactivity:
 | **OpenWLM window** (default) | Mouse, keyboard, touch, wheel and scrolling inside OpenWLM | Every browser, PWA, mobile |
 | **Whole computer** (opt-in: *Detect inactivity of the whole computer*) | Any keyboard or mouse use on the computer, in any application. A **locked screen** switches to "Away" right away | Chromium-based desktop browsers (Chrome, Edge, Opera) and the Electron client; **not** Firefox or Safari |
 
-The whole-computer mode relies on the [Idle Detection API](https://developer.mozilla.org/docs/Web/API/Idle_Detection_API), as MSN did with the system idle time:
+The whole-computer mode relies on the [Idle Detection API](https://developer.mozilla.org/docs/Web/API/Idle_Detection_API):
 
 - **Permission**: the browser asks for the `idle-detection` permission when you tick the option. If it is refused, or later withdrawn in the site settings, OpenWLM falls back to the OpenWLM-window mode and the Options page says so.
 - **Privacy**: the page only learns two states, *active / idle* and *screen locked / unlocked*. It never sees which application you use or what you type. Nothing is sent to the server except the resulting status (Away / Available), exactly like the default mode.

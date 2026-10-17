@@ -62,9 +62,11 @@ function seed() {
 const EVENTS = [
   'call_accept', 'call_reject', 'call_request', 'checkers_move', 'end_call',
   'game_accept', 'game_decline', 'game_invite', 'game_move', 'game_quit',
-  'game_restart', 'game_resync', 'identify', 'message_delivered', 'message_read',
+  'game_restart', 'game_resync', 'message_delivered', 'message_read', 'minesweeper_move',
   'puissance4_move', 'send_message', 'send_wink', 'send_wizz', 'toggle_private_mode',
-  'webrtc_signal'
+  'webrtc_signal',
+  // Événement inconnu (ex. ancien « identify » envoyé par un vieux client) : doit être ignoré
+  'unknown_event'
 ];
 
 const PAYLOADS = [

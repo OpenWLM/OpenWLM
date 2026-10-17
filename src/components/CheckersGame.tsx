@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Socket } from 'socket.io-client';
-import SoundManager from '../utils/SoundManager';
+import GameSfx from '../utils/GameSfx';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
 import GameDialog from './GameDialog';
@@ -232,9 +232,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     setIsMyTurn(false);
     setLastMove({ from, to });
 
-    try {
-      SoundManager.play('TYPE');
-    } catch {}
+    if (isJump && captured) GameSfx.capture(); else GameSfx.piece();
 
     // Notifier le serveur et l'adversaire
     if (socket) {
@@ -342,9 +340,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
       setLastMove({ from: data.from, to: data.to });
 
-      try {
-        SoundManager.play('TYPE');
-      } catch {}
+      if (data.captured) GameSfx.capture(); else GameSfx.piece();
     };
 
     const onGameRestart = (data: { from: number; gameType?: string }) => {
@@ -408,6 +404,18 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   useEffect(() => {
     onGameStateChange?.({ isMyTurn, myScore, opponentScore, winner });
   }, [isMyTurn, myScore, opponentScore, winner, onGameStateChange]);
+
+
+  // Bruitage de fin de manche : victoire festive, défaite, match nul (une seule fois par manche)
+  const prevWinnerRef = useRef<typeof winner | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevWinnerRef.current;
+    prevWinnerRef.current = winner;
+    if (prev === undefined || winner === prev || winner === null) return;
+    if (winner === 'me') GameSfx.win();
+    else if (winner === 'opponent') GameSfx.lose();
+    else GameSfx.draw();
+  }, [winner]);
 
   return (
     <div className="wlm-game-side-panel">

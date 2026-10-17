@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Socket } from 'socket.io-client';
-import SoundManager from '../utils/SoundManager';
+import GameSfx from '../utils/GameSfx';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
 import GameDialog from './GameDialog';
@@ -84,9 +84,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
     setBoard(newBoard);
     setIsMyTurn(false);
 
-    try {
-      SoundManager.play('TYPE');
-    } catch {}
+    GameSfx.mark();
 
     // Notifier l'adversaire
     if (socket && !isBotOpponent) {
@@ -104,7 +102,6 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
         setWinner('me');
         setWinningLine(result.combo);
         setMyScore(prev => prev + 1);
-        try { SoundManager.play('ONLINE'); } catch {}
       } else if (result.winnerSymbol === 'draw') {
         setWinner('draw');
         setDraws(prev => prev + 1);
@@ -158,7 +155,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
           const botBoard = [...currentBoard];
           botBoard[botMoveIndex] = opponentSymbol;
 
-          try { SoundManager.play('TYPE'); } catch {}
+          GameSfx.mark();
 
           const botResult = checkWinner(botBoard);
           if (botResult) {
@@ -166,7 +163,6 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
               setWinner('opponent');
               setWinningLine(botResult.combo);
               setOpponentScore(prev => prev + 1);
-              try { SoundManager.play('NUDGE'); } catch {}
             } else if (botResult.winnerSymbol === 'draw') {
               setWinner('draw');
               setDraws(prev => prev + 1);
@@ -230,7 +226,6 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
             setWinner('opponent');
             setWinningLine(result.combo);
             setOpponentScore(prev => prev + 1);
-            try { SoundManager.play('NUDGE'); } catch {}
           } else if (result.winnerSymbol === 'draw') {
             setWinner('draw');
             setDraws(prev => prev + 1);
@@ -242,9 +237,7 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
         return nextBoard;
       });
 
-      try {
-        SoundManager.play('TYPE');
-      } catch {}
+      GameSfx.mark();
     };
 
     const onGameRestart = (data: { from: number }) => {
@@ -301,6 +294,18 @@ export const MorpionGame: React.FC<MorpionGameProps> = ({
   useEffect(() => {
     onGameStateChange?.({ isMyTurn, myScore, opponentScore, winner });
   }, [isMyTurn, myScore, opponentScore, winner, onGameStateChange]);
+
+
+  // Bruitage de fin de manche : victoire festive, défaite, match nul (une seule fois par manche)
+  const prevWinnerRef = useRef<typeof winner | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevWinnerRef.current;
+    prevWinnerRef.current = winner;
+    if (prev === undefined || winner === prev || winner === null) return;
+    if (winner === 'me') GameSfx.win();
+    else if (winner === 'opponent') GameSfx.lose();
+    else GameSfx.draw();
+  }, [winner]);
 
   return (
     <div className="wlm-game-side-panel">

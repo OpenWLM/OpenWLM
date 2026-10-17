@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Socket } from 'socket.io-client';
-import SoundManager from '../utils/SoundManager';
+import GameSfx from '../utils/GameSfx';
 import { useI18n } from '../i18n';
 import { formatNickname } from '../utils/NicknameFormatter';
 import GameDialog from './GameDialog';
@@ -146,9 +146,7 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
     setIsMyTurn(false);
     setLastMoveCell([row, col]);
 
-    try {
-      SoundManager.play('TYPE');
-    } catch {}
+    GameSfx.disc();
 
     // Notifier le serveur et l'adversaire
     if (socket && !isBotOpponent) {
@@ -165,7 +163,6 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
         setWinner('me');
         setWinningCells(result.winningCells);
         setMyScore(prev => prev + 1);
-        try { SoundManager.play('ONLINE'); } catch {}
       } else if (result.winnerSymbol === 'draw') {
         setWinner('draw');
         setDraws(prev => prev + 1);
@@ -247,7 +244,7 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
           botBoard[botRow][chosenCol] = opponentSymbol;
           setLastMoveCell([botRow, chosenCol]);
 
-          try { SoundManager.play('TYPE'); } catch {}
+          GameSfx.disc();
 
           const botResult = checkWinner(botBoard);
           if (botResult) {
@@ -255,7 +252,6 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
               setWinner('opponent');
               setWinningCells(botResult.winningCells);
               setOpponentScore(prev => prev + 1);
-              try { SoundManager.play('NUDGE'); } catch {}
             } else if (botResult.winnerSymbol === 'draw') {
               setWinner('draw');
               setDraws(prev => prev + 1);
@@ -322,7 +318,6 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
             setWinner('opponent');
             setWinningCells(result.winningCells);
             setOpponentScore(prevScore => prevScore + 1);
-            try { SoundManager.play('NUDGE'); } catch {}
           } else if (result.winnerSymbol === 'draw') {
             setWinner('draw');
             setDraws(prevDraws => prevDraws + 1);
@@ -334,9 +329,7 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
         return nextBoard;
       });
 
-      try {
-        SoundManager.play('TYPE');
-      } catch {}
+      GameSfx.disc();
     };
 
     const onGameRestart = (data: { from: number }) => {
@@ -395,6 +388,18 @@ export const Puissance4Game: React.FC<Puissance4GameProps> = ({
 
   const myColorLabel = isRed ? t.games.redLabel : t.games.yellowLabel;
   const opponentColorLabel = isRed ? t.games.yellowLabel : t.games.redLabel;
+
+
+  // Bruitage de fin de manche : victoire festive, défaite, match nul (une seule fois par manche)
+  const prevWinnerRef = useRef<typeof winner | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevWinnerRef.current;
+    prevWinnerRef.current = winner;
+    if (prev === undefined || winner === prev || winner === null) return;
+    if (winner === 'me') GameSfx.win();
+    else if (winner === 'opponent') GameSfx.lose();
+    else GameSfx.draw();
+  }, [winner]);
 
   return (
     <div className="wlm-game-side-panel">

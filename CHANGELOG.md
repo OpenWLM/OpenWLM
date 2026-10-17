@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Games
+- **Game sounds**: Tic-Tac-Toe, Connect Four and Checkers get their own synthesized move sounds (chalk mark, disc drop, wooden piece, capture) — their moves were silent, the requested sound file did not exist. All games share a festive win jingle, a short loss sound and a neutral draw sound (Checkers had none), played once per round; message sounds are no longer used in games.
 - **Minesweeper Flags (two-player Minesweeper)**: the MSN version where you have to FIND the mines. 16×16 board, 51 mines, first to 26 wins (no draw possible). A mine gives 1 point and you play again; a number or an empty area (flood fill) passes the turn. One 5×5 bomb per game, usable when at least 3 mines behind; you keep the turn if it finds a mine. Central mine counter, rounds score, dedicated sound effects synthesized with the Web Audio API (reveal, cascade, mine found, opponent's mine, bomb, win, loss — no audio files, distinct from messaging sounds), Aero styling, available from the Games menu, invitations, docked bar and game resume.
 - **Anti-cheat**: the board is generated server-side (`crypto.randomInt`) and the mine positions never leave the server — clients only receive revealed cells, including on resync; remaining mines are shown only once the round is over.
 - **Hardening**: the Tic-Tac-Toe move handler now checks the game type (it could be sent against another game). Game panels no longer show a broken image for a contact without an avatar.

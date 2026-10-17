@@ -97,15 +97,56 @@ const GameSfx = {
     tone(c, 110, t, 0.5, { type: 'sine', gain: 1.1, slideTo: 40 });
   }),
 
-  /** Victoire : petit arpège montant. */
-  win: () => play((c, t) => {
-    [523.3, 659.3, 784, 1046.5].forEach((f, k) => tone(c, f, t + k * 0.11, k === 3 ? 0.45 : 0.16, { type: 'triangle', gain: 0.7 }));
+  /** Morpion : trait de craie (souffle bref et aigu). */
+  mark: () => play((c, t) => {
+    noise(c, t, 0.07, { from: 6000, to: 2500, gain: 0.5 });
+    tone(c, 1900, t, 0.04, { type: 'triangle', gain: 0.25 });
   }),
 
-  /** Défaite : deux notes descendantes. */
+  /** Puissance 4 : jeton qui tombe (glissé) puis se cale dans la grille (clac). */
+  disc: () => play((c, t) => {
+    tone(c, 900, t, 0.12, { type: 'triangle', gain: 0.35, slideTo: 380 });
+    tone(c, 260, t + 0.11, 0.08, { type: 'square', gain: 0.18 });
+    noise(c, t + 0.11, 0.05, { from: 3000, to: 900, gain: 0.45 });
+  }),
+
+  /** Dames : pion en bois posé sur le damier. */
+  piece: () => play((c, t) => {
+    tone(c, 190, t, 0.09, { type: 'triangle', gain: 0.8 });
+    noise(c, t, 0.04, { from: 2500, to: 700, gain: 0.4 });
+  }),
+
+  /** Dames : prise (pion posé + pion adverse retiré). */
+  capture: () => play((c, t) => {
+    tone(c, 190, t, 0.09, { type: 'triangle', gain: 0.8 });
+    noise(c, t, 0.04, { from: 2500, to: 700, gain: 0.4 });
+    tone(c, 620, t + 0.09, 0.14, { type: 'triangle', gain: 0.45, slideTo: 980 });
+  }),
+
+  /** Victoire (tous les jeux) : fanfare montante, accord majeur final et petites étincelles. */
+  win: () => play((c, t) => {
+    const notes = [523.3, 659.3, 784, 1046.5];
+    notes.forEach((f, k) => tone(c, f, t + k * 0.09, 0.14, { type: 'triangle', gain: 0.65 }));
+    const chord = t + notes.length * 0.09;
+    [523.3, 659.3, 784, 1046.5].forEach((f) => tone(c, f, chord, 0.75, { type: 'triangle', gain: 0.3 }));
+    tone(c, 1318.5, chord, 0.75, { type: 'sine', gain: 0.25 });
+    for (let k = 0; k < 6; k++) {
+      tone(c, 2000 + Math.random() * 1800, chord + 0.08 + k * 0.07, 0.09, { type: 'sine', gain: 0.18 });
+    }
+    noise(c, chord, 0.18, { from: 7000, to: 3000, gain: 0.25 });
+  }),
+
+  /** Défaite (tous les jeux) : petit « wah-wah » descendant, sans dramatiser. */
   lose: () => play((c, t) => {
-    tone(c, 392, t, 0.22, { type: 'triangle', gain: 0.6 });
-    tone(c, 293.7, t + 0.2, 0.4, { type: 'triangle', gain: 0.6 });
+    tone(c, 392, t, 0.24, { type: 'sawtooth', gain: 0.22, slideTo: 370 });
+    tone(c, 349.2, t + 0.26, 0.24, { type: 'sawtooth', gain: 0.22, slideTo: 330 });
+    tone(c, 311.1, t + 0.52, 0.55, { type: 'sawtooth', gain: 0.22, slideTo: 233 });
+  }),
+
+  /** Match nul : deux notes égales, neutres. */
+  draw: () => play((c, t) => {
+    tone(c, 587.3, t, 0.18, { type: 'triangle', gain: 0.5 });
+    tone(c, 587.3, t + 0.2, 0.3, { type: 'triangle', gain: 0.5 });
   })
 };
 

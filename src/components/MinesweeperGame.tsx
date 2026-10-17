@@ -76,12 +76,9 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
   const cfg = state?.config ?? DEFAULT_CONFIG;
   const SIZE = cfg.size;
 
-  const opponentColor: 'blue' | 'red' = myColor === 'blue' ? 'red' : 'blue';
   const isMyTurn = state ? state.turn === myId && state.winner === null : initialIsMyTurn;
   const myFound = state?.found[myId] ?? 0;
   const oppFound = state?.found[opponentId] ?? 0;
-  const myWins = state?.wins[myId] ?? 0;
-  const oppWins = state?.wins[opponentId] ?? 0;
   const winner: 'me' | 'opponent' | null = !state || state.winner === null ? null : state.winner === myId ? 'me' : 'opponent';
   const bombAvailable = !!state && isMyTurn && !state.bombUsed[myId] && oppFound - myFound >= cfg.bombMinDeficit;
 
@@ -207,11 +204,59 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
     return Math.abs(r - hr) <= cfg.bombRadius && Math.abs(c - hc) <= cfg.bombRadius;
   };
 
-  const myColorLabel = myColor === 'blue' ? t.games.blueLabel : t.games.redLabel;
   const unfoundMines = new Set(state?.mines ?? []);
+  // Bleu toujours à gauche, Rouge à droite, comme dans l'original
+  const blueId = state?.players.blue ?? (myColor === 'blue' ? myId : opponentId);
+  const redId = state?.players.red ?? (myColor === 'red' ? myId : opponentId);
+  const lastMoveColor = state?.lastMove ? (state.lastMove.by === blueId ? 'blue' : 'red') : null;
+
+  const renderPlayer = (color: 'blue' | 'red') => {
+    const playerId = color === 'blue' ? blueId : redId;
+    const isMe = playerId === myId;
+    const name = isMe ? myName : opponentName;
+    const avatar = isMe ? myAvatar : opponentAvatar;
+    const found = state?.found[playerId] ?? 0;
+    const wins = state?.wins[playerId] ?? 0;
+    const active = !!state && state.winner === null && state.turn === playerId;
+    const bombUsed = !!state?.bombUsed[playerId];
+    return (
+      <div className={`msf-player msf-${color} ${active ? 'msf-active' : ''}`} data-testid={`msf-player-${color}`}>
+        <div className="msf-player-color">{color === 'blue' ? t.games.blueTeam : t.games.redTeam}</div>
+        <div className="msf-player-id">
+          <img src={avatar} alt="" className="msf-avatar" />
+          <span className="msf-name" title={name}>{formatNickname(name)}{isMe ? ` ${t.games.meLabel}` : ''}</span>
+        </div>
+        <div className="msf-turn" aria-live="polite">
+          {active ? (isMe ? t.games.msYourTurn : t.games.msTheirTurn) : wins > 0 ? t.games.msRoundsWon.replace('{n}', String(wins)) : ' '}
+        </div>
+        <div className="msf-player-foot">
+          <span className="msf-flag-count" title={t.games.minesFound.replace('{n}', String(found)).replace('{target}', String(cfg.winScore))}>
+            <FlagIcon color={color} />
+            <span className="msf-flag-num">{found}</span>
+          </span>
+          {isMe ? (
+            <button
+              type="button"
+              className={`msf-bomb ${bombArmed ? 'armed' : ''} ${bombUsed ? 'used' : ''}`}
+              disabled={!bombAvailable && !bombArmed}
+              onClick={() => setBombArmed((v) => !v)}
+              title={bombUsed ? t.games.bombUsed : bombArmed ? t.games.bombCancel : t.games.bombHint}
+              aria-label={bombUsed ? t.games.bombUsed : bombArmed ? t.games.bombCancel : t.games.bombBtn}
+            >
+              <BombIcon crossed={bombUsed || (!bombAvailable && !bombArmed)} />
+            </button>
+          ) : (
+            <span className={`msf-bomb msf-bomb-static ${bombUsed ? 'used' : ''}`} title={bombUsed ? t.games.bombUsed : t.games.bombHint}>
+              <BombIcon crossed={bombUsed} />
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="wlm-game-side-panel">
+    <div className="wlm-game-side-panel msf-panel">
       {dialog && (
         <GameDialog
           title={t.games.noticeTitle}
@@ -221,7 +266,7 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
       )}
       <div className="wlm-game-header">
         <div className="wlm-game-title">
-          <span className="wlm-game-icon">💣</span>
+          <span className="wlm-game-icon">🚩</span>
           <span>{formatNickname(t.games.minesweeperTitle.replace('{name}', opponentName))}</span>
         </div>
         <div className="wlm-game-header-controls">
@@ -239,76 +284,37 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
         </div>
       )}
 
-      {/* Scores : drapeaux trouvés dans la manche + manches gagnées */}
-      <div className="wlm-game-scoreboard">
-        <div className={`player-card ${isMyTurn && !winner ? 'active-turn' : ''}`}>
-          <div className="player-avatar-wrap">
-            <img src={myAvatar} alt={myName} className="player-avatar" />
-          </div>
-          <div className="player-details">
-            <div className="p4-player-name-row" title={`${myName} ${t.games.meLabel} (${myColorLabel})`}>
-              <span className={`ms-flag ms-flag-${myColor}`}>⚑</span>
-              <span className="player-name">{formatNickname(myName)} {t.games.meLabel}</span>
-            </div>
-            <span className="player-score-badge ms-found-badge">{t.games.minesFound.replace('{n}', String(myFound)).replace('{target}', String(cfg.winScore))}</span>
-          </div>
+      {/* Panneaux Bleu / Rouge et compteur central de mines, comme dans Minesweeper Flags */}
+      <div className="msf-players">
+        {renderPlayer('blue')}
+        <div className="msf-counter" title={t.games.minesLeftLabel}>
+          <span className="msf-star" aria-hidden="true">★</span>
+          <span className="msf-remaining" data-testid="ms-remaining">{state?.remaining ?? cfg.mines}</span>
+          <span className="msf-star" aria-hidden="true">★</span>
         </div>
-
-        <div className="game-vs-badge">
-          <div className="vs-label">{t.games.minesLeftLabel}</div>
-          <div className="score-numbers ms-remaining" data-testid="ms-remaining">{state?.remaining ?? cfg.mines}</div>
-          <div className="draws-count">{t.games.roundsScore.replace('{me}', String(myWins)).replace('{opp}', String(oppWins))}</div>
-        </div>
-
-        <div className={`player-card ${!isMyTurn && !winner ? 'active-turn' : ''}`}>
-          <div className="player-avatar-wrap">
-            <img src={opponentAvatar} alt={opponentName} className="player-avatar" />
-          </div>
-          <div className="player-details">
-            <div className="p4-player-name-row" title={opponentName}>
-              <span className={`ms-flag ms-flag-${opponentColor}`}>⚑</span>
-              <span className="player-name">{formatNickname(opponentName)}</span>
-            </div>
-            <span className="player-score-badge ms-found-badge">{t.games.minesFound.replace('{n}', String(oppFound)).replace('{target}', String(cfg.winScore))}</span>
-          </div>
-        </div>
+        {renderPlayer('red')}
       </div>
 
-      <div className={`game-turn-banner ${winner ? `banner-${winner}` : isMyTurn ? 'banner-my-turn' : 'banner-wait'}`}>
-        {statusMessage ? (
-          <span>{formatNickname(statusMessage)}</span>
-        ) : winner === 'me' ? (
-          <span>{t.games.bannerWin}</span>
-        ) : winner === 'opponent' ? (
-          <span>{formatNickname(t.games.bannerLoss.replace('{name}', opponentName))}</span>
-        ) : bombArmed ? (
-          <span>{t.games.bombArmed}</span>
-        ) : isMyTurn && state?.lastMove?.by === myId && typeof state.revealed[state.lastMove.index] === 'string' ? (
-          <span>{t.games.bannerMineFound}</span>
-        ) : isMyTurn ? (
-          <span>{t.games.bannerYourTurnColor.replace('{color}', myColorLabel)}</span>
-        ) : (
-          <span>{formatNickname(t.games.bannerWaitOpponent.replace('{name}', opponentName))}</span>
-        )}
-      </div>
+      {/* Bandeau : uniquement les événements (fin de manche, bombe armée, mine trouvée…) */}
+      {(winner || statusMessage || bombArmed || (isMyTurn && state?.lastMove?.by === myId && typeof state.revealed[state.lastMove.index] === 'string')) && (
+        <div className={`game-turn-banner msf-banner ${winner ? `banner-${winner}` : 'banner-my-turn'}`}>
+          {statusMessage ? (
+            <span>{formatNickname(statusMessage)}</span>
+          ) : winner === 'me' ? (
+            <span>{t.games.bannerWin}</span>
+          ) : winner === 'opponent' ? (
+            <span>{formatNickname(t.games.bannerLoss.replace('{name}', opponentName))}</span>
+          ) : bombArmed ? (
+            <span>{t.games.bombArmed}</span>
+          ) : (
+            <span>{t.games.bannerMineFound}</span>
+          )}
+        </div>
+      )}
 
-      {/* Bombe : une par manche, avec au moins 3 points de retard */}
-      <div className="ms-toolbar">
-        <button
-          type="button"
-          className={`win-btn ms-bomb-btn ${bombArmed ? 'armed' : ''}`}
-          disabled={!bombAvailable && !bombArmed}
-          onClick={() => setBombArmed((v) => !v)}
-          title={state?.bombUsed[myId] ? t.games.bombUsed : t.games.bombHint}
-        >
-          💣 {state?.bombUsed[myId] ? t.games.bombUsed : bombArmed ? t.games.bombCancel : t.games.bombBtn}
-        </button>
-        <span className="ms-rule-note">{t.games.minesweeperRule}</span>
-      </div>
-
-      <div className="ms-board-wrapper">
+      <div className="msf-board-frame" title={t.games.minesweeperRule}>
         <div
-          className={`ms-grid ${isMyTurn && !winner ? 'ms-grid-active' : ''} ${bombArmed ? 'ms-grid-bomb' : ''}`}
+          className={`ms-grid msf-grid ${isMyTurn && !winner ? 'ms-grid-active' : ''} ${bombArmed ? 'ms-grid-bomb' : ''}`}
           style={{ gridTemplateColumns: `repeat(${SIZE}, 1fr)` }}
           onMouseLeave={() => setHoverIndex(null)}
           role="grid"
@@ -321,15 +327,16 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
             let content: React.ReactNode = null;
             if (v === null) {
               cls += ' ms-hidden';
-              if (unfoundMines.has(i)) { cls += ' ms-mine-end'; content = '✹'; }
+              if (unfoundMines.has(i)) { cls += ' ms-mine-end'; content = <MineIcon />; }
             } else if (typeof v === 'number') {
               cls += ' ms-open';
               if (v > 0) { cls += ` ${NUMBER_CLASS[v] ?? ''}`; content = v; }
             } else {
-              cls += ` ms-open ms-flagged ms-flagged-${v === 'B' ? 'blue' : 'red'}`;
-              content = '⚑';
+              const fc = v === 'B' ? 'blue' : 'red';
+              cls += ` ms-open ms-flagged ms-flagged-${fc}`;
+              content = <FlagIcon color={fc} />;
             }
-            if (isLast) cls += ' ms-last';
+            if (isLast && lastMoveColor) cls += ` ms-last ms-last-${lastMoveColor}`;
             if (inBombArea(i)) cls += ' ms-bomb-area';
             return (
               <div
@@ -347,14 +354,47 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
         </div>
       </div>
 
-      <div className="wlm-game-footer">
+      <div className="wlm-game-footer msf-footer">
         {winner && (
           <button className="win-btn primary-btn" onClick={handleRestart}>{t.games.replayRound}</button>
         )}
-        <button className="win-btn" onClick={handleQuit}>{t.games.quitGameBtn}</button>
+        <button className="msf-resign" onClick={handleQuit}>{t.games.resign}</button>
       </div>
     </div>
   );
 };
+
+/** Drapeau de Minesweeper Flags : mât noir, socle sombre, fanion bleu ou rouge. */
+const FlagIcon: React.FC<{ color: 'blue' | 'red' }> = ({ color }) => (
+  <svg className={`msf-flag-icon msf-flag-${color}`} viewBox="0 0 20 20" aria-hidden="true">
+    <rect x="5" y="2.5" width="1.8" height="13" rx="0.6" fill="#1b1b1b" />
+    <path d="M6.8 3 L17 6.6 L6.8 10.2 Z" fill={color === 'blue' ? '#2459d6' : '#e3262f'} stroke={color === 'blue' ? '#10307a' : '#7d0d12'} strokeWidth="0.7" strokeLinejoin="round" />
+    <path d="M7.6 4.3 L12.5 6.1 L7.6 7.6 Z" fill="#ffffff" opacity="0.35" />
+    <ellipse cx="6" cy="16.2" rx="4.6" ry="1.7" fill="#2a2a2a" />
+  </svg>
+);
+
+/** Mine (dévoilée en fin de manche). */
+const MineIcon: React.FC = () => (
+  <svg className="msf-mine-icon" viewBox="0 0 20 20" aria-hidden="true">
+    <g stroke="#111" strokeWidth="1.6" strokeLinecap="round">
+      <line x1="10" y1="2.5" x2="10" y2="17.5" /><line x1="2.5" y1="10" x2="17.5" y2="10" />
+      <line x1="4.7" y1="4.7" x2="15.3" y2="15.3" /><line x1="15.3" y1="4.7" x2="4.7" y2="15.3" />
+    </g>
+    <circle cx="10" cy="10" r="5.2" fill="#111" />
+    <circle cx="8.2" cy="8.2" r="1.5" fill="#fff" opacity="0.8" />
+  </svg>
+);
+
+/** Bombe (bouton du panneau joueur), barrée quand elle n'est pas disponible. */
+const BombIcon: React.FC<{ crossed?: boolean }> = ({ crossed }) => (
+  <svg className="msf-bomb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="10" cy="14" r="6.5" fill="#1d1d1d" />
+    <circle cx="7.8" cy="11.8" r="1.7" fill="#fff" opacity="0.7" />
+    <path d="M14.5 9.5 L17 7" stroke="#6b4a1e" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M17.6 4.2 l0.6 1.6 1.6 0.6 -1.6 0.6 -0.6 1.6 -0.6 -1.6 -1.6 -0.6 1.6 -0.6 z" fill="#ffb300" />
+    {crossed && <path d="M4 4 L20 20 M20 4 L4 20" stroke="#d01b1b" strokeWidth="2.4" strokeLinecap="round" />}
+  </svg>
+);
 
 export default MinesweeperGame;

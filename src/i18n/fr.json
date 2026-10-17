@@ -387,8 +387,6 @@
     "systemIdleDenied": "Autorisation refusée : OpenWLM continue d'utiliser l'inactivité dans sa propre fenêtre. Vous pouvez l'autoriser dans les paramètres du site de votre navigateur.",
     "systemIdleUnsupported": "Indisponible dans ce navigateur (Chrome ou Edge sur ordinateur uniquement). OpenWLM utilise l'inactivité dans sa propre fenêtre.",
     "systemIdleInsecure": "Nécessite une connexion sécurisée (HTTPS).",
-    "webcamSection": "Webcam",
-    "webcamCheckbox": "Indiquer aux autres utilisateurs que je dispose d'une webcam",
     "alertsTitle": "Alertes et Notifications",
     "desktopToastEnable": "Afficher une alerte OpenWLM sur le Bureau lors de la réception d'un nouveau message",
     "desktopToastDesc": "Affiche une notification rétro en bas à droite de l'écran lorsque l'application est active.",

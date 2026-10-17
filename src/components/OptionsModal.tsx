@@ -210,13 +210,6 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   </div>
                 </div>
 
-                <div className="options-subsection">
-                  <label className="options-label">{t.settings.webcamSection}</label>
-                  <div className="options-checkbox-line">
-                    <input type="checkbox" id="check-webcam" defaultChecked />
-                    <label htmlFor="check-webcam">{t.settings.webcamCheckbox}</label>
-                  </div>
-                </div>
               </div>
             )}
 

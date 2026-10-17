@@ -30,6 +30,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Tests: `tests/test_minesweeper_logic.js` (rules), `tests/test_minesweeper_server.js` (full game over sockets, no leak before the end), `e2e/minesweeper.spec.ts` (two browsers, synchronized boards, WebSocket frames inspected).
 
 ### Presence status
+- **Options**: removed the "Let other users know I have a webcam" checkbox, which was never saved nor used.
 - **Whole-computer inactivity (Idle Detection API)**: new opt-in option *Detect inactivity of the whole computer*. Instead of activity inside the OpenWLM window, the automatic "Away" follows keyboard/mouse use in any application, and a locked screen switches to "Away" immediately; activity brings back "Available". A status chosen by hand is never changed.
   - Availability: Chromium-based desktop browsers (Chrome, Edge, Opera) and the Electron client; not Firefox or Safari. HTTPS required.
   - Permission: `idle-detection`, requested when the option is ticked; resumed automatically at startup if already granted. Refused or withdrawn → automatic fallback to in-window inactivity, explained in Options.

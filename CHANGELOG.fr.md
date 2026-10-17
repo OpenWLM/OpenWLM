@@ -30,6 +30,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - Tests : `tests/test_minesweeper_logic.js` (règles), `tests/test_minesweeper_server.js` (partie complète par sockets, aucune fuite avant la fin), `e2e/minesweeper.spec.ts` (deux navigateurs, plateaux synchronisés, trames WebSocket inspectées).
 
 ### Statut de présence
+- **Options** : suppression de la case « Indiquer aux autres utilisateurs que je dispose d'une webcam », qui n'était ni enregistrée ni utilisée.
 - **Inactivité de tout l'ordinateur (API Idle Detection)** : nouvelle option à activer, *Détecter l'inactivité de tout l'ordinateur*. Au lieu de l'activité dans la fenêtre OpenWLM, l'« Absent » automatique suit l'utilisation du clavier et de la souris dans n'importe quelle application, et un écran verrouillé fait passer « Absent » immédiatement ; l'activité ramène « Disponible ». Un statut choisi à la main n'est jamais modifié.
   - Disponibilité : navigateurs Chromium sur ordinateur (Chrome, Edge, Opera) et client Electron ; ni Firefox ni Safari. HTTPS requis.
   - Autorisation : `idle-detection`, demandée quand l'option est cochée ; reprise automatiquement au démarrage si elle est déjà accordée. Refusée ou retirée → retour automatique à l'inactivité dans la fenêtre, expliqué dans les Options.

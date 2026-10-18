@@ -58,7 +58,7 @@ The whole-computer mode relies on the [Idle Detection API](https://developer.moz
 Options → **Layout**, **Messages** and **Sounds** are saved in the browser (`wlm_prefs`), per device, never on the server:
 
 - **Layout**: show offline contacts (blocked contacts always stay visible, to unblock them), show personal messages, show the "OpenWLM" test contact, sort by status then name, or by name.
-- **Messages**: emoticons as pictures or as text, message times, window shake on a received nudge (otherwise a simple line), automatic playback of received winks (otherwise a "Watch" button), encrypted copy of conversations on this device (turning it off deletes the copy; history is then always reloaded from the server).
+- **Messages**: emoticons as pictures or as text, message times, window shake on a received nudge (otherwise a simple line), automatic playback of received winks (otherwise a "Watch" button), encrypted copy of conversations on this device, private-mode messages included (they are never on the server, so without this copy they are lost when the app reloads; turning it off deletes the copy).
 - **Sounds**: on/off, volume, one switch per event (message, contact sign-in, nudge, wink, call ringtone, games), mute while "Busy" (the call ringtone stays on).
 
 Code: `src/utils/appPrefs.ts` (storage, React hook, sound rules), used by `SoundManager`, `GameSfx`, the contact list and the conversation.

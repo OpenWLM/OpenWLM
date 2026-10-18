@@ -151,6 +151,10 @@ Conséquence assumée :
   (`code: RECIPIENT_OFFLINE_PRIVATE`) ; l'expéditeur le voit « **Non envoyé** » avec un bouton
   **Renvoyer** (le contenu en clair n'est gardé qu'en mémoire, non persisté). Il n'est
   **pas** perdu silencieusement comme avant.
+- **Côté appareil** : les messages privés ne sont gardés que dans la **copie locale chiffrée**
+  de l'appareil qui les a envoyés ou reçus, si l'option « Garder une copie chiffrée des
+  conversations sur cet appareil » est active (par défaut). Sans elle, ils disparaissent au
+  rechargement de l'app. Le serveur ne les stocke jamais, dans aucun cas.
 - **Fenêtre résiduelle** : la présence est vérifiée **à l'instant de l'envoi**. Si le
   destinataire se déconnecte **juste après** la vérification, le message peut encore être
   perdu (aucune file d'attente). C'est **inhérent** à un mode éphémère ; pour une remise

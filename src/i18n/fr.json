@@ -392,6 +392,7 @@
     "messagesWinks": "Lire automatiquement les clins d'œil reçus",
     "messagesHistory": "Historique",
     "messagesLocalHistory": "Garder une copie chiffrée des conversations sur cet appareil",
+    "messagesLocalHistoryPrivate": "Sans cette option, les messages en mode privé sont perdus au rechargement de l'app (le serveur ne les conserve jamais).",
     "messagesClearCache": "Effacer la copie locale",
     "messagesCacheCleared": "Copie locale effacée.",
     "soundsEnable": "Activer les sons",

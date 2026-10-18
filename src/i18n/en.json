@@ -392,6 +392,7 @@
     "messagesWinks": "Play received winks automatically",
     "messagesHistory": "History",
     "messagesLocalHistory": "Keep an encrypted copy of conversations on this device",
+    "messagesLocalHistoryPrivate": "Without this option, private-mode messages are lost when the app reloads (the server never keeps them).",
     "messagesClearCache": "Delete the local copy",
     "messagesCacheCleared": "Local copy deleted.",
     "soundsEnable": "Turn on sounds",

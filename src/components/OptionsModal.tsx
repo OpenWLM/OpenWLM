@@ -267,6 +267,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     }}
                     label={t.settings.messagesLocalHistory}
                   />
+                  <div className="options-hint">{t.settings.messagesLocalHistoryPrivate}</div>
                   <button
                     type="button"
                     className="win-btn"

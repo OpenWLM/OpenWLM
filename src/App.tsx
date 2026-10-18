@@ -90,6 +90,7 @@ import {
   isPresenceStatus
 } from './utils/profileStorage';
 import { useAppPrefs, getAppPrefs, setPresenceForSounds } from './utils/appPrefs';
+import { mergeServerHistory, cacheableHistory } from './utils/historyMerge';
 
 axios.defaults.withCredentials = true;
 
@@ -582,6 +583,9 @@ const App: React.FC = () => {
 
   // --- ÉTAT DES MESSAGES & CONVERSATIONS ---
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
+  // Messages courants lisibles hors rendu (fusion de l'historique avant écriture du cache local)
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
   const [inputText, setInputText] = useState('');
   // Brouillons non envoyés, un par conversation (le champ de saisie est partagé entre onglets)
   const draftsRef = useRef<Record<number, string>>({});
@@ -1635,20 +1639,17 @@ const App: React.FC = () => {
               if (missing.length === 0 && !changed) return prev;
               return { ...prev, [chatId]: [...updated, ...missing] };
             });
-          } else setMessages(prev => {
-            const currentMsgs = prev[chatId] || [];
-            const serverIds = new Set(validServerMsgs.map(m => m.id).filter(Boolean));
-            const serverClientIds = new Set(validServerMsgs.map(m => m.clientMsgId).filter(Boolean));
-            const pendingMsgs = currentMsgs.filter(m => 
-              m._isPending && 
-              (!m.id || !serverIds.has(m.id)) && 
-              (!m.clientMsgId || !serverClientIds.has(m.clientMsgId))
-            );
-            return { ...prev, [chatId]: [...validServerMsgs, ...pendingMsgs] };
-          });
-
-          // Remplacer le cache local avec l'historique officiel propre
-          if (getAppPrefs().messages.keepLocalHistory) await LocalDB.setHistory(`${user.id}_${chatId}`, validServerMsgs, keys.publicKeyJwk);
+          } else {
+            // Historique serveur + ce qui n'existe que sur l'appareil (messages privés, lignes
+            // système, envois en cours) : rien de local n'est plus écrasé par le rechargement
+            setMessages(prev => ({ ...prev, [chatId]: mergeServerHistory(prev[chatId] || [], validServerMsgs) }));
+            // Copie locale chiffrée : historique serveur ET messages privés (sinon perdus au
+            // rechargement, puisque le serveur ne les a jamais eus)
+            if (getAppPrefs().messages.keepLocalHistory) {
+              const merged = mergeServerHistory(messagesRef.current[chatId] || [], validServerMsgs);
+              await LocalDB.setHistory(`${user.id}_${chatId}`, cacheableHistory(merged), keys.publicKeyJwk);
+            }
+          }
         }
       } catch (err) {
         console.warn(`Erreur récupération messages serveur pour ${chatId}:`, err);
@@ -2418,18 +2419,19 @@ const App: React.FC = () => {
       return;
     }
 
-    socket.timeout(SEND_ACK_TIMEOUT_MS).emit('send_message', msgData, (err: Error | null, ack?: { success?: boolean; id?: number | string; timestamp?: string; code?: string; error?: string }) => {
+    socket.timeout(SEND_ACK_TIMEOUT_MS).emit('send_message', msgData, (err: Error | null, ack?: { success?: boolean; id?: number | string; timestamp?: string; code?: string; error?: string; isPrivate?: boolean }) => {
       if (err || !ack?.success || ack.id === undefined || ack.id === null) {
         const failed = ack?.code === 'RECIPIENT_OFFLINE_PRIVATE' ? 'offline_private' : 'error';
         markSendFailed(chatId, clientMsgId, failed, err ? t.chat.sendFailedNetwork : ack?.error);
         return;
       }
       resendInfoRef.current.delete(clientMsgId);
-      const confirmed: Message = { ...localMsg, id: ack.id, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || localMsg.timestamp };
+      // isPrivate (décidé par le serveur) : un message privé confirmé reste reconnu comme tel
+      const confirmed: Message = { ...localMsg, id: ack.id, isPrivate: ack.isPrivate === true, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || localMsg.timestamp };
       setMessages(prev => ({
         ...prev,
         [chatId]: (prev[chatId] || []).map(m => m.clientMsgId === clientMsgId
-          ? { ...m, id: ack.id, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || m.timestamp }
+          ? { ...m, id: ack.id, isPrivate: ack.isPrivate === true, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || m.timestamp }
           : m)
       }));
       if (myKeysRef.current) {

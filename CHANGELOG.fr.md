@@ -11,6 +11,12 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Messages en mode privé
+- **Plus de messages perdus** : le chargement de l'historique d'une conversation remplaçait la liste affichée par l'historique du serveur, donc les messages purement locaux disparaissaient — un message privé reçu dans un onglet qui venait de s'ouvrir pouvait disparaître aussitôt (le son jouait, rien ne s'affichait), et les messages privés ne survivaient jamais à un rechargement. Le chargement fusionne désormais l'historique serveur avec ce qui n'existe que sur l'appareil (messages privés, lignes système, envois en cours), dans l'ordre chronologique (`src/utils/historyMerge.ts`).
+- **Conservés au rechargement** : les messages privés font désormais partie de la copie locale chiffrée (Options → Messages, activée par défaut) et réapparaissent après un rechargement. Le serveur ne les stocke toujours jamais ; sans la copie locale, ils sont perdus au rechargement, comme l'indique désormais l'option.
+- Les messages privés envoyés gardent leur marqueur « privé » une fois confirmés par le serveur.
+- Test E2E `e2e/private-history.spec.ts` (message reçu onglet fermé, rechargement, jamais stocké par le serveur, option désactivée).
+
 ### Options : Disposition, Messages, Sons
 - Les onglets **Disposition**, **Messages** et **Sons**, vides et non cliquables, fonctionnent désormais. Les réglages sont enregistrés sur l'appareil (`wlm_prefs`), pas sur le serveur.
 - **Disposition** : afficher ou masquer les contacts hors ligne (les contacts bloqués restent toujours visibles), les messages personnels et le contact de test « OpenWLM » ; tri par statut puis par nom, ou par nom.

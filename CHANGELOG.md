@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Private-mode messages
+- **No longer lost**: loading a conversation's history replaced the displayed list with the server history, so local-only messages vanished — a private message received in a tab that had just opened could disappear right away (the sound played, nothing showed), and private messages never survived a reload. History loading now merges the server history with what only exists on the device (private messages, system lines, messages being sent), in chronological order (`src/utils/historyMerge.ts`).
+- **Kept across reloads**: private messages are now part of the encrypted local copy (Options → Messages, on by default) and are shown again after a reload. They are still never stored by the server; without the local copy they are lost on reload, as the option now says.
+- Sent private messages keep their private flag once confirmed by the server.
+- E2E test `e2e/private-history.spec.ts` (message received with the tab closed, reload, server never stores it, option off).
+
 ### Options: Layout, Messages, Sounds
 - The **Layout**, **Messages** and **Sounds** tabs, which were empty and not clickable, now work. Settings are stored on the device (`wlm_prefs`), not on the server.
 - **Layout**: show/hide offline contacts (blocked contacts always remain visible), personal messages and the "OpenWLM" test contact; sort by status then name, or by name.

@@ -9,6 +9,15 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [Non publié]
+
+### Correctifs (revue de la 1.6.0)
+- **Messages privés reçus pendant le chargement d'une conversation** : un message privé reçu (ou envoyé) entre la lecture de la copie locale et la réponse du serveur pouvait manquer à la copie réécrite, et être perdu au rechargement suivant. Les messages purement locaux enregistrés depuis la dernière réécriture complète sont désormais gardés de côté et repris dans la suivante.
+- **Effacement de la copie locale** : les enregistrements sont supprimés à partir de la liste de leurs clés lue d'abord (`getAllKeys`), et non pendant le parcours d'un curseur d'index (effacement du compte et réécriture d'une conversation).
+- **Push après « Déconnecter mes autres sessions »** : si l'abonnement Push de cet appareil n'avait pas pu être lu à temps, il était supprimé avec les autres ; l'app le réenregistre désormais ensuite (seulement si les notifications sont déjà autorisées).
+- **Plus de jeton périmé après une révocation** : après « Déconnecter mes autres sessions » ou un changement de mot de passe, tout jeton gardé en mémoire est abandonné et seul le cookie renouvelé est utilisé (le serveur n'expose aujourd'hui aucun jeton à la page ; cela évite qu'un appareil se révoque lui-même si cela changeait).
+- **`diag_ping` limité en débit** (20 par 10 s et par connexion), comme les autres événements temps réel. Test serveur ajouté.
+
 ## [1.6.0] - 2026-10-18
 
 Des appels qui atteignent un téléphone en veille et continuent écran éteint, la fenêtre Options complétée (Disposition, Messages, Sons, Sécurité, Connexion), des indicateurs de messages non lus, des messages privés conservés au rechargement, le Démineur à deux, et une série de correctifs issus de deux revues de code.

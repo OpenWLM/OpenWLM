@@ -41,7 +41,7 @@ import { AvatarModal } from './components/AvatarModal';
 import { WinksModal } from './components/WinksModal';
 import { BgModal } from './components/BgModal';
 import { PasswordModal } from './components/PasswordModal';
-import { getExistingPushSubscription, closeCallPushNotifications } from './utils/PushNotificationManager';
+import { getExistingPushSubscription, closeCallPushNotifications, subscribeToWebPush } from './utils/PushNotificationManager';
 import { AddContactModal } from './components/AddContactModal';
 import { FontModal, type FontSettings } from './components/FontModal';
 import { AllEmoticonsModal } from './components/AllEmoticonsModal';
@@ -91,7 +91,7 @@ import {
   isPresenceStatus
 } from './utils/profileStorage';
 import { useAppPrefs, getAppPrefs, setPresenceForSounds } from './utils/appPrefs';
-import { mergeServerHistory, cacheableHistory, withLocalOnly } from './utils/historyMerge';
+import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
 
 axios.defaults.withCredentials = true;
 
@@ -672,6 +672,18 @@ const App: React.FC = () => {
   // --- AUTRES RÉFÉRENCES ---
   const chatEndRef = useRef<HTMLDivElement>(null);
   const loadingChatsRef = useRef<Set<number>>(new Set());
+  // Messages purement locaux (privés) enregistrés dans la copie locale depuis sa dernière
+  // réécriture complète : la réécriture suivante les reprend, même s'ils ne sont pas encore
+  // dans la liste affichée (reçus pendant le chargement d'une conversation)
+  const recentLocalSavesRef = useRef<Map<number, Message[]>>(new Map());
+  const saveToLocalCopy = (chatId: number, msg: Message) => {
+    if (!myKeysRef.current || !getAppPrefs().messages.keepLocalHistory) return;
+    if (isLocalOnly(msg)) {
+      const list = recentLocalSavesRef.current.get(chatId) || [];
+      recentLocalSavesRef.current.set(chatId, [...list, msg]);
+    }
+    LocalDB.saveMessage(`${user?.id}_${chatId}`, msg, myKeysRef.current.publicKeyJwk).catch(console.error);
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [contactEmail, setContactEmail] = useState('');
 
@@ -1682,8 +1694,13 @@ const App: React.FC = () => {
             // rechargement, puisque le serveur ne les a jamais eus). Calculée avec la même base
             // que l'affichage, copie lue au préchargement comprise.
             if (getAppPrefs().messages.keepLocalHistory) {
-              const merged = mergeServerHistory(baseFor(messagesRef.current[chatId]), validServerMsgs);
+              // + messages locaux enregistrés pendant le chargement (pas encore affichés)
+              const recent = recentLocalSavesRef.current.get(chatId) || [];
+              const merged = mergeServerHistory(withLocalOnly(baseFor(messagesRef.current[chatId]), recent), validServerMsgs);
               await LocalDB.setHistory(`${user.id}_${chatId}`, cacheableHistory(merged), keys.publicKeyJwk);
+              // Ceux qui sont maintenant dans la copie réécrite n'ont plus besoin d'être suivis
+              const left = (recentLocalSavesRef.current.get(chatId) || []).filter((m) => !recent.includes(m));
+              if (left.length) recentLocalSavesRef.current.set(chatId, left); else recentLocalSavesRef.current.delete(chatId);
             }
           }
         }
@@ -1956,7 +1973,7 @@ const App: React.FC = () => {
 
         // Sauvegarde locale dans IndexedDB (Chiffré)
         if (myKeysRef.current) {
-          if (getAppPrefs().messages.keepLocalHistory) LocalDB.saveMessage(`${user?.id}_${conversationContactId}`, finalMsg, myKeysRef.current.publicKeyJwk).catch(console.error);
+          saveToLocalCopy(conversationContactId, finalMsg);
         }
 
         // Accusé de réception ("remis") émis par la session destinataire vers le serveur
@@ -2546,7 +2563,7 @@ const App: React.FC = () => {
           : m)
       }));
       if (myKeysRef.current) {
-        if (getAppPrefs().messages.keepLocalHistory) LocalDB.saveMessage(`${user?.id}_${chatId}`, confirmed, myKeysRef.current.publicKeyJwk).catch(console.error);
+        saveToLocalCopy(chatId, confirmed);
       }
     });
   };
@@ -3473,11 +3490,25 @@ const App: React.FC = () => {
   };
   useEffect(() => { handleLogoutRef.current = handleLogout; });
 
+  // Après une révocation de sessions (token_version incrémenté), seul le cookie renouvelé est
+  // valide : un éventuel jeton gardé en mémoire (aujourd'hui le serveur n'en expose pas au JS)
+  // serait périmé et ferait révoquer CET appareil au premier appel
+  const dropInMemoryToken = () => {
+    delete axios.defaults.headers.common['Authorization'];
+    setUser(prev => (prev && prev.token ? { ...prev, token: undefined } : prev));
+  };
+
   // Options → Sécurité : couper les autres appareils, garder celui-ci (connexion et Push)
   const revokeOtherSessions = async (): Promise<{ ok: boolean; disconnected?: number }> => {
     try {
       const sub = await getExistingPushSubscription().catch(() => null);
       const res = await axios.post('/api/sessions/revoke-others', { socketId: socket?.id, keepPushEndpoint: sub?.endpoint });
+      dropInMemoryToken();
+      // Si l'abonnement de cet appareil n'a pas pu être lu à temps, il a été supprimé avec les
+      // autres : réenregistrement (sans rien demander : seulement si déjà autorisé)
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        subscribeToWebPush().catch(() => { /* Push indisponible */ });
+      }
       return { ok: true, disconnected: Number(res.data?.disconnected) || 0 };
     } catch {
       return { ok: false };
@@ -4760,7 +4791,11 @@ const App: React.FC = () => {
       {showPasswordModal && (
         <PasswordModal
           onClose={() => setShowPasswordModal(false)}
-          onSubmit={(current, next) => handleChangePassword(current, next, socket?.id)}
+          onSubmit={async (current, next) => {
+            const result = await handleChangePassword(current, next, socket?.id);
+            if (result.ok) dropInMemoryToken();
+            return result;
+          }}
         />
       )}
 

@@ -12,6 +12,10 @@ import { activeGames, getGamePlayers, pendingGameInvites } from '../routes/games
 import { registerMessageHandlers } from './messages.js';
 import { registerWebRtcHandlers } from './webrtc.js';
 import { registerGameHandlers } from './games.js';
+import { isAllowed } from '../utils/rateWindow.js';
+
+// Options → Connexion : mesures du temps de réponse (diag_ping), par connexion
+const diagPingLimits = new Map();
 
 export const disconnectTimers = new Map();
 
@@ -163,7 +167,12 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
     });
 
     // Options → Connexion : mesure du temps de réponse (aller-retour par la connexion temps réel)
-    socket.on('diag_ping', (ack) => { if (typeof ack === 'function') ack({ t: Date.now() }); });
+    socket.on('disconnect', () => { diagPingLimits.delete(socket.id); });
+    // Limité comme les autres événements (le client en envoie un toutes les 5 s, onglet ouvert)
+    socket.on('diag_ping', (ack) => {
+      if (typeof ack !== 'function' || !isAllowed(diagPingLimits, socket.id, 20, 10000)) return;
+      ack({ t: Date.now() });
+    });
 
     // Déconnexion manuelle explicite (logout)
     socket.on('manual_disconnect', () => {

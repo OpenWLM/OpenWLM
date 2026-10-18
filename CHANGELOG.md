@@ -9,6 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixes (review of 1.6.0)
+- **Private messages received while a conversation loads**: a private message received (or sent) between reading the local copy and the server's answer could be missing from the rewritten copy, and lost at the next reload. Local-only messages saved since the last full rewrite are now kept aside and included in the next one.
+- **Local copy deletion**: records are deleted from the list of their keys read first (`getAllKeys`) instead of while iterating an index cursor (account deletion and conversation rewrite).
+- **Push after "Sign out my other sessions"**: if this device's push subscription could not be read in time, it was deleted with the others; the app now registers it again afterwards (only when notifications are already allowed).
+- **No stale token after a revocation**: after "Sign out my other sessions" or a password change, any token kept in memory is dropped so only the renewed cookie is used (the server does not expose a token to the page today; this prevents a device from revoking itself if that ever changes).
+- **`diag_ping` rate-limited** (20 per 10 s per connection), like the other real-time events. Server test added.
+
 ## [1.6.0] - 2026-10-18
 
 Calls that reach a sleeping phone and keep going with the screen off, the Options window completed (Layout, Messages, Sounds, Security, Connection), unread indicators, private messages kept across reloads, Minesweeper Flags, and a series of fixes from two code reviews.

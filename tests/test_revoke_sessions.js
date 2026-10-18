@@ -105,6 +105,8 @@ const once = (s, ev, ms = 4000) => new Promise((resolve, reject) => {
   const t = setTimeout(() => reject(new Error(`Timeout ${ev}`)), ms);
   s.once(ev, (...args) => { clearTimeout(t); resolve(args); });
 });
+// Jeton valide pour la version de session actuelle du compte (révoquée par les tests précédents)
+const cookieTokenFor = (id) => tok(id, withDb((db) => db.prepare('SELECT token_version FROM users WHERE id = ?').get(id).token_version || 0));
 const cookieToken = (headers) => {
   const c = [].concat(headers['set-cookie'] || []).find((x) => x.startsWith('token='));
   return c ? c.slice(6, c.indexOf(';')) : null;
@@ -164,4 +166,14 @@ test('limité à 10 demandes par quart d\'heure et par compte', async () => {
     else break;
   }
   assert.equal(last.status, 429);
+});
+
+test('diag_ping (Options → Connexion) : limité à 20 mesures par 10 s et par connexion', async () => {
+  const s = await connect(aliceId, cookieTokenFor(aliceId));
+  try {
+    const answers = await Promise.all(Array.from({ length: 25 }, () => new Promise((resolve) => {
+      s.timeout(1500).emit('diag_ping', (err) => resolve(!err));
+    })));
+    assert.equal(answers.filter(Boolean).length, 20);
+  } finally { s.close(); }
 });

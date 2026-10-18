@@ -12,6 +12,8 @@ interface ChatTabsBarProps {
   openChatIds: number[];
   contacts: Contact[];
   activeChatId: number;
+  /** Messages non lus par conversation (onglet qui clignote + compteur). */
+  unreadCounts?: Record<number, number>;
   draggedTabId: number | null;
   dragOverTabId: number | null;
   dropPosition: 'left' | 'right' | null;
@@ -31,6 +33,7 @@ export const ChatTabsBar: React.FC<ChatTabsBarProps> = ({
   openChatIds,
   contacts,
   activeChatId,
+  unreadCounts = {},
   draggedTabId,
   dragOverTabId,
   dropPosition,
@@ -61,12 +64,14 @@ export const ChatTabsBar: React.FC<ChatTabsBarProps> = ({
             onDragLeave={(e) => onDragLeave(e, id)}
             onDrop={(e) => onDrop(e, id)}
             onDragEnd={onDragEnd}
-            className={`chat-tab status-${contact?.status || 'online'} ${activeChatId === id ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${dropClass}`.trim()}
+            className={`chat-tab status-${contact?.status || 'online'} ${activeChatId === id ? 'active' : ''} ${unreadCounts[id] && activeChatId !== id ? 'unread' : ''} ${isDragging ? 'dragging' : ''} ${dropClass}`.replace(/\s+/g, ' ').trim()}
             onClick={() => onSelectTab(id)}
           >
             <span className="tab-name">
               {contact?.isBot ? '🤖 ' : ''}{formatNickname(contact?.nickname || contact?.username || 'Discussion')}{isGameTab(id) ? ' 🎮' : ''}
             </span>
+            {/* Compteur hors du nom (qui est tronqué) pour rester toujours visible */}
+            {unreadCounts[id] && activeChatId !== id ? <span className="chat-tab-unread" aria-label={`${unreadCounts[id]}`}>{unreadCounts[id]}</span> : null}
             <span
               className="chat-tab-close"
               draggable={false}

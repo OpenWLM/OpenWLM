@@ -4778,3 +4778,41 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   cursor: pointer;
 }
 .msg-wink-play:hover { background: linear-gradient(to bottom, #ffffff, #c9def5); }
+
+/* Messages non lus : onglet qui clignote (orange, comme une fenêtre qui réclame l'attention),
+   compteur, et contact mis en avant dans la liste */
+.chat-tab.unread {
+  animation: wlm-tab-flash 1.1s ease-in-out infinite;
+  font-weight: bold;
+}
+@keyframes wlm-tab-flash {
+  0%, 100% { background: linear-gradient(to bottom, #fff3d6, #ffc766); border-color: #e39b1f; }
+  50% { background: linear-gradient(to bottom, #ffffff, #e6f0fa); border-color: #9fbbd8; }
+}
+.chat-tab-unread {
+  display: inline-block;
+  flex: 0 0 auto;
+  min-width: 16px;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #e0561b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 16px;
+  text-align: center;
+}
+.contact-row.contact-unread .contact-name-txt { font-weight: bold; }
+.contact-unread-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #e0561b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-tab.unread { animation: none; background: linear-gradient(to bottom, #fff3d6, #ffc766); border-color: #e39b1f; }
+}

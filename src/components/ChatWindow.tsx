@@ -12,6 +12,8 @@ import { useI18n } from '../i18n';
 
 interface ChatWindowProps {
   activeChatId: number;
+  /** Des onglets sont ouverts : la barre reste visible au-dessus de l'écran d'accueil. */
+  hasOpenChats?: boolean;
   isNudging: boolean;
   onStartBotChat: () => void;
   tabs: React.ReactNode;
@@ -21,6 +23,7 @@ interface ChatWindowProps {
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   activeChatId,
+  hasOpenChats = false,
   isNudging,
   onStartBotChat,
   tabs,
@@ -32,7 +35,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   return (
     <div className={`conversation-window ${isNudging ? 'wlm-nudge' : ''}`}>
       {activeChatId === 0 ? (
-        /* État vide si aucune discussion n'est sélectionnée */
+        /* État vide si aucune discussion n'est sélectionnée (les onglets restent visibles :
+           un message reçu ouvre un onglet qui clignote tant qu'il n'est pas lu) */
+        <>
+        {hasOpenChats && tabs}
         <div className="empty-chat-state">
           <div className="msn-butterfly giant"></div>
           <div className="welcome-text">{t.roster.emptyStateTitle}</div>
@@ -52,6 +58,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {t.roster.emptyStateBotHint}
           </div>
         </div>
+        </>
       ) : (
         <>
           {tabs}

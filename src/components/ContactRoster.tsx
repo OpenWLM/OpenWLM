@@ -17,6 +17,8 @@ interface PendingInvite {
 }
 
 interface ContactRosterProps {
+  /** Messages non lus par contact (mise en avant dans la liste). */
+  unreadCounts?: Record<number, number>;
   pendingInvites: PendingInvite[];
   onlineContacts: Contact[];
   offlineContacts: Contact[];
@@ -34,6 +36,7 @@ interface ContactRosterProps {
 }
 
 export const ContactRoster: React.FC<ContactRosterProps> = ({
+  unreadCounts = {},
   pendingInvites,
   onlineContacts,
   offlineContacts,
@@ -83,13 +86,14 @@ export const ContactRoster: React.FC<ContactRosterProps> = ({
       {isGroupOpen && onlineContacts.map(contact => (
         <div
           key={contact.id}
-          className={`contact-row ${activeChatId === contact.id ? 'active' : ''}`}
+          className={`contact-row ${activeChatId === contact.id ? 'active' : ''} ${unreadCounts[contact.id] ? 'contact-unread' : ''}`}
           onClick={() => onOpenChat(contact.id)}
           onContextMenu={(e) => onContextMenu(e, contact.id)}
         >
           <div className={`status-square ${contact.status || 'online'}`}></div>
           <div className="contact-name-txt">
             {formatNickname(contact.nickname || contact.username)}
+            {unreadCounts[contact.id] ? <span className="contact-unread-badge" title={`${unreadCounts[contact.id]}`}>✉ {unreadCounts[contact.id]}</span> : null}
             {showPsm && contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>}
           </div>
         </div>
@@ -103,13 +107,14 @@ export const ContactRoster: React.FC<ContactRosterProps> = ({
       {isOfflineGroupOpen && offlineContacts.map(contact => (
         <div
           key={contact.id}
-          className={`contact-row ${activeChatId === contact.id ? 'active' : ''}`}
+          className={`contact-row ${activeChatId === contact.id ? 'active' : ''} ${unreadCounts[contact.id] ? 'contact-unread' : ''}`}
           onClick={() => onOpenChat(contact.id)}
           onContextMenu={(e) => onContextMenu(e, contact.id)}
         >
           <div className={`status-square offline`}></div>
           <div className="contact-name-txt" style={{color: contact.blocked ? '#f44336' : '#999'}}>
             {formatNickname(contact.nickname || contact.username)}
+            {unreadCounts[contact.id] ? <span className="contact-unread-badge" title={`${unreadCounts[contact.id]}`}>✉ {unreadCounts[contact.id]}</span> : null}
             {showPsm && contact.psm && <span className="contact-psm-txt"> - {formatNickname(contact.psm)}</span>}
             {contact.blocked ? <span style={{fontSize:'10px', marginLeft: '5px'}}>{t.roster.blockedSuffix}</span> : ''}
           </div>

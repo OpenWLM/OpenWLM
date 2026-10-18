@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Unread messages
+- **Tab shown even with no conversation open**: a message received while no conversation was open created a tab that stayed invisible behind the welcome screen. The tab bar now stays visible above it.
+- **Unread indicator**: a conversation with unread messages has a blinking orange tab with a counter, its contact is shown in bold with a "✉ n" badge in the contact list, and the page title shows the total ("(2) OpenWLM"). Everything clears when the conversation is shown with the window in the foreground; a message received in the conversation you are looking at is never counted as unread. Blinking is disabled when the system asks for reduced motion.
+- Note: the Aero toast only appears when the OpenWLM window has the focus on desktop; otherwise a system notification is used (if allowed), and on mobile the conversation opens directly.
+- E2E test `e2e/unread.spec.ts`.
+
 ### Private-mode messages
 - **No longer lost**: loading a conversation's history replaced the displayed list with the server history, so local-only messages vanished — a private message received in a tab that had just opened could disappear right away (the sound played, nothing showed), and private messages never survived a reload. History loading now merges the server history with what only exists on the device (private messages, system lines, messages being sent), in chronological order (`src/utils/historyMerge.ts`).
 - **Kept across reloads**: private messages are now part of the encrypted local copy (Options → Messages, on by default) and are shown again after a reload. They are still never stored by the server; without the local copy they are lost on reload, as the option now says.

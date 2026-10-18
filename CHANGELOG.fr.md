@@ -11,6 +11,12 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Messages non lus
+- **Onglet visible même sans conversation ouverte** : un message reçu alors qu'aucune conversation n'était ouverte créait un onglet qui restait invisible derrière l'écran d'accueil. La barre d'onglets reste maintenant visible au-dessus.
+- **Indicateur de non-lu** : une conversation avec des messages non lus a un onglet orange qui clignote avec un compteur, son contact est en gras avec un badge « ✉ n » dans la liste, et le titre de la page affiche le total (« (2) OpenWLM »). Tout s'efface quand la conversation est affichée avec la fenêtre au premier plan ; un message reçu dans la conversation que vous regardez n'est jamais compté comme non lu. Le clignotement est désactivé quand le système demande de réduire les animations.
+- À savoir : le toast Aero n'apparaît que lorsque la fenêtre d'OpenWLM a le focus sur ordinateur ; sinon une notification système est utilisée (si elle est autorisée), et sur mobile la conversation s'ouvre directement.
+- Test E2E `e2e/unread.spec.ts`.
+
 ### Messages en mode privé
 - **Plus de messages perdus** : le chargement de l'historique d'une conversation remplaçait la liste affichée par l'historique du serveur, donc les messages purement locaux disparaissaient — un message privé reçu dans un onglet qui venait de s'ouvrir pouvait disparaître aussitôt (le son jouait, rien ne s'affichait), et les messages privés ne survivaient jamais à un rechargement. Le chargement fusionne désormais l'historique serveur avec ce qui n'existe que sur l'appareil (messages privés, lignes système, envois en cours), dans l'ordre chronologique (`src/utils/historyMerge.ts`).
 - **Conservés au rechargement** : les messages privés font désormais partie de la copie locale chiffrée (Options → Messages, activée par défaut) et réapparaissent après un rechargement. Le serveur ne les stocke toujours jamais ; sans la copie locale, ils sont perdus au rechargement, comme l'indique désormais l'option.

@@ -583,6 +583,9 @@ const App: React.FC = () => {
 
   // --- ÉTAT DES MESSAGES & CONVERSATIONS ---
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
+  // Messages non lus par conversation : onglet qui clignote, contact mis en avant, titre de la page
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+
   // Messages courants lisibles hors rendu (fusion de l'historique avant écriture du cache local)
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -833,6 +836,28 @@ const App: React.FC = () => {
 
   // Préférences locales (Options → Disposition, Messages, Sons)
   const appPrefs = useAppPrefs();
+
+  // Conversation affichée ET fenêtre au premier plan : ses messages sont lus
+  useEffect(() => {
+    const markRead = () => {
+      const id = activeChatIdRef.current;
+      if (!id || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+      setUnreadCounts(prev => { if (!prev[id]) return prev; const next = { ...prev }; delete next[id]; return next; });
+    };
+    markRead();
+    window.addEventListener('focus', markRead);
+    document.addEventListener('visibilitychange', markRead);
+    return () => {
+      window.removeEventListener('focus', markRead);
+      document.removeEventListener('visibilitychange', markRead);
+    };
+  }, [activeChatId]);
+
+  // Titre de la page : nombre de messages non lus, comme une fenêtre qui clignote
+  useEffect(() => {
+    const total = Object.values(unreadCounts).reduce((n, c) => n + c, 0);
+    document.title = total > 0 ? `(${total}) OpenWLM` : 'OpenWLM';
+  }, [unreadCounts]);
 
   // Domaine clins d'œil & Wizz — extrait dans un hook dédié.
   const {
@@ -1909,6 +1934,11 @@ const App: React.FC = () => {
         const isAppVisible = typeof document !== 'undefined' && 
                              document.visibilityState === 'visible' && 
                              document.hasFocus();
+
+        // Non lu tant que la conversation n'est pas affichée sous les yeux de l'utilisateur
+        if (!(isAppVisible && activeChatIdRef.current === conversationContactId)) {
+          setUnreadCounts(prev => ({ ...prev, [conversationContactId]: (prev[conversationContactId] || 0) + 1 }));
+        }
         const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
         const hasSystemPermission = typeof Notification !== 'undefined' && Notification.permission === 'granted';
 
@@ -3418,6 +3448,7 @@ const App: React.FC = () => {
   };
   const closeChat = (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
+    setUnreadCounts(prev => { if (!prev[id]) return prev; const next = { ...prev }; delete next[id]; return next; });
     const newIds = openChatIds.filter(cid => cid !== id);
     setOpenChatIds(newIds);
     delete draftsRef.current[id];
@@ -3920,6 +3951,7 @@ const App: React.FC = () => {
 
         {/* Liste des Contacts (Roster) */}
         <ContactRoster
+          unreadCounts={unreadCounts}
           pendingInvites={pendingInvites}
           onlineContacts={onlineContacts}
           offlineContacts={offlineContacts}
@@ -3940,6 +3972,7 @@ const App: React.FC = () => {
       {/* --- FENÊTRE DE CONVERSATION --- */}
       <ChatWindow
         activeChatId={activeChatId}
+        hasOpenChats={openChatIds.length > 0}
         isNudging={isNudging}
         onStartBotChat={() => openChat(SYSTEM_BOT_ID)}
         tabs={
@@ -3947,6 +3980,7 @@ const App: React.FC = () => {
             openChatIds={openChatIds}
             contacts={contacts}
             activeChatId={activeChatId}
+            unreadCounts={unreadCounts}
             draggedTabId={draggedTabId}
             dragOverTabId={dragOverTabId}
             dropPosition={dropPosition}

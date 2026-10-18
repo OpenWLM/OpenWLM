@@ -1,7 +1,7 @@
 # Sécurité & chiffrement — état réel
 
 > ⚠️ Ce document décrit précisément ce qui est implémenté, ce qui ne l'est pas, et les limites.
-> Dernière mise à jour : 2026-10-16 (v1.5.1 : refus des messages invérifiables avant tout déchiffrement).
+> Dernière mise à jour : 2026-10-18 (v1.6.0 : sessions, changement de mot de passe, copie locale des messages privés).
 
 ---
 
@@ -254,3 +254,25 @@ l'authentification et l'abus côté serveur :
   indisponible est refusé dès l'étape de vérification, sans passer par la clé privée (il était
   auparavant déchiffré puis refusé, sans que le contenu soit exposé). Son `mid`, non
   authentifié, n'est plus renvoyé et n'alimente donc plus l'anti‑rejeu.
+
+## 10. Version 1.6.0 (2026-10-18)
+
+- **Changement de mot de passe réparé** : la clé privée de la session est une `CryptoKey` non
+  exportable ; le changement la re-chiffrait telle quelle et produisait un coffre vide, refusé
+  par le serveur (depuis la 1.4.0). La clé est désormais obtenue en déchiffrant le coffre avec
+  le mot de passe actuel, puis re-chiffrée avec le nouveau, sur l'appareil. Le mot de passe ne
+  quitte toujours pas l'appareil (seule la clé d'authentification dérivée est envoyée).
+- **Révocation des sessions** : « Déconnecter mes autres sessions » (`POST /api/sessions/revoke-others`)
+  incrémente le compteur de sessions du compte (`token_version`), renouvelle le cookie de
+  l'appareil courant, coupe les connexions temps réel des autres appareils et supprime leurs
+  abonnements Push. Les appareils révoqués (y compris après un changement de mot de passe ou une
+  déconnexion ailleurs) reviennent à l'écran de connexion et effacent leurs données locales.
+- **Copie locale des messages privés** : les messages en mode privé, jamais stockés par le
+  serveur, sont désormais conservés dans la copie locale (IndexedDB), chiffrée avec la clé
+  publique de l'utilisateur comme le reste de l'historique local. L'option peut être désactivée
+  (Options → Messages) ; l'effacement ne touche que le compte courant.
+- **Réinitialisation des clés** : n'efface plus que les clés mémorisées et la copie locale du
+  compte concerné, pas celles des autres comptes utilisés dans le même navigateur.
+- **Notifications Push** : elles ne contiennent jamais le contenu des messages ni l'offre
+  d'appel, seulement le nom de l'expéditeur ou de l'appelant et un texte générique, traduit par
+  le service worker.

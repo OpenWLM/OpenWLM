@@ -9,7 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.6.0] - 2026-10-18
 
 Calls that reach a sleeping phone and keep going with the screen off, the Options window completed (Layout, Messages, Sounds, Security, Connection), unread indicators, private messages kept across reloads, Minesweeper Flags, and a series of fixes from two code reviews.
 

@@ -9,7 +9,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
-## [Non publié]
+## [1.6.0] - 2026-10-18
 
 Des appels qui atteignent un téléphone en veille et continuent écran éteint, la fenêtre Options complétée (Disposition, Messages, Sons, Sécurité, Connexion), des indicateurs de messages non lus, des messages privés conservés au rechargement, le Démineur à deux, et une série de correctifs issus de deux revues de code.
 

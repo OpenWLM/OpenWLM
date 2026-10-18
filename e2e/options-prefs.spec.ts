@@ -163,7 +163,17 @@ test('options : disposition, messages et sons appliqués', async ({ browser }) =
   // --- Messages : plus de copie locale → base IndexedDB vidée
   await a.locator('.wink-overlay').click();
   await openOptionsTab(a, 'Messages');
-  await a.locator('#pref-local-history').uncheck();
+  // Copie d'un AUTRE compte du même navigateur : elle doit survivre à l'effacement
+  await a.evaluate(() => new Promise<void>((resolve) => {
+    const req = indexedDB.open('WLM_LocalHistory_v3');
+    req.onsuccess = () => {
+      const tx = req.result.transaction('messages', 'readwrite');
+      tx.objectStore('messages').add({ chatId: '999999_1', encryptedData: 'autre-compte' });
+      tx.oncomplete = () => { req.result.close(); resolve(); };
+    };
+  }));
+  await a.locator('#pref-local-history').click();
+  await a.getByTestId('clear-local-confirm').getByRole('button', { name: 'Yes, delete' }).click();
   await expect(a.getByText('Local copy deleted.')).toBeVisible({ timeout: 10000 });
   await closeOptions(a);
   const cached = await a.evaluate(() => new Promise<number>((resolve) => {
@@ -171,13 +181,14 @@ test('options : disposition, messages et sons appliqués', async ({ browser }) =
     req.onsuccess = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains('messages')) { db.close(); resolve(0); return; }
-      const count = db.transaction('messages', 'readonly').objectStore('messages').count();
-      count.onsuccess = () => { db.close(); resolve(count.result); };
-      count.onerror = () => { db.close(); resolve(-1); };
+      const all = db.transaction('messages', 'readonly').objectStore('messages').getAll();
+      all.onsuccess = () => { db.close(); resolve(all.result.filter((r: { chatId: string }) => r.chatId !== '999999_1').length * 1000 + all.result.length); };
+      all.onerror = () => { db.close(); resolve(-1); };
     };
     req.onerror = () => resolve(-1);
   }));
-  expect(cached).toBe(0);
+  // Rien de ce compte (milliers = 0), seule la copie de l'autre compte reste (unités = 1)
+  expect(cached).toBe(1);
 
   // --- Sons : « couper les sons en Occupé »
   await openOptionsTab(a, 'Sounds');
@@ -190,6 +201,13 @@ test('options : disposition, messages et sons appliqués', async ({ browser }) =
   await expect(a.locator('.msg-line', { hasText: `busy ${stamp}` })).toBeVisible({ timeout: 20000 });
   await a.waitForTimeout(500);
   expect(soundLog.filter((l) => l.includes('NEW_MESSAGE')).length, 'muet en Occupé').toBe(busyBefore);
+  // Bouton « Tester » : joue quand même (aperçu du volume), malgré « Occupé » et la catégorie
+  await openOptionsTab(a, 'Sounds');
+  await a.locator('#pref-snd-message').uncheck();
+  await a.getByRole('button', { name: 'Test', exact: true }).click();
+  await expect.poll(() => soundLog.filter((l) => l.includes('NEW_MESSAGE')).length, { timeout: 5000 }).toBe(busyBefore + 1);
+  await a.locator('#pref-snd-message').check();
+  await closeOptions(a);
   await setStatus(a, 'Available');
   await sendText(b, `back ${stamp}`);
   await expect(a.locator('.msg-line', { hasText: `back ${stamp}` })).toBeVisible({ timeout: 20000 });
@@ -321,6 +339,8 @@ test('Options → Connexion : diagnostic (temps réel, reconnexion, test réseau
   await expect(rt).toContainText(/\d+ ms/, { timeout: 15000 });
 
   await expect(p.getByTestId('diag-browser')).toContainText('OpenWLM v');
+  // Langue de l'app transmise au service worker (textes des notifications Push)
+  expect(await p.evaluate(async () => (await (await caches.open('openwlm-prefs')).match('/__openwlm/lang'))?.text())).toBe('en');
 
   // Test réseau des appels (ne contacte personne) : un résultat s'affiche
   await p.getByRole('button', { name: 'Test the network for calls' }).click();

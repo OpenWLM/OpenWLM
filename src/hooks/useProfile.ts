@@ -19,6 +19,7 @@ import {
   querySystemIdlePermission,
   requestSystemIdlePermission,
   startSystemIdleDetection,
+  watchSystemIdlePermission,
   type SystemIdlePermission,
   type SystemIdleSupport
 } from '../utils/systemIdle';
@@ -210,6 +211,14 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
 
   // Source 2 : inactivité de tout l'ordinateur (opt-in). Reprise automatique au démarrage si
   // la permission a déjà été accordée ; sinon retour à la détection dans la page.
+  // Permission retirée (ou rendue) en cours de session : la détection est relancée, ce qui
+  // l'arrête et rebascule sur l'activité dans la page tant que la permission manque.
+  const [systemIdlePermissionEpoch, setSystemIdlePermissionEpoch] = useState(0);
+  useEffect(() => {
+    if (!enableAutoAway || !systemIdleEnabled || systemIdleSupport !== 'available') return;
+    return watchSystemIdlePermission(() => setSystemIdlePermissionEpoch((n) => n + 1));
+  }, [enableAutoAway, systemIdleEnabled, systemIdleSupport]);
+
   useEffect(() => {
     if (!enableAutoAway || !systemIdleEnabled || systemIdleSupport !== 'available') return;
     let stop: (() => void) | null = null;
@@ -233,7 +242,7 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       setSystemIdleRunning(false);
       lastActivityRef.current = Date.now();
     };
-  }, [enableAutoAway, systemIdleEnabled, systemIdleSupport, awayTimeout]);
+  }, [enableAutoAway, systemIdleEnabled, systemIdleSupport, awayTimeout, systemIdlePermissionEpoch]);
 
   const enableSystemIdle = useCallback(async (): Promise<SystemIdlePermission> => {
     const permission = await requestSystemIdlePermission();

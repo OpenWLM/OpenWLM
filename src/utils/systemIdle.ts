@@ -48,6 +48,28 @@ export const querySystemIdlePermission = async (): Promise<SystemIdlePermission>
   }
 };
 
+/**
+ * Surveille la permission (retirée ou rendue dans les paramètres du site, en cours de session).
+ * Quand elle est retirée, le détecteur ne signale plus rien : l'appelant doit revenir à la
+ * détection dans la page. Renvoie la fonction d'arrêt de la surveillance.
+ */
+export const watchSystemIdlePermission = (onChange: (permission: SystemIdlePermission) => void): (() => void) => {
+  let status: PermissionStatus | null = null;
+  let stopped = false;
+  const handler = () => { if (status) onChange(status.state as SystemIdlePermission); };
+  navigator.permissions?.query({ name: 'idle-detection' as PermissionName })
+    .then((s) => {
+      if (stopped) return;
+      status = s;
+      s.addEventListener('change', handler);
+    })
+    .catch(() => { /* API Permissions indisponible : rien à surveiller */ });
+  return () => {
+    stopped = true;
+    status?.removeEventListener('change', handler);
+  };
+};
+
 /** Demande la permission. DOIT être appelé depuis un geste de l'utilisateur (clic). */
 export const requestSystemIdlePermission = async (): Promise<SystemIdlePermission> => {
   const Ctor = getCtor();

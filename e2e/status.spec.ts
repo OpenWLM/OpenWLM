@@ -202,4 +202,24 @@ test('inactivité de tout l\'ordinateur (API Idle Detection) : Absent si inactif
   await cdp.send('Emulation.setIdleOverride', { isUserActive: false, isScreenUnlocked: true });
   await a.waitForTimeout(2000);
   await expect(a.locator('.status-label')).toContainText('Busy');
+
+  // Permission retirée en cours de session : la détection s'arrête et OpenWLM revient à
+  // l'activité dans la page (sans rechargement)
+  await cdp.send('Browser.setPermission', {
+    permission: { name: 'idle-detection' },
+    setting: 'denied',
+    origin: new URL(a.url()).origin,
+    browserContextId: targetInfo.browserContextId
+  });
+  await a.locator('.status-trigger').click();
+  await a.locator('.dropdown-item', { hasText: 'Options' }).first().click();
+  await expect(a.locator('#system-idle-hint')).not.toContainText('Active', { timeout: 10000 });
+  // Permission rendue : la détection reprend d'elle-même
+  await cdp.send('Browser.setPermission', {
+    permission: { name: 'idle-detection' },
+    setting: 'granted',
+    origin: new URL(a.url()).origin,
+    browserContextId: targetInfo.browserContextId
+  });
+  await expect(a.locator('#system-idle-hint')).toContainText('Active', { timeout: 10000 });
 });

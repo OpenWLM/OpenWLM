@@ -41,7 +41,7 @@ import { AvatarModal } from './components/AvatarModal';
 import { WinksModal } from './components/WinksModal';
 import { BgModal } from './components/BgModal';
 import { PasswordModal } from './components/PasswordModal';
-import { getExistingPushSubscription } from './utils/PushNotificationManager';
+import { getExistingPushSubscription, closeCallPushNotifications } from './utils/PushNotificationManager';
 import { AddContactModal } from './components/AddContactModal';
 import { FontModal, type FontSettings } from './components/FontModal';
 import { AllEmoticonsModal } from './components/AllEmoticonsModal';
@@ -91,7 +91,7 @@ import {
   isPresenceStatus
 } from './utils/profileStorage';
 import { useAppPrefs, getAppPrefs, setPresenceForSounds } from './utils/appPrefs';
-import { mergeServerHistory, cacheableHistory } from './utils/historyMerge';
+import { mergeServerHistory, cacheableHistory, withLocalOnly } from './utils/historyMerge';
 
 axios.defaults.withCredentials = true;
 
@@ -1618,6 +1618,9 @@ const App: React.FC = () => {
     loadingChatsRef.current.add(chatId);
 
     try {
+      // Copie locale lue au préchargement : base de la fusion si aucun rendu n'a encore
+      // reporté ces messages dans messagesRef (sinon ils manqueraient dans la copie réécrite)
+      let cachedBase: Message[] = [];
       // 1. Préchargement du cache local rapide (IndexedDB) — sauf si l'option est désactivée
       if (!incremental && getAppPrefs().messages.keepLocalHistory) try {
         const cached = await LocalDB.getMessages<Message>(`${user.id}_${chatId}`, keys.privateKeyJwk);
@@ -1629,6 +1632,7 @@ const App: React.FC = () => {
           const decryptedCached: Message[] = cached
             .filter(m => m._auth === 'verified')
             .map(m => ({ ...m, time: formatMessageTime(m.timestamp, m.time) }));
+          cachedBase = decryptedCached;
           setMessages(prev => {
             if (!prev[chatId] || prev[chatId].length === 0) {
               return { ...prev, [chatId]: decryptedCached };
@@ -1674,11 +1678,13 @@ const App: React.FC = () => {
           } else {
             // Historique serveur + ce qui n'existe que sur l'appareil (messages privés, lignes
             // système, envois en cours) : rien de local n'est plus écrasé par le rechargement
-            setMessages(prev => ({ ...prev, [chatId]: mergeServerHistory(prev[chatId] || [], validServerMsgs) }));
+            const baseFor = (current: Message[] | undefined) => withLocalOnly(current || [], cachedBase);
+            setMessages(prev => ({ ...prev, [chatId]: mergeServerHistory(baseFor(prev[chatId]), validServerMsgs) }));
             // Copie locale chiffrée : historique serveur ET messages privés (sinon perdus au
-            // rechargement, puisque le serveur ne les a jamais eus)
+            // rechargement, puisque le serveur ne les a jamais eus). Calculée avec la même base
+            // que l'affichage, copie lue au préchargement comprise.
             if (getAppPrefs().messages.keepLocalHistory) {
-              const merged = mergeServerHistory(messagesRef.current[chatId] || [], validServerMsgs);
+              const merged = mergeServerHistory(baseFor(messagesRef.current[chatId]), validServerMsgs);
               await LocalDB.setHistory(`${user.id}_${chatId}`, cacheableHistory(merged), keys.publicKeyJwk);
             }
           }
@@ -1762,6 +1768,9 @@ const App: React.FC = () => {
     fetchPendingConversations();
   }, [loadChatHistory, fetchPendingConversations]);
   const resyncOpenChatsRef = useRef(resyncOpenChats);
+  // Appel en cours ou en sonnerie, lisible depuis les handlers socket
+  const activeCallIdRef = useRef<number | null>(null);
+  useEffect(() => { activeCallIdRef.current = activeCallId; }, [activeCallId]);
   // Déconnexion lisible depuis les handlers socket (enregistrés une fois par session)
   const handleLogoutRef = useRef<((reason?: string, opts?: { local?: boolean }) => Promise<void>) | null>(null);
   useEffect(() => { resyncOpenChatsRef.current = resyncOpenChats; }, [resyncOpenChats]);
@@ -2113,6 +2122,11 @@ const App: React.FC = () => {
         // Accusé de réception : c'est lui qui fait passer l'appelant à « ça sonne » (une connexion
         // fantôme d'un téléphone en veille ne répond pas, le serveur tente alors un réveil par Push)
         try { ack?.({ ok: true }); } catch { /* ancien serveur sans accusé */ }
+        // L'application prend le relais : la notification Push d'appel (qui sonne en boucle)
+        // de cet appelant est fermée
+        closeCallPushNotifications(Number(data.caller));
+        // Déjà présenté (nouvelle remise au retour au premier plan) : rien à refaire
+        if (activeCallIdRef.current === Number(data.caller)) return;
 
         // La signalisation est chiffrée E2EE : on la transmet BRUTE à <VideoCall/> qui la déchiffre.
         setCallSignal(data.signal);
@@ -2339,8 +2353,20 @@ const App: React.FC = () => {
         });
       });
 
+      // Retour au premier plan : une page suspendue dont la connexion a survécu n'a pas été
+      // reconnectée, donc pas reçu l'appel en attente → on le redemande au serveur
+      const onForeground = () => {
+        if (document.visibilityState === 'visible' && newSocket.connected) newSocket.emit('call_resync');
+      };
+      document.addEventListener('visibilitychange', onForeground);
+      window.addEventListener('pageshow', onForeground);
+
       setSocket(newSocket);
-      return () => { newSocket.disconnect(); };
+      return () => {
+        document.removeEventListener('visibilitychange', onForeground);
+        window.removeEventListener('pageshow', onForeground);
+        newSocket.disconnect();
+      };
     }
   }, [user?.id]);
 
@@ -3315,7 +3341,9 @@ const App: React.FC = () => {
         // 5. Purge complète des données locales chiffrées (messages, clés privées, contacts vérifiés)
         const purgeErrors: string[] = [];
         try {
-          await LocalDB.clearAll();
+          // Seulement la copie de CE compte : celles des autres comptes du navigateur sont
+          // chiffrées avec leurs propres clés, que cette réinitialisation ne touche pas
+          await LocalDB.clearUser(user.id);
         } catch (err: any) {
           console.error('[Reset] Échec purge LocalDB:', err);
           purgeErrors.push("messages locaux");
@@ -4837,6 +4865,7 @@ const App: React.FC = () => {
           handleTestAlert={handleTestAlert}
           handleTestPush={handleTestPush}
           syncProfile={syncProfile}
+          userId={user?.id ?? null}
           socket={socket}
           security={{
             contacts,

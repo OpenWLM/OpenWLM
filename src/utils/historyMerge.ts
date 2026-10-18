@@ -50,6 +50,21 @@ export const mergeServerHistory = (current: Message[], server: Message[]): Messa
   return entries.sort((a, b) => a.key - b.key || a.seq - b.seq).map((e) => e.msg);
 };
 
+/**
+ * Liste affichée + messages locaux de la copie lue au préchargement qui n'y sont pas encore
+ * (aucun rendu entre le préchargement et la réponse du serveur). Seuls les messages qui
+ * n'existent que sur l'appareil comptent : le reste viendra du serveur.
+ */
+export const withLocalOnly = (current: Message[], cached: Message[]): Message[] => {
+  if (cached.length === 0) return current;
+  const ids = new Set(current.map((m) => m.id).filter(Boolean));
+  const mids = new Set(current.map((m) => m.mid).filter(Boolean));
+  const cids = new Set(current.map((m) => m.clientMsgId).filter(Boolean));
+  const extra = cached.filter((m) => isLocalOnly(m)
+    && !(m.id && ids.has(m.id)) && !(m.mid && mids.has(m.mid)) && !(m.clientMsgId && cids.has(m.clientMsgId)));
+  return extra.length ? [...current, ...extra] : current;
+};
+
 /** Ce qui va dans la copie locale chiffrée : l'historique, messages privés compris (jamais les lignes système ni les envois en cours). */
 export const cacheableHistory = (merged: Message[]): Message[] =>
   merged.filter((m) => m.sender !== 'Système' && !m._isPending && !m._failed);

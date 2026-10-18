@@ -112,6 +112,29 @@ class LocalDB {
     });
   }
 
+  /**
+   * Efface la copie locale d'UN compte (clés « <userId>_<contactId> ») : les autres comptes
+   * utilisés dans ce navigateur gardent la leur.
+   */
+  public async clearUser(userId: string | number): Promise<void> {
+    if (!this.db) await this.init();
+    const prefix = `${userId}_`;
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.index('chatId').openKeyCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
+      request.onsuccess = (event: Event) => {
+        const cursor = (event.target as IDBRequest<IDBCursor | null>).result;
+        if (cursor) {
+          store.delete(cursor.primaryKey);
+          cursor.continue();
+        }
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Échec effacement LocalDB"));
+    });
+  }
+
   public async clearHistory(chatId: string | number): Promise<void> {
     if (!this.db) await this.init();
     return new Promise((resolve, reject) => {

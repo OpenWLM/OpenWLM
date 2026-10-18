@@ -4,7 +4,9 @@
  * et la mise en cache haute-performance des sons et icônes rétro.
  */
 
-const CACHE_NAME = 'openwlm-v6';
+const CACHE_NAME = 'openwlm-v7';
+// Préférences lues par le service worker (langue de l'app), écrites par la page : jamais purgé
+const PREFS_CACHE = 'openwlm-prefs';
 
 // Ressources critiques pré-mises en cache au démarrage
 const PRECACHE_ASSETS = [
@@ -42,7 +44,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name !== CACHE_NAME)
+          .filter((name) => name !== CACHE_NAME && name !== PREFS_CACHE)
           .map((name) => {
             console.log('[SW] Suppression ancien cache:', name);
             return caches.delete(name);
@@ -131,6 +133,38 @@ self.addEventListener('message', (event) => {
 });
 
 // Réception d'une notification Web Push en arrière-plan (PWA fermée ou suspendue sur Android/Desktop)
+/**
+ * TEXTES DES NOTIFICATIONS dans la langue de l'app. Le serveur ne connaît pas cette langue
+ * (réglage propre à l'appareil) : il envoie une clé (`l10n`) et un texte français de repli ;
+ * la page enregistre sa langue dans le cache PREFS_CACHE, lu ici.
+ */
+const L10N = {
+  fr: {
+    message: 'Nouveau message reçu', privateMessage: '🔒 Nouveau message privé', voice: '🎤 Message vocal',
+    file: '📎 Fichier partagé', encrypted: '🔐 Message chiffré (E2EE)', nudge: '💥 [Wizz !]',
+    callAudio: '📞 Appel audio entrant', callVideo: '📹 Appel vidéo entrant', callMissed: '📵 Appel manqué',
+    callAnswered: '📞 Appel pris sur un autre appareil', callDeclined: '📵 Appel refusé',
+    pushTest: 'La passerelle de notification Push Web / Android fonctionne correctement !',
+    answer: 'Répondre', decline: 'Refuser'
+  },
+  en: {
+    message: 'New message', privateMessage: '🔒 New private message', voice: '🎤 Voice message',
+    file: '📎 Shared file', encrypted: '🔐 Encrypted message (E2EE)', nudge: '💥 [Nudge!]',
+    callAudio: '📞 Incoming voice call', callVideo: '📹 Incoming video call', callMissed: '📵 Missed call',
+    callAnswered: '📞 Call answered on another device', callDeclined: '📵 Call declined',
+    pushTest: 'Web / Android push notifications are working!',
+    answer: 'Answer', decline: 'Decline'
+  }
+};
+async function getLang() {
+  try {
+    const res = await (await caches.open(PREFS_CACHE)).match('/__openwlm/lang');
+    const lang = res ? (await res.text()).trim() : '';
+    if (lang === 'fr' || lang === 'en') return lang;
+  } catch { /* cache indisponible */ }
+  return String(self.navigator?.language || 'fr').slice(0, 2) === 'fr' ? 'fr' : 'en';
+}
+
 self.addEventListener('push', (event) => {
   let payload = {
     title: 'OpenWLM',
@@ -161,11 +195,23 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil((async () => {
-    // Appel manqué (l'appelant a raccroché) : remplace la notification d'appel qui sonne
+    const lang = await getLang();
+    const texts = L10N[lang];
+    if (payload.l10n && texts[payload.l10n]) options.body = texts[payload.l10n];
+    if (payload.l10n === 'pushTest') payload.title = 'OpenWLM - Test Web Push';
+
+    // Fin d'un appel qui sonnait (manqué, pris ou refusé) : la notification qui sonne est remplacée
     if (payload.type === 'call_cancel') {
       const ringing = await self.registration.getNotifications({ tag: options.tag });
       ringing.forEach((n) => n.close());
-      await self.registration.showNotification(payload.title, { ...options, renotify: false, vibrate: [] });
+      // Pris ou refusé depuis l'application ouverte : rien de plus à afficher
+      if (payload.reason === 'answered' || payload.reason === 'declined') {
+        try {
+          const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+          if (clientList.some((c) => c.focused)) return;
+        } catch { /* ignore */ }
+      }
+      await self.registration.showNotification(payload.title, { ...options, renotify: false, vibrate: [], silent: true });
       return;
     }
 
@@ -177,7 +223,7 @@ self.addEventListener('push', (event) => {
     } catch { /* ignore */ }
 
     if (payload.type === 'call') {
-      await ringCallNotification(payload, options);
+      await ringCallNotification(payload, options, texts);
       return;
     }
     await self.registration.showNotification(payload.title, options);
@@ -194,26 +240,48 @@ self.addEventListener('push', (event) => {
  */
 const CALL_RING_INTERVAL_MS = 4000;
 const CALL_RING_MAX_MS = 30000;
-async function ringCallNotification(payload, baseOptions) {
+async function ringCallNotification(payload, baseOptions, texts) {
   const expiresAt = Number(payload.data?.expiresAt) || Date.now() + CALL_RING_MAX_MS;
   const stopAt = Math.min(expiresAt, Date.now() + CALL_RING_MAX_MS);
+  // Identifiant de CETTE sonnerie : la boucle s'arrête dès que sa notification n'est plus
+  // affichée (réponse, refus, appel manqué, ou remplacée par l'application ouverte)
+  const ringId = `${Date.now()}-${Math.random()}`;
   const options = {
     ...baseOptions,
+    data: { ...(baseOptions.data || {}), ringId },
     requireInteraction: true,
     renotify: true,
     vibrate: [400, 200, 400, 200, 400],
     actions: [
-      { action: 'answer', title: 'Répondre' },
-      { action: 'decline', title: 'Refuser' }
+      { action: 'answer', title: texts.answer },
+      { action: 'decline', title: texts.decline }
     ]
   };
+  const stillRinging = async () => (await self.registration.getNotifications({ tag: options.tag }))
+    .some((n) => n.data && n.data.ringId === ringId);
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
   await self.registration.showNotification(payload.title, options);
   while (Date.now() + CALL_RING_INTERVAL_MS < stopAt) {
-    await new Promise((resolve) => setTimeout(resolve, CALL_RING_INTERVAL_MS));
-    const still = await self.registration.getNotifications({ tag: options.tag });
-    if (still.length === 0) return; // réponse, refus ou appel manqué
+    await sleep(CALL_RING_INTERVAL_MS);
+    if (!(await stillRinging())) return;
     await self.registration.showNotification(payload.title, options);
   }
+  // Plus de son, mais l'appel peut encore être pris jusqu'à son expiration ; ensuite, sans
+  // réponse, la notification devient « Appel manqué » (au lieu de rester affichée telle quelle)
+  while (Date.now() < expiresAt) {
+    await sleep(Math.min(CALL_RING_INTERVAL_MS, Math.max(0, expiresAt - Date.now())));
+    if (!(await stillRinging())) return;
+  }
+  if (!(await stillRinging())) return;
+  (await self.registration.getNotifications({ tag: options.tag })).forEach((n) => n.close());
+  await self.registration.showNotification(payload.title, {
+    ...baseOptions,
+    body: texts.callMissed,
+    renotify: false,
+    vibrate: [],
+    silent: true
+  });
 }
 
 // Clic sur une notification système déclenchée via ServiceWorkerRegistration ou Web Push

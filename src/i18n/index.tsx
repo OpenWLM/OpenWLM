@@ -57,6 +57,12 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (typeof document !== 'undefined') {
       document.documentElement.lang = language;
     }
+    // Langue transmise au service worker (textes des notifications Push), cf. public/sw.js
+    try {
+      caches?.open('openwlm-prefs')
+        .then((c) => c.put('/__openwlm/lang', new Response(language, { headers: { 'Content-Type': 'text/plain' } })))
+        .catch(() => { /* Cache Storage indisponible */ });
+    } catch { /* ignore */ }
   }, [language]);
 
   const value: I18nContextType = {

@@ -174,3 +174,16 @@ export async function sendTestWebPush(): Promise<{ success: boolean; count?: num
     return { success: false, error: err.message || 'Erreur réseau test push' };
   }
 }
+
+/**
+ * Ferme la notification Push d'appel qui sonne (service worker) pour cet appelant : l'appel est
+ * maintenant affiché par l'application. Seules les notifications de sonnerie (`ringId`) sont
+ * fermées, pas l'alerte que l'application affiche elle-même avec la même étiquette.
+ */
+export async function closeCallPushNotifications(callerId: number): Promise<void> {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const list = await reg?.getNotifications({ tag: `openwlm-call-${callerId}` });
+    list?.forEach((n) => { if (n.data && (n.data as { ringId?: string }).ringId) n.close(); });
+  } catch { /* pas de service worker */ }
+}

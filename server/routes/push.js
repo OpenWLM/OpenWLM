@@ -264,6 +264,7 @@ export const createPushRouter = () => {
     const result = await dispatchPushNotification(req.user.id, {
       title: 'OpenWLM - Test Web Push',
       body: 'La passerelle de notification Push Web / Android fonctionne correctement !',
+      l10n: 'pushTest',
       senderId: req.user.id,
       url: '/'
     });

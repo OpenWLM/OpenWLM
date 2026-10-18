@@ -47,6 +47,8 @@ interface OptionsModalProps {
   handleTestAlert: () => void;
   handleTestPush: () => void;
   syncProfile: (updates: Partial<User>) => void;
+  /** Compte connecté : la copie locale effacée depuis l'onglet Messages est la sienne seulement. */
+  userId: number | null;
   /** Onglet Connexion (diagnostic) : connexion temps réel de la session. */
   socket: Socket | null;
   /** Onglet Sécurité : regroupe des actions qui existent aussi dans le menu principal. */
@@ -95,6 +97,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   handleTestAlert,
   handleTestPush,
   syncProfile,
+  userId,
   socket,
   security,
   onClose
@@ -103,6 +106,16 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   const [optionsTab, setOptionsTab] = useState<'personal' | 'layout' | 'messages' | 'alerts' | 'sounds' | 'security' | 'connection'>('personal');
   const prefs = useAppPrefs();
   const [cacheCleared, setCacheCleared] = useState(false);
+  // Effacement de la copie locale (décocher l'option ou bouton) : confirmation dans l'onglet,
+  // car les messages privés n'existent que là et sont alors perdus définitivement
+  const [clearConfirm, setClearConfirm] = useState<'none' | 'disable' | 'clear'>('none');
+  const confirmClearLocal = async () => {
+    const action = clearConfirm;
+    setClearConfirm('none');
+    if (action === 'disable') updateAppPrefs('messages', { keepLocalHistory: false });
+    if (userId == null) return;
+    try { await LocalDB.clearUser(userId); setCacheCleared(true); } catch { /* stockage indisponible */ }
+  };
   // Brouillon du délai d'inactivité : permet d'effacer le champ pour retaper une valeur
   const [awayTimeoutDraft, setAwayTimeoutDraft] = useState(() => String(awayTimeout));
   const [systemIdleDenied, setSystemIdleDenied] = useState(false);
@@ -292,9 +305,9 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     id="pref-local-history"
                     checked={prefs.messages.keepLocalHistory}
                     onChange={v => {
-                      updateAppPrefs('messages', { keepLocalHistory: v });
-                      // Désactivé : la copie déjà enregistrée sur l'appareil est effacée
-                      if (!v) { LocalDB.clearAll().then(() => setCacheCleared(true)).catch(() => {}); }
+                      // Désactiver efface la copie déjà enregistrée : confirmation d'abord
+                      if (v) { updateAppPrefs('messages', { keepLocalHistory: true }); setClearConfirm('none'); }
+                      else setClearConfirm('disable');
                     }}
                     label={t.settings.messagesLocalHistory}
                   />
@@ -304,10 +317,19 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     className="win-btn"
                     id="pref-clear-cache"
                     style={{ marginTop: '6px' }}
-                    onClick={() => { LocalDB.clearAll().then(() => setCacheCleared(true)).catch(() => {}); }}
+                    onClick={() => setClearConfirm('clear')}
                   >
                     {t.settings.messagesClearCache}
                   </button>
+                  {clearConfirm !== 'none' && (
+                    <div className="options-confirm-box" role="alertdialog" aria-label={t.settings.messagesClearCache} data-testid="clear-local-confirm">
+                      <div className="options-hint">{clearConfirm === 'disable' ? t.settings.messagesDisableLocalConfirm : t.settings.messagesClearLocalConfirm}</div>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                        <button type="button" className="win-btn" style={{ color: '#c02717' }} onClick={confirmClearLocal}>{t.settings.messagesClearLocalConfirmBtn}</button>
+                        <button type="button" className="win-btn" onClick={() => setClearConfirm('none')}>{t.common.cancel}</button>
+                      </div>
+                    </div>
+                  )}
                   {cacheCleared && <span className="options-hint" role="status" style={{ marginLeft: '8px' }}>{t.settings.messagesCacheCleared}</span>}
                 </div>
               </div>
@@ -403,7 +425,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                       style={{ margin: '0 8px', flex: '1 1 120px', maxWidth: '180px' }}
                     />
                     <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.round(prefs.sounds.volume * 100)} %</span>
-                    <button type="button" className="win-btn" style={{ marginLeft: '8px' }} disabled={!prefs.sounds.enabled} onClick={() => SoundManager.play('NEW_MESSAGE')}>{t.settings.soundsTest}</button>
+                    <button type="button" className="win-btn" style={{ marginLeft: '8px' }} disabled={!prefs.sounds.enabled} onClick={() => SoundManager.preview('NEW_MESSAGE')}>{t.settings.soundsTest}</button>
                   </div>
                 </div>
                 <div className="options-subsection">

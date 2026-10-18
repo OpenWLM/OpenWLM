@@ -196,3 +196,47 @@ test('appelé hors ligne sans appareil réveillable : injoignable', async () => 
     await unavailable;
   } finally { a.disconnect(); }
 });
+
+test('retour au premier plan sans reconnexion (call_resync) : l\'appel en attente est redonné', async () => {
+  const a = await connect(aliceId);
+  const b = await connect(bobId);
+  try {
+    // Page suspendue : la connexion survit mais l'appel n'est pas confirmé
+    let frozen = true;
+    const presented = [];
+    b.on('incoming_call', (data, ack) => { presented.push(data); if (!frozen) ack({ ok: true }); });
+    call(a, bobId);
+    await once(a, 'call_waking', 7000);
+    // La page revient au premier plan : elle redemande les appels en attente
+    frozen = false;
+    const ringing = once(a, 'call_ringing');
+    b.emit('call_resync');
+    await ringing;
+    assert.equal(presented.length, 2);
+    assert.equal(presented[1].signal, 'offre-chiffree');
+    a.emit('end_call', { target: bobId });
+  } finally { a.disconnect(); b.disconnect(); }
+});
+
+test('un seul appel présenté à la fois : un second appelant reçoit « occupé »', async () => {
+  const a = await connect(aliceId);
+  const c = await connect(charlieId);
+  const b = await connect(bobId);
+  try {
+    b.on('incoming_call', (_d, ack) => ack({ ok: true }));
+    const ringing = once(a, 'call_ringing');
+    call(a, bobId);
+    await ringing;
+    const busy = once(c, 'call_busy');
+    call(c, bobId);
+    const [r] = await busy;
+    assert.equal(r.target, bobId);
+    // L'appel d'Alice terminé : Charlie peut appeler
+    a.emit('end_call', { target: bobId });
+    await sleep(200);
+    const ringingC = once(c, 'call_ringing');
+    call(c, bobId);
+    await ringingC;
+    c.emit('end_call', { target: bobId });
+  } finally { a.disconnect(); b.disconnect(); c.disconnect(); }
+});

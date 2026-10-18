@@ -148,18 +148,21 @@ export const registerMessageHandlers = (io, socket) => {
     socket.to(getUserRoom(senderId)).emit('receive_message', messageToDeliver);
 
     const pushSenderName = sender ? (sender.nickname || sender.username) : 'Contact';
+    // `l10n` : clé traduite par le service worker dans la langue de l'app (le serveur ne la
+    // connaît pas) ; `body` reste le texte de repli (ancien service worker)
     let pushBody = 'Nouveau message reçu';
+    let pushKey = 'message';
     if (finalIsPrivate) {
-      pushBody = '🔒 Nouveau message privé';
+      pushBody = '🔒 Nouveau message privé'; pushKey = 'privateMessage';
     } else if (type === 'audio') {
-      pushBody = '🎤 Message vocal';
+      pushBody = '🎤 Message vocal'; pushKey = 'voice';
     } else if (type === 'file') {
-      pushBody = '📎 Fichier partagé';
+      pushBody = '📎 Fichier partagé'; pushKey = 'file';
     } else if (text) {
       try {
         const parsed = JSON.parse(text);
         if (parsed.keyReceiver || parsed.keySender) {
-          pushBody = '🔐 Message chiffré (E2EE)';
+          pushBody = '🔐 Message chiffré (E2EE)'; pushKey = 'encrypted';
         }
       } catch (_) {}
     }
@@ -167,6 +170,7 @@ export const registerMessageHandlers = (io, socket) => {
     dispatchPushNotification(receiverId, {
       title: `${pushSenderName} - OpenWLM`,
       body: pushBody,
+      l10n: pushKey,
       senderId: senderId,
       url: `/?chat=${senderId}`,
       tag: `openwlm-chat-${senderId}`
@@ -322,6 +326,7 @@ export const registerMessageHandlers = (io, socket) => {
     dispatchPushNotification(receiverId, {
       title: `${senderDisplayName} - OpenWLM`,
       body: '💥 [Wizz !]',
+      l10n: 'nudge',
       senderId: senderId,
       url: `/?chat=${senderId}`,
       tag: `openwlm-chat-${senderId}`

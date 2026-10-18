@@ -69,8 +69,21 @@ TURN_PASSWORD=<credential>
   (son et vibration du système) pendant 30 s au plus, pour imiter une sonnerie. « Refuser »
   appelle `POST /api/calls/decline` sans ouvrir l'application ; « Répondre » (ou un clic) ouvre
   la conversation. L'offre d'appel (chiffrée) est gardée pendant la sonnerie (60 s) et
-  **redonnée** à tout appareil de l'appelé qui se (re)connecte : l'appel s'affiche alors et
-  l'appelant passe à « ça sonne ». Si l'appelant raccroche, la notification devient « Appel manqué ».
+  **redonnée** à tout appareil de l'appelé qui se (re)connecte, ou qui revient au premier plan
+  sans avoir été déconnecté (page suspendue dont la connexion a survécu : l'application envoie
+  `call_resync`). L'appel s'affiche alors, l'application ferme la notification qui sonne, et
+  l'appelant passe à « ça sonne ».
+- **Fin de la notification d'appel** : si l'appelant raccroche, elle devient « Appel manqué » ;
+  si l'appel est pris ou refusé sur un autre appareil, elle est remplacée par « Appel pris sur un
+  autre appareil » / « Appel refusé » (rien n'est affiché sur l'appareil où l'application est
+  ouverte). Sans aucune réponse, le service worker la transforme lui-même en « Appel manqué » à
+  l'expiration de l'appel (60 s), au lieu de la laisser affichée.
+- **Un seul appel présenté à la fois** : si un appel sonne déjà chez le contact (d'un autre
+  appelant), un second appelant reçoit « occupé », comme pendant un appel en cours.
+- **Langue des notifications** : le serveur ne connaît pas la langue de l'application (réglage
+  propre à l'appareil). Il envoie une clé (`l10n`) avec un texte français de repli ; la page
+  enregistre sa langue dans le cache `openwlm-prefs`, et le service worker affiche les textes
+  (y compris « Répondre » / « Refuser ») dans cette langue.
 - **Limites du réveil** : le son est celui des notifications du système (pas de sonnerie en
   boucle sur un téléphone en veille, ce qui demanderait une application native). Sur iPhone, le
   Push ne fonctionne que pour l'app installée sur l'écran d'accueil (iOS 16.4+), et la

@@ -98,7 +98,13 @@ test('mode privé : message reçu onglet fermé affiché, puis retrouvé après 
   await a.locator('.status-trigger').click();
   await a.locator('.dropdown-item', { hasText: 'Options' }).first().click();
   await a.locator('.options-nav-item', { hasText: 'Messages' }).click();
-  await a.locator('#pref-local-history').uncheck();
+  // Désactiver efface la copie : confirmation dans l'onglet (Annuler la garde intacte)
+  await a.locator('#pref-local-history').click();
+  await a.getByTestId('clear-local-confirm').getByRole('button', { name: 'Cancel' }).click();
+  await expect(a.locator('#pref-local-history')).toBeChecked();
+  await a.locator('#pref-local-history').click();
+  await a.getByTestId('clear-local-confirm').getByRole('button', { name: 'Yes, delete' }).click();
+  await expect(a.locator('#pref-local-history')).not.toBeChecked();
   await a.getByRole('button', { name: 'OK', exact: true }).click();
   await a.reload();
   await expect(a.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });

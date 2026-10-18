@@ -3,7 +3,7 @@
  * Centralise le chargement et la reproduction des effets sonores MSN/WLM.
  */
 
-import { isSoundAllowed, soundVolume, type SoundCategory } from './appPrefs';
+import { getAppPrefs, isSoundAllowed, soundVolume, type SoundCategory } from './appPrefs';
 
 // Catégorie de chaque son (Options → Sons). Clé inconnue : traitée comme un son de message.
 const SOUND_CATEGORY: Record<string, SoundCategory> = {
@@ -77,6 +77,19 @@ class SoundManager {
     const key = soundKey.toUpperCase();
     // Réglages de l'utilisateur : sons coupés, catégorie désactivée, ou « Occupé »
     if (!isSoundAllowed(SOUND_CATEGORY[key] ?? 'message')) return;
+    this.playNow(key, soundKey);
+  }
+
+  /**
+   * Bouton « Tester » des Options : joue le son au volume choisi même si sa catégorie est
+   * coupée ou que le statut est « Occupé » (seul l'interrupteur général compte).
+   */
+  public preview(soundKey: string) {
+    if (!getAppPrefs().sounds.enabled) return;
+    this.playNow(soundKey.toUpperCase(), soundKey);
+  }
+
+  private playNow(key: string, soundKey: string) {
     const path = SOUND_PATHS[key] || `/assets/sounds/${soundKey}.mp3`;
     
     console.log(`[SoundManager] Reproduction : ${key} (${path})`);

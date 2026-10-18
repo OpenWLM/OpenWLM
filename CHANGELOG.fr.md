@@ -48,6 +48,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - La fenêtre Options ne dépasse plus la hauteur de l'écran : le contenu de l'onglet défile, OK / Annuler restent visibles.
 - Tests : `tests/test_revoke_sessions.js` (autres appareils coupés, celui-ci conservé, Push, code `session_revoked`, limite) ; E2E avec un « téléphone » et un « PC » à deux onglets.
 
+### Options : Connexion (diagnostic)
+- L'onglet **Connexion**, vide jusqu'ici, affiche un diagnostic en lecture seule : connexion temps réel (état, WebSocket ou repli HTTP, temps de réponse du serveur, bouton **Se reconnecter**), notifications (permission du navigateur, Push configuré sur le serveur, Push activé sur cet appareil, version du service worker), appels (à la demande, un test du réseau avec la configuration d'appel du serveur, sans appeler personne : relais TURN configuré ou non, et si les appels devraient passer par Internet) et navigateur (version de l'app, HTTPS, stockage local, détection d'inactivité, écran maintenu allumé, appel actif écran éteint).
+- **Copier le rapport** : un texte à coller pour demander de l'aide, sans secret (ni identifiants TURN, ni adresse Push, ni adresse IP).
+- Temps de réponse mesuré par la connexion temps réel existante (événement `diag_ping`) : aucune nouvelle route HTTP. Sur petit écran, la colonne des onglets des Options est plus étroite. Test E2E dans `e2e/options-prefs.spec.ts`.
+
 ### Correctifs (revue de code du 2026-10-17)
 - **Statut sur un second appareil** : un appareil sans préférence mémorisée n'impose plus « Disponible » au statut choisi sur un autre appareil encore connecté ; il adopte le statut en cours (et le mémorise comme sa propre préférence). Le handshake du socket n'impose plus de statut quand l'appareil n'en a pas.
 - **Poste partagé** : l'écran de connexion ne présélectionne plus un statut hérité d'un autre compte (le « dernier statut » global est supprimé) ; il ne présélectionne que la préférence du compte mémorisé, et le choix n'est envoyé que si le sélecteur a été modifié. Le champ `status` de la réponse de login n'est plus pris pour un choix de l'utilisateur.

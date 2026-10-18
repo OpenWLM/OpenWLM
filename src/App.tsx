@@ -4837,6 +4837,7 @@ const App: React.FC = () => {
           handleTestAlert={handleTestAlert}
           handleTestPush={handleTestPush}
           syncProfile={syncProfile}
+          socket={socket}
           security={{
             contacts,
             onUnblock: (contactId) => handleBlockContact(contactId, false),

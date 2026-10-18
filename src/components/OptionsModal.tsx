@@ -9,9 +9,11 @@ import { formatNickname } from '../utils/NicknameFormatter';
 import { useAppPrefs, updateAppPrefs } from '../utils/appPrefs';
 import LocalDB from '../utils/LocalDB';
 import SoundManager from '../utils/SoundManager';
+import type { Socket } from 'socket.io-client';
+import ConnectionDiagnostics from './ConnectionDiagnostics';
 
 /**
- * Modale d'options (Paramètres) : Personnel, Disposition, Messages, Alertes, Sons, Sécurité.
+ * Modale d'options (Paramètres) : Personnel, Disposition, Messages, Alertes, Sons, Sécurité, Connexion.
  *
  * Composant de présentation piloté par props : le profil (pseudo, PSM), les préférences
  * (auto-absence, toasts) et l'état/les actions de notifications viennent de `App` / des
@@ -45,6 +47,8 @@ interface OptionsModalProps {
   handleTestAlert: () => void;
   handleTestPush: () => void;
   syncProfile: (updates: Partial<User>) => void;
+  /** Onglet Connexion (diagnostic) : connexion temps réel de la session. */
+  socket: Socket | null;
   /** Onglet Sécurité : regroupe des actions qui existent aussi dans le menu principal. */
   security: {
     contacts: Contact[];
@@ -91,11 +95,12 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   handleTestAlert,
   handleTestPush,
   syncProfile,
+  socket,
   security,
   onClose
 }) => {
   const { t, language, setLanguage } = useI18n();
-  const [optionsTab, setOptionsTab] = useState<'personal' | 'layout' | 'messages' | 'alerts' | 'sounds' | 'security'>('personal');
+  const [optionsTab, setOptionsTab] = useState<'personal' | 'layout' | 'messages' | 'alerts' | 'sounds' | 'security' | 'connection'>('personal');
   const prefs = useAppPrefs();
   const [cacheCleared, setCacheCleared] = useState(false);
   // Brouillon du délai d'inactivité : permet d'effacer le champ pour retaper une valeur
@@ -126,7 +131,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
             <div className={`options-nav-item ${optionsTab === 'alerts' ? 'active' : ''}`} onClick={() => setOptionsTab('alerts')}>{t.settings.tabAlerts}</div>
             <div className={`options-nav-item ${optionsTab === 'sounds' ? 'active' : ''}`} onClick={() => setOptionsTab('sounds')}>{t.settings.tabSounds}</div>
             <div className={`options-nav-item ${optionsTab === 'security' ? 'active' : ''}`} onClick={() => setOptionsTab('security')}>{t.settings.tabSecurity}</div>
-            <div className="options-nav-item">{t.settings.tabConnection}</div>
+            <div className={`options-nav-item ${optionsTab === 'connection' ? 'active' : ''}`} onClick={() => setOptionsTab('connection')}>{t.settings.tabConnection}</div>
           </div>
 
           <div className="options-content">
@@ -376,6 +381,8 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                 </div>
               </div>
             )}
+
+            {optionsTab === 'connection' && <ConnectionDiagnostics socket={socket} pushStatus={pushStatus} />}
 
             {optionsTab === 'sounds' && (
               <div className="options-section">

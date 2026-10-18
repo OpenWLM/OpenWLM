@@ -48,6 +48,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The Options window can no longer be taller than the screen: the tab content scrolls, OK / Cancel stay visible.
 - Tests: `tests/test_revoke_sessions.js` (other devices cut, this one kept, push, `session_revoked` code, rate limit); E2E with a "phone" and a "PC" with two tabs.
 
+### Options: Connection (diagnostics)
+- The **Connection** tab, empty until now, shows a read-only diagnostic: real-time connection (state, WebSocket or HTTP fallback, server response time, **Reconnect** button), notifications (browser permission, push configured on the server, push enabled on this device, service worker version), calls (on demand, a network test with the server's call settings, without calling anyone: TURN relay configured or not, and whether calls should work over the Internet) and browser (app version, HTTPS, local storage, idle detection, screen kept on, call kept alive with the screen off).
+- **Copy report**: a text to paste when asking for help, without secrets (no TURN credentials, push address or IP address).
+- Response time measured through the existing real-time connection (`diag_ping` event): no new HTTP route. On small screens the Options tab column is narrower. E2E test in `e2e/options-prefs.spec.ts`.
+
 ### Fixes (code review of 2026-10-17)
 - **Status on a second device**: a device without a stored preference no longer forces "Available" over the status chosen on another device still connected; it adopts the current status (and remembers it as its own preference). The socket handshake no longer imposes a status when the device has none.
 - **Shared computer**: the sign-in screen no longer pre-selects a status inherited from another account (the global "last status" is gone); it only pre-selects the remembered account's own preference, and the choice is sent only if the selector was changed. The server's `status` field in the login response is no longer mistaken for a user choice.

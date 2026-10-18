@@ -301,3 +301,38 @@ test('Options → Sécurité : « Déconnecter mes autres sessions » (autre app
   await expect(pcTab2.locator('.wlm-auth-form')).toHaveCount(0);
   await pcCtx.close();
 });
+
+test('Options → Connexion : diagnostic (temps réel, reconnexion, test réseau des appels, rapport)', async ({ browser }) => {
+  test.setTimeout(120000);
+  const name = `diag_${Date.now()}`;
+  const ctx = await browser.newContext({ locale: 'en-US', permissions: ['clipboard-read', 'clipboard-write'], extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
+  const p = await ctx.newPage();
+  await registerAndLogin(p, name);
+  await openOptionsTab(p, 'Connection');
+
+  const rt = p.getByTestId('diag-realtime');
+  await expect(rt).toContainText('Connected');
+  await expect(rt).toContainText('WebSocket');
+  await expect(rt).toContainText(/\d+ ms/, { timeout: 10000 });
+
+  // Se reconnecter : retour à l'état connecté
+  await p.getByRole('button', { name: 'Reconnect' }).click();
+  await expect(rt).toContainText('Connected', { timeout: 15000 });
+  await expect(rt).toContainText(/\d+ ms/, { timeout: 15000 });
+
+  await expect(p.getByTestId('diag-browser')).toContainText('OpenWLM v');
+
+  // Test réseau des appels (ne contacte personne) : un résultat s'affiche
+  await p.getByRole('button', { name: 'Test the network for calls' }).click();
+  await expect(p.getByTestId('diag-calls')).toContainText('Result', { timeout: 20000 });
+  await expect(p.getByTestId('diag-calls')).toContainText('Relay (TURN) configured on the server');
+
+  // Rapport copié : sections présentes, aucun identifiant TURN ni adresse Push
+  await p.getByRole('button', { name: 'Copy report' }).click();
+  await expect(p.getByText('Report copied to the clipboard.')).toBeVisible();
+  const report = await p.evaluate(() => navigator.clipboard.readText());
+  expect(report).toContain('[Real-time connection]');
+  expect(report).toContain('[Calls]');
+  expect(report).not.toMatch(/credential|https:\/\/fcm|turn:/i);
+  await ctx.close();
+});

@@ -65,6 +65,8 @@ Code: `src/utils/appPrefs.ts` (storage, React hook, sound rules), used by `Sound
 
 Options → **Security** groups the account and device security settings: change password, keys remembered on this device (Forget this device), global private mode, your safety number, reset your keys, the list of blocked contacts (Unblock), and **Sign out my other sessions** (every other device goes back to the sign-in screen and stops receiving notifications; this one stays signed in). Signing out on one device still signs out all of them.
 
+Options → **Connection** is a read-only diagnostic: real-time connection (state, transport, server response time, Reconnect), notifications (permission, push on the server and on this device, service worker), a network test for calls (TURN relay, Internet reachability, without calling anyone) and the browser features in use. **Copy report** gives a text to paste when asking for help, without secrets.
+
 ---
 
 ## Architecture & Security Hardening

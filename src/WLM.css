@@ -874,6 +874,22 @@ body, html {
 .options-blocked-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 6px; font-size: 11px; }
 .options-blocked-list li + li { border-top: 1px solid #eef2f5; }
 .options-blocked-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* Options → Connexion (diagnostic) */
+/* Options sur petit écran : colonne d'onglets plus étroite, contenu plus large */
+@media (max-width: 520px) {
+  .options-sidebar { width: 96px; flex-shrink: 0; }
+  .options-nav-item { padding: 8px 8px; font-size: 11px; }
+  .options-content { padding: 12px; }
+  .conn-diag-label { width: 45%; }
+}
+.conn-diag-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 11px; }
+.conn-diag-table td { padding: 3px 4px; border-bottom: 1px solid #eef2f5; vertical-align: top; }
+.conn-diag-label { color: #333; width: 48%; }
+.conn-diag-value { color: #000; }
+.conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: #9aa5ad; vertical-align: 0; }
+.conn-ok .conn-dot { background: #2e9b3a; }
+.conn-warn .conn-dot { background: #e0a100; }
+.conn-bad .conn-dot { background: #c62f22; }
 .options-confirm-box { margin-top: 6px; padding: 6px 8px; border: 1px solid #e3b4ad; background: #fdf3f1; border-radius: 3px; }
 .options-safety-number { margin-top: 5px; font-family: Consolas, 'Courier New', monospace; font-size: 12px; letter-spacing: 0.5px; word-break: break-word; color: #1e395b; }
 

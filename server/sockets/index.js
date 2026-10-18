@@ -162,6 +162,9 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
       disconnectTimers.set(userId, timer);
     });
 
+    // Options → Connexion : mesure du temps de réponse (aller-retour par la connexion temps réel)
+    socket.on('diag_ping', (ack) => { if (typeof ack === 'function') ack({ t: Date.now() }); });
+
     // Déconnexion manuelle explicite (logout)
     socket.on('manual_disconnect', () => {
       const userId = socketToUser.get(socket.id);

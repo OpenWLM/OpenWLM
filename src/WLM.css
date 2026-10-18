@@ -4816,3 +4816,21 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 @media (prefers-reduced-motion: reduce) {
   .chat-tab.unread { animation: none; background: linear-gradient(to bottom, #fff3d6, #ffc766); border-color: #e39b1f; }
 }
+
+/* Appels : le son distant est joué par un <audio> dédié (invisible) */
+.wlm-remote-audio { display: none; }
+.wlm-call-unmute {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 8px 16px;
+  border-radius: 18px;
+  border: 1px solid #6f9fd3;
+  background: linear-gradient(to bottom, #ffffff, #d7e8fa);
+  color: #08325e;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}

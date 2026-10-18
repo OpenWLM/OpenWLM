@@ -47,6 +47,13 @@ const newUserPage = async (browser: Browser, username: string) => {
   return page;
 };
 
+// Son distant : élément <audio> dédié, piste audio vivante, en lecture
+const remoteAudioState = (page: Page) => page.getByTestId('remote-audio').evaluate((el) => {
+  const au = el as HTMLAudioElement;
+  const stream = au.srcObject as MediaStream | null;
+  return { hasAudio: !!stream && stream.getAudioTracks().some((tr) => tr.readyState === 'live'), paused: au.paused, time: au.currentTime };
+});
+
 // Le pair reçoit-il réellement des images (dimensions > 0, élément visible) ?
 const remoteVideoPlaying = (page: Page) => page.locator('.wlm-video-remote').evaluate((el) => {
   const v = el as HTMLVideoElement;
@@ -83,6 +90,14 @@ test('appel audio → activation de la caméra en cours d\'appel → le pair re�
 
   // Appel audio : pas de vidéo chez B
   expect(await remoteVideoPlaying(b)).toBe(false);
+
+  // Appel audio : le son distant JOUE réellement des deux côtés (il restait muet tant
+  // qu'aucune image n'arrivait, le son étant lu par le même <video> que le canal vidéo vide)
+  for (const p of [a, b]) {
+    await expect.poll(() => remoteAudioState(p), { timeout: 15000 }).toMatchObject({ hasAudio: true, paused: false });
+    const t0 = (await remoteAudioState(p)).time;
+    await expect.poll(async () => (await remoteAudioState(p)).time, { timeout: 10000 }).toBeGreaterThan(t0 + 0.5);
+  }
 
   // A active sa caméra pendant l'appel audio
   await a.getByRole('button', { name: 'Turn camera on' }).click();

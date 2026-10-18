@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Calls
+- **No sound in audio calls (fixed)**: since audio calls reserve a video channel (to turn on the camera later), the remote sound was played by the same `<video>` element as that empty video track. Chrome and Safari (on mobile especially) do not start playback until a first video frame arrives, so the call stayed silent until someone turned on a camera. The remote sound now plays through a dedicated `<audio>` element, independent from the video; speaker selection applies to it. If the browser blocks automatic playback, a "🔊 Turn on sound" button appears in the call window.
+- The E2E call test now checks that the remote audio is actually playing in an audio-only call, on both sides (on the previous code the media element stayed at `readyState 0`).
+
 ### Unread messages
 - **Tab shown even with no conversation open**: a message received while no conversation was open created a tab that stayed invisible behind the welcome screen. The tab bar now stays visible above it.
 - **Unread indicator**: a conversation with unread messages has a blinking orange tab with a counter, its contact is shown in bold with a "✉ n" badge in the contact list, and the page title shows the total ("(2) OpenWLM"). Everything clears when the conversation is shown with the window in the foreground; a message received in the conversation you are looking at is never counted as unread. Blinking is disabled when the system asks for reduced motion.

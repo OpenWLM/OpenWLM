@@ -11,6 +11,10 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Appels
+- **Pas de son en appel audio (corrigé)** : depuis que les appels audio réservent un canal vidéo (pour activer la caméra plus tard), le son distant était joué par le même élément `<video>` que cette piste vidéo vide. Chrome et Safari (sur mobile surtout) ne démarrent pas la lecture avant la première image vidéo : l'appel restait muet jusqu'à ce que quelqu'un active sa caméra. Le son distant passe désormais par un élément `<audio>` dédié, indépendant de la vidéo ; le choix du haut-parleur s'y applique. Si le navigateur bloque la lecture automatique, un bouton « 🔊 Activer le son » apparaît dans la fenêtre d'appel.
+- Le test E2E des appels vérifie désormais que le son distant joue réellement en appel audio, des deux côtés (sur l'ancien code, l'élément restait à `readyState 0`).
+
 ### Messages non lus
 - **Onglet visible même sans conversation ouverte** : un message reçu alors qu'aucune conversation n'était ouverte créait un onglet qui restait invisible derrière l'écran d'accueil. La barre d'onglets reste maintenant visible au-dessus.
 - **Indicateur de non-lu** : une conversation avec des messages non lus a un onglet orange qui clignote avec un compteur, son contact est en gras avec un badge « ✉ n » dans la liste, et le titre de la page affiche le total (« (2) OpenWLM »). Tout s'efface quand la conversation est affichée avec la fenêtre au premier plan ; un message reçu dans la conversation que vous regardez n'est jamais compté comme non lu. Le clignotement est désactivé quand le système demande de réduire les animations.

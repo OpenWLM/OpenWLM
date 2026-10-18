@@ -328,6 +328,7 @@
     "ringing": "Appel entrant de {name}...",
     "audioInProgress": "Appel vocal en cours...",
     "remoteCameraOff": "{name} a coupé sa caméra",
+    "enableSound": "🔊 Activer le son",
     "remoteRinging": "{name} est en train de sonner...",
     "audioIncoming": "Appel audio entrant…",
     "videoIncoming": "Appel vidéo entrant…",

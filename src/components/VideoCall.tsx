@@ -150,7 +150,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const adaptCandidateRef = useRef<{ level: Quality; count: number }>({ level: 'good', count: 0 });
   const ringAudioRef = useRef<HTMLAudioElement | null>(null);
   // Flux distant assemblé piste par piste (une piste vidéo peut arriver en cours d'appel)
-  const remoteStreamRef = useRef<MediaStream | null>(null);
+  // Son et image distants dans DEUX éléments séparés : un <video> qui contient une piste vidéo
+  // sans images (canal vidéo réservé d'un appel audio) ne démarre pas la lecture sur Chrome et
+  // Safari (mobile surtout) — le son restait muet jusqu'à l'arrivée d'une première image.
+  const remoteAudioStreamRef = useRef<MediaStream | null>(null);
+  const remoteVideoStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  // Lecture du son bloquée par le navigateur (autoplay) : bouton « Activer le son »
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const camOnRef = useRef(!audioOnly);
   const sharingRef = useRef(false);
 
@@ -171,6 +178,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     if (screenTrackRef.current) { screenTrackRef.current.stop(); screenTrackRef.current = null; }
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
   }, []);
 
   const finish = useCallback((noticeText?: string) => {
@@ -418,17 +426,29 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       pc.onicecandidate = (event) => { if (event.candidate) emitSignal({ type: 'ice-candidate', candidate: event.candidate }); };
 
       pc.ontrack = (event) => {
-        const el = remoteVideoRef.current;
-        if (!el) return;
-        // Flux distant assemblé à la main : une piste vidéo ajoutée en cours d'appel (ou
-        // sans flux associé) rejoint ainsi l'élément déjà en lecture.
-        let rs = remoteStreamRef.current;
-        if (!rs) { rs = new MediaStream(); remoteStreamRef.current = rs; }
-        if (!rs.getTracks().includes(event.track)) rs.addTrack(event.track);
-        if (el.srcObject !== rs) el.srcObject = rs;
-        el.muted = false;
-        el.volume = 1.0;
-        el.play().catch(() => { /* autoplay bloqué */ });
+        // Flux distants assemblés à la main (une piste ajoutée en cours d'appel rejoint
+        // l'élément déjà en lecture) : le son dans <audio>, l'image dans <video> (muet).
+        if (event.track.kind === 'audio') {
+          const audioEl = remoteAudioRef.current;
+          if (audioEl) {
+            let as = remoteAudioStreamRef.current;
+            if (!as) { as = new MediaStream(); remoteAudioStreamRef.current = as; }
+            if (!as.getTracks().includes(event.track)) as.addTrack(event.track);
+            if (audioEl.srcObject !== as) audioEl.srcObject = as;
+            audioEl.volume = 1.0;
+            audioEl.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
+          }
+        } else {
+          const videoEl = remoteVideoRef.current;
+          if (videoEl) {
+            let vs = remoteVideoStreamRef.current;
+            if (!vs) { vs = new MediaStream(); remoteVideoStreamRef.current = vs; }
+            if (!vs.getTracks().includes(event.track)) vs.addTrack(event.track);
+            if (videoEl.srcObject !== vs) videoEl.srcObject = vs;
+            videoEl.muted = true;
+            videoEl.play().catch(() => { /* image : relancée à l'arrivée des images */ });
+          }
+        }
         if (event.track.kind === 'video') {
           const track = event.track;
           const upd = () => setRemoteVideoOn(track.readyState === 'live' && !track.muted);
@@ -708,7 +728,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
 
   const switchSpeaker = async (deviceId: string) => {
     setSpkId(deviceId);
-    const el = remoteVideoRef.current as (HTMLVideoElement & { setSinkId?: (id: string) => Promise<void> }) | null;
+    // Le son sort de l'élément <audio> : c'est lui qui change de haut-parleur
+    const el = remoteAudioRef.current as (HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }) | null;
     if (el?.setSinkId) { try { await el.setSinkId(deviceId); } catch { /* ignore */ } }
   };
 
@@ -918,7 +939,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         {/* La scène vidéo reste montée (jamais démontée) même réduite, pour ne pas
             interrompre les flux WebRTC : elle est seulement masquée via CSS. */}
         <div ref={containerRef} className="wlm-video-stage" style={effMinimized ? { display: 'none' } : undefined}>
-          <video ref={remoteVideoRef} autoPlay playsInline className={`wlm-video-remote${remoteVideoOn ? '' : ' wlm-video-remote-audio'}`} />
+          <video ref={remoteVideoRef} autoPlay playsInline muted className={`wlm-video-remote${remoteVideoOn ? '' : ' wlm-video-remote-audio'}`} />
+          <audio ref={remoteAudioRef} autoPlay className="wlm-remote-audio" data-testid="remote-audio" />
+          {audioBlocked && (
+            <button
+              type="button"
+              className="wlm-call-unmute"
+              onClick={() => { remoteAudioRef.current?.play().then(() => setAudioBlocked(false)).catch(() => { /* toujours bloqué */ }); }}
+            >
+              {t.videoCall.enableSound}
+            </button>
+          )}
           <video ref={localVideoRef} autoPlay playsInline muted className="wlm-video-local" style={{ display: (!audioOnly || localVideoOn) ? 'block' : 'none' }} />
 
           {showOverlay && (

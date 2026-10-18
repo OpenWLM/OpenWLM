@@ -24,7 +24,8 @@ const jwtSecretPath = path.join(PROJECT_ROOT, '.jwt_secret');
 const JWT_SECRET = fs.existsSync(jwtSecretPath) ? fs.readFileSync(jwtSecretPath, 'utf8').trim() : null;
 const db = new Database(path.join(PROJECT_ROOT, 'messenger.db'));
 
-const UID = 9951;
+// Identifiant réservé à ce fichier (les fichiers de test tournent en parallèle sur la même base)
+const UID = 9961;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const probe = () => new Promise((resolve) => {
@@ -58,7 +59,11 @@ const postJson = (apiPath, token, body) => new Promise((resolve) => {
   req.end();
 });
 
-function cleanup() { try { db.prepare('DELETE FROM users WHERE id = ?').run(UID); } catch {} }
+function cleanup() {
+  // Lignes dépendantes d'abord : sinon la contrainte de clé étrangère bloque la suppression
+  try { db.prepare('DELETE FROM contacts WHERE user_id = ? OR contact_id = ?').run(UID, UID); } catch {}
+  try { db.prepare('DELETE FROM users WHERE id = ?').run(UID); } catch {}
+}
 function seed() {
   cleanup();
   db.prepare(`

@@ -7,6 +7,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 import { db } from './db.js';
@@ -92,6 +93,14 @@ const io = new Server(httpServer, {
 
 const PORT = process.env.PORT || 3001;
 app.disable('x-powered-by');
+
+// SERVEUR DE TEST UNIQUEMENT (NODE_ENV=test) : empreinte de la base utilisée. Les tests qui
+// visent localhost:3001 la comparent à celle de LEUR checkout (scripts/live_server_guard.mjs)
+// et refusent de tourner contre un autre serveur, la prod notamment. Jamais envoyé en prod.
+if (process.env.NODE_ENV === 'test') {
+  const testDbFingerprint = crypto.createHash('sha256').update(path.resolve('messenger.db')).digest('hex');
+  app.use((req, res, next) => { res.setHeader('X-OpenWLM-Test-Db', testDbFingerprint); next(); });
+}
 
 const isDev = process.env.NODE_ENV === 'development';
 const isProd = process.env.NODE_ENV === 'production' || !isDev;

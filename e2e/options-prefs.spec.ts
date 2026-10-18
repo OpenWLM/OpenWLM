@@ -356,3 +356,70 @@ test('Options → Connexion : diagnostic (temps réel, reconnexion, test réseau
   expect(report).not.toMatch(/credential|https:\/\/fcm|turn:/i);
   await ctx.close();
 });
+
+test('Réinitialiser mes clés : seules les données de CE compte sont effacées de l\'appareil', async ({ browser }) => {
+  test.setTimeout(120000);
+  const name = `rst_${Date.now()}`;
+  const ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
+  const p = await ctx.newPage();
+  await registerAndLogin(p, name);
+
+  // Données d'un AUTRE compte utilisé dans ce navigateur : clés mémorisées + copie locale
+  await p.evaluate(() => Promise.all([
+    new Promise<void>((resolve) => {
+      // Même schéma que l'app (src/utils/E2EEKeyStorage.ts, version 2)
+      const req = indexedDB.open('WLM_DeviceVault_v1', 2);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('e2ee_keys')) db.createObjectStore('e2ee_keys', { keyPath: 'userId' });
+        if (!db.objectStoreNames.contains('verified_contacts')) db.createObjectStore('verified_contacts', { keyPath: 'contactId' });
+      };
+      req.onsuccess = () => {
+        const tx = req.result.transaction('e2ee_keys', 'readwrite');
+        tx.objectStore('e2ee_keys').put({ userId: 999999, autre: 'compte' });
+        tx.oncomplete = () => { req.result.close(); resolve(); };
+      };
+    }),
+    new Promise<void>((resolve) => {
+      // Même schéma que l'app (src/utils/LocalDB.ts, version 1)
+      const req = indexedDB.open('WLM_LocalHistory_v3', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('messages')) {
+          db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true }).createIndex('chatId', 'chatId', { unique: false });
+        }
+      };
+      req.onsuccess = () => {
+        const tx = req.result.transaction('messages', 'readwrite');
+        tx.objectStore('messages').add({ chatId: '999999_1', encryptedData: 'autre-compte' });
+        tx.oncomplete = () => { req.result.close(); resolve(); };
+      };
+    })
+  ]));
+
+  await openOptionsTab(p, 'Security');
+  await p.getByTestId('options-security').getByRole('button', { name: 'Reset my keys…' }).click();
+  await p.locator('#reset-e2e-password-input').fill(PASSWORD);
+  await p.getByRole('button', { name: 'Permanently reset my keys' }).click();
+  // Réinitialisation terminée : déconnexion, retour à l'écran de connexion
+  await expect(p.locator('.wlm-auth-form')).toBeVisible({ timeout: 45000 });
+
+  const other = await p.evaluate(() => Promise.all([
+    new Promise<boolean>((resolve) => {
+      const req = indexedDB.open('WLM_DeviceVault_v1');
+      req.onsuccess = () => {
+        const get = req.result.transaction('e2ee_keys', 'readonly').objectStore('e2ee_keys').get(999999);
+        get.onsuccess = () => { req.result.close(); resolve(!!get.result); };
+      };
+    }),
+    new Promise<boolean>((resolve) => {
+      const req = indexedDB.open('WLM_LocalHistory_v3');
+      req.onsuccess = () => {
+        const all = req.result.transaction('messages', 'readonly').objectStore('messages').getAll();
+        all.onsuccess = () => { req.result.close(); resolve(all.result.some((r: { chatId: string }) => r.chatId === '999999_1')); };
+      };
+    })
+  ]));
+  expect(other, 'clés et copie locale de l\'autre compte conservées').toEqual([true, true]);
+  await ctx.close();
+});

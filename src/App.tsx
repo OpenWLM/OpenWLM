@@ -3349,7 +3349,9 @@ const App: React.FC = () => {
           purgeErrors.push("messages locaux");
         }
         try {
-          const resKeys = await E2EEKeyStorage.clearAll();
+          // Seulement les clés mémorisées de CE compte : les autres comptes du navigateur
+          // gardent les leurs (elles ne sont pas concernées par cette réinitialisation)
+          const resKeys = await E2EEKeyStorage.removeKeys(user.id);
           if (!resKeys) {
             console.error('[Reset] Échec purge E2EEKeyStorage');
             purgeErrors.push("clés privées locales");

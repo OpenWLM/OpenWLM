@@ -574,7 +574,7 @@
     "resetE2EPoint1": "Génération d'une nouvelle identité cryptographique (nouvelle paire de clés RSA 2048 bits).",
     "resetE2EPoint2": "Remplacement et invalidation immédiate de votre ancienne clé publique et privée sur le serveur.",
     "resetE2EPoint3": "Suppression définitive de vos anciens messages chiffrés sur le serveur (devenus indéchiffrables).",
-    "resetE2EPoint4": "Purge complète de l'historique local et des clés stockées sur cet appareil (IndexedDB).",
+    "resetE2EPoint4": "Purge de l'historique local et des clés de ce compte stockés sur cet appareil (IndexedDB) ; les autres comptes utilisés dans ce navigateur ne sont pas touchés.",
     "resetE2EPoint5": "Révocation du statut de vérification auprès de vos contacts (nécessité de re-vérifier votre Safety Number).",
     "resetE2EPoint6": "Révocation de toutes vos sessions actives et déconnexion immédiate.",
     "resetE2EPasswordPrompt": "Saisissez votre mot de passe pour confirmer la réinitialisation :",

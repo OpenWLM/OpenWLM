@@ -182,10 +182,14 @@ The application will be accessible at: **http://localhost:3001**
 An automated security-test suite checks that the key client-side restrictions are also enforced server-side:
 
 ```bash
+# from the repository root, with a TEST server (its own messenger.db):
+NODE_ENV=test node server/index.js &
 npm test
 # or:
 npm run test:security
 ```
+
+Some tests talk to `localhost:3001` and write to the checkout's `messenger.db`. They refuse to run if the server answering on that port is not the test server of this checkout (a production server on the same machine, for example): a server started with `NODE_ENV=test` sends a fingerprint of its database, checked by `scripts/live_server_guard.mjs`. With no server running, those tests are skipped.
 
 It issues direct API and WebSocket requests (bypassing the UI) and checks the server rejects them:
 - Sender ID spoofing (rejected)

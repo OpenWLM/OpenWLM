@@ -24,7 +24,7 @@ les règles sont périmées.
 
 - Lint : `npm run lint`
 - Build : `npm run build`
-- Tests unitaires + sécurité : `npm test` *(bloqué hors dépôt Git — cf. `scripts/test_preflight.js`)*
+- Tests unitaires + sécurité : `npm test`, avec un serveur de test lancé depuis la racine du dépôt (`NODE_ENV=test node server/index.js`). Bloqué hors dépôt Git, et si le serveur sur :3001 n'est pas le serveur de test de ce checkout (la prod, par exemple) — cf. `scripts/test_preflight.js` et `scripts/live_server_guard.mjs`.
 - E2E : `npm run test:e2e`
 - Secrets : `npm run check:secrets`
 - WAF : `npm run waf:gen` (écrit) / `npm run waf:check` (vérifie)

@@ -53,8 +53,18 @@ if (gitRoot) {
   const dbPath = path.join(rootDir, 'messenger.db');
   console.log(`[preflight] Dépôt Git détecté (${gitRoot}) → suite de tests autorisée.`);
   console.log(`[preflight] Cible : serveur http://localhost:${process.env.PORT || 3001} + ${dbPath}`);
-  console.log('[preflight] ⚠ Vérifiez que ce serveur est un serveur de TEST isolé :');
-  console.log('[preflight]   la production écoute aussi sur le port 3001.\n');
+  // Le serveur sur :3001 doit être le serveur de TEST de ce checkout (la prod écoute aussi
+  // sur ce port) : vérifié par l'empreinte de sa base (cf. scripts/live_server_guard.mjs)
+  process.env.OPENWLM_GUARD_IMPORT_ONLY = '1';
+  const { checkLiveServer, FOREIGN_SERVER_MESSAGE } = await import('./live_server_guard.mjs');
+  const live = await checkLiveServer();
+  if (live === 'foreign') {
+    console.error(FOREIGN_SERVER_MESSAGE);
+    process.exit(1);
+  }
+  console.log(live === 'test'
+    ? '[preflight] Serveur de test de ce checkout détecté sur :3001.\n'
+    : '[preflight] Aucun serveur sur :3001 : les tests live seront ignorés (skip).\n');
   process.exit(0);
 }
 

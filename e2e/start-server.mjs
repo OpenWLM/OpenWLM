@@ -19,7 +19,11 @@ const child = spawn(process.execPath, [path.join(root, 'server', 'index.js')], {
   // CLOUDFLARE_IP_RANGES = localhost : le serveur de test fait confiance à CF-Connecting-IP,
   // ce qui donne à chaque navigateur de test sa propre IP (en-tête posé par les specs).
   // Sans cela, toute la suite partage 127.0.0.1 et sature le limiteur d'auth (10/min/IP).
-  env: { ...process.env, PORT, JWT_SECRET, NODE_ENV: 'test', CLOUDFLARE_IP_RANGES: '127.0.0.1/32,::1/128' },
+  // POW_DIFFICULTY=10 : la preuve de travail de l'inscription reste exercée, mais en ~1 000
+  // hachages au lieu de ~130 000. À la difficulté réelle (17), sa durée est aléatoire et, sous
+  // la charge de la suite complète, dépassait parfois le délai d'inscription des specs (échecs
+  // au hasard). La difficulté réelle est couverte par tests/test_signup_guard.js.
+  env: { ...process.env, PORT, JWT_SECRET, NODE_ENV: 'test', CLOUDFLARE_IP_RANGES: '127.0.0.1/32,::1/128', POW_DIFFICULTY: '10' },
   stdio: 'inherit'
 });
 

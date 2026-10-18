@@ -182,10 +182,14 @@ L'application est accessible sur : **http://localhost:3001**
 Une suite de tests automatisés vérifie que les principales restrictions côté client sont aussi appliquées côté API et sockets :
 
 ```bash
+# depuis la racine du dépôt, avec un serveur de TEST (sa propre messenger.db) :
+NODE_ENV=test node server/index.js &
 npm test
 # ou :
 npm run test:security
 ```
+
+Certains tests parlent à `localhost:3001` et écrivent dans la `messenger.db` du dépôt. Ils refusent de tourner si le serveur qui répond sur ce port n'est pas le serveur de test de ce dépôt (un serveur de production sur la même machine, par exemple) : un serveur lancé avec `NODE_ENV=test` envoie une empreinte de sa base, vérifiée par `scripts/live_server_guard.mjs`. Sans serveur, ces tests sont ignorés.
 
 Elle envoie des requêtes API et WebSocket directes (sans passer par l'interface) pour tenter de contourner le client :
 - Usurpation d'identifiant expéditeur (rejet immédiat)

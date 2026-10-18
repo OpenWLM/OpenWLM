@@ -74,7 +74,20 @@ export const initVapid = () => {
 
 export const vapidConfig = initVapid();
 
-export const dispatchPushNotification = async (receiverId, payload) => {
+/** Nombre d'abonnements Push d'un utilisateur (un appareil réveillable par Push ?). */
+export const countPushSubscriptions = (userId) => {
+  try {
+    return db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(userId)?.n || 0;
+  } catch {
+    return 0;
+  }
+};
+
+/**
+ * `options` (facultatif) : { TTL, urgency } — ex. appel entrant : TTL court et urgence haute,
+ * pour que le service de Push réveille l'appareil tout de suite et n'envoie pas un appel périmé.
+ */
+export const dispatchPushNotification = async (receiverId, payload, options = {}) => {
   if (!vapidConfig) {
     return { sent: 0, failed: 0, reason: 'vapid_not_configured' };
   }
@@ -105,7 +118,8 @@ export const dispatchPushNotification = async (receiverId, payload) => {
         };
 
         await webpush.sendNotification(pushSubscription, payloadString, {
-          TTL: 86400
+          TTL: Number.isInteger(options.TTL) ? options.TTL : 86400,
+          ...(options.urgency ? { urgency: options.urgency } : {})
         });
         sent++;
       } catch (err) {

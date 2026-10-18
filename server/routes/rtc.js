@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, canInteract } from '../middleware/auth.js';
+import { declinePendingCall } from '../sockets/webrtc.js';
 
 /**
  * Configuration ICE (STUN/TURN) pour les appels WebRTC.
@@ -28,8 +29,18 @@ const parseList = (value) => (value || '')
 
 const DEFAULT_STUN = ['stun:stun.l.google.com:19302'];
 
-export default function createRtcRouter() {
+export default function createRtcRouter({ io } = {}) {
   const router = express.Router();
+
+  // Bouton « Refuser » de la notification d'appel (service worker, sans connexion temps réel) :
+  // l'appel en attente de `callerId` vers l'utilisateur authentifié est refusé.
+  router.post('/calls/decline', authenticateToken, (req, res) => {
+    const callerId = Number(req.body?.callerId);
+    if (!Number.isInteger(callerId) || callerId <= 0) return res.status(400).json({ error: 'Appelant invalide.' });
+    if (!canInteract(req.user.id, callerId).allowed) return res.status(403).json({ error: 'Non autorisé.' });
+    if (!io || !declinePendingCall(io, callerId, req.user.id)) return res.status(404).json({ error: 'Aucun appel en attente.' });
+    res.json({ success: true });
+  });
 
   router.get('/rtc-config', authenticateToken, (req, res) => {
     const iceServers = [];

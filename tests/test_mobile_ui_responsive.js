@@ -8,9 +8,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
-test('Service Worker: CACHE_NAME is bumped to openwlm-v5', () => {
+test('Service Worker: CACHE_NAME is bumped (openwlm-v5 or later)', () => {
   const swContent = fs.readFileSync(path.join(rootDir, 'public/sw.js'), 'utf8');
-  assert.match(swContent, /const\s+CACHE_NAME\s*=\s*['"]openwlm-v5['"]/);
+  const m = swContent.match(/const\s+CACHE_NAME\s*=\s*['"]openwlm-v(\d+)['"]/);
+  assert.ok(m, 'CACHE_NAME openwlm-vN présent');
+  assert.ok(Number(m[1]) >= 5, `CACHE_NAME en v${m && m[1]}, attendu v5 ou plus`);
 });
 
 test('Bug 1 CSS: Emoticon popup on mobile is fixed, responsive, and has backdrop', () => {

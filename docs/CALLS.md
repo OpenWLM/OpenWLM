@@ -57,7 +57,25 @@ TURN_PASSWORD=<credential>
 - **Reprise sur reconnexion socket** (mobile / bascule réseau).
 - **Budgets de débit** : audio ~32 kb/s, vidéo ~1,2 Mb/s, `degradationPreference: 'balanced'`.
 - **Contraintes médias** bornées (640×360@24, echoCancellation/noiseSuppression/autoGainControl).
-- **Signalisation** : serveur `call_ringing` / `call_accepted` / `call_rejected` / `call_busy` / `call_unavailable` ; suivi « occupé » + notification au pair en cas de déconnexion brutale.
+- **Signalisation** : serveur `call_ringing` / `call_waking` / `call_accepted` / `call_rejected` / `call_busy` / `call_unavailable` ; suivi « occupé » + notification au pair en cas de déconnexion brutale.
+- **« Ça sonne » confirmé** : le serveur présente l'appel aux appareils de l'appelé en exigeant
+  un **accusé de réception** (`incoming_call` avec acquittement, 4 s). L'appelant ne voit
+  « ça sonne » (`call_ringing`) qu'une fois un appareil confirmé. Un téléphone en veille garde
+  une connexion « fantôme » (~45 s avant détection) qui ne répond pas : sans accusé, l'appelant
+  voit « X ne semble pas disponible sur ses appareils » (`call_waking`).
+- **Réveil par Push** : sans accusé (ou si l'appelé n'a aucune connexion mais un abonnement
+  Push), le serveur envoie une **notification Push d'appel** (urgence haute, durée de vie 45 s).
+  Le service worker l'affiche avec « Répondre » / « Refuser » et la réaffiche toutes les 4 s
+  (son et vibration du système) pendant 30 s au plus, pour imiter une sonnerie. « Refuser »
+  appelle `POST /api/calls/decline` sans ouvrir l'application ; « Répondre » (ou un clic) ouvre
+  la conversation. L'offre d'appel (chiffrée) est gardée pendant la sonnerie (60 s) et
+  **redonnée** à tout appareil de l'appelé qui se (re)connecte : l'appel s'affiche alors et
+  l'appelant passe à « ça sonne ». Si l'appelant raccroche, la notification devient « Appel manqué ».
+- **Limites du réveil** : le son est celui des notifications du système (pas de sonnerie en
+  boucle sur un téléphone en veille, ce qui demanderait une application native). Sur iPhone, le
+  Push ne fonctionne que pour l'app installée sur l'écran d'accueil (iOS 16.4+), et la
+  répétition y est peu fiable ; sur Android avec Chrome, ça fonctionne bien. La notification
+  d'appel contient le nom de l'appelant (comme celles des messages), jamais l'offre.
 - **Timeout « pas de réponse »** (45 s) côté appelant.
 - **Erreurs média explicites** (permission refusée / aucun périphérique / déjà utilisé).
 - **Signalisation WebRTC centralisée** dans `<VideoCall/>` (fin du buffer ICE global fuyant).

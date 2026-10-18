@@ -2073,9 +2073,12 @@ const App: React.FC = () => {
       });
 
       // WebRTC : Réception d'un appel
-      newSocket.on('incoming_call', (data) => {
+      newSocket.on('incoming_call', (data, ack?: (res: { ok: boolean }) => void) => {
         console.log("Appel entrant de :", data.callerName);
-        
+        // Accusé de réception : c'est lui qui fait passer l'appelant à « ça sonne » (une connexion
+        // fantôme d'un téléphone en veille ne répond pas, le serveur tente alors un réveil par Push)
+        try { ack?.({ ok: true }); } catch { /* ancien serveur sans accusé */ }
+
         // La signalisation est chiffrée E2EE : on la transmet BRUTE à <VideoCall/> qui la déchiffre.
         setCallSignal(data.signal);
         setActiveCallId(data.caller);

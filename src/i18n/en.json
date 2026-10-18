@@ -330,6 +330,8 @@
     "remoteCameraOff": "{name} turned their camera off",
     "enableSound": "🔊 Turn on sound",
     "remoteRinging": "{name} is ringing...",
+    "waking": "{name} doesn't seem reachable on their devices: call notification sent…",
+    "wakingNoPush": "Waiting for {name}… (device asleep?)",
     "audioIncoming": "Incoming audio call…",
     "videoIncoming": "Incoming video call…",
     "connecting": "Connecting...",

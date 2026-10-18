@@ -235,7 +235,7 @@ app.use('/api', createFilesRouter());
 app.use('/api', createEmoticonsRouter());
 app.use('/api', createPushRouter());
 app.use('/api', createGamesRouter());
-app.use('/api', createRtcRouter());
+app.use('/api', createRtcRouter({ io }));
 
 // SPA Fallback pour React Router
 app.use((req, res, next) => {

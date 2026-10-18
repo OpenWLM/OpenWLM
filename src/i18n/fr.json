@@ -330,6 +330,8 @@
     "remoteCameraOff": "{name} a coupé sa caméra",
     "enableSound": "🔊 Activer le son",
     "remoteRinging": "{name} est en train de sonner...",
+    "waking": "{name} ne semble pas disponible sur ses appareils : notification d'appel envoyée…",
+    "wakingNoPush": "En attente de {name}… (appareil en veille ?)",
     "audioIncoming": "Appel audio entrant…",
     "videoIncoming": "Appel vidéo entrant…",
     "connecting": "Connexion...",

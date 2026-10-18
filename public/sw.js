@@ -4,7 +4,7 @@
  * et la mise en cache haute-performance des sons et icônes rétro.
  */
 
-const CACHE_NAME = 'openwlm-v5';
+const CACHE_NAME = 'openwlm-v6';
 
 // Ressources critiques pré-mises en cache au démarrage
 const PRECACHE_ASSETS = [
@@ -161,21 +161,77 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil((async () => {
+    // Appel manqué (l'appelant a raccroché) : remplace la notification d'appel qui sonne
+    if (payload.type === 'call_cancel') {
+      const ringing = await self.registration.getNotifications({ tag: options.tag });
+      ringing.forEach((n) => n.close());
+      await self.registration.showNotification(payload.title, { ...options, renotify: false, vibrate: [] });
+      return;
+    }
+
     // Anti-doublon : si l'application est OUVERTE au premier plan, c'est ELLE qui affiche
     // sa propre notification (avec le CONTENU déchiffré côté client, le serveur n'ayant pas la clé).
     try {
       const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       if (clientList.some((c) => c.focused)) return;
     } catch { /* ignore */ }
+
+    if (payload.type === 'call') {
+      await ringCallNotification(payload, options);
+      return;
+    }
     await self.registration.showNotification(payload.title, options);
   })());
 });
+
+/**
+ * APPEL ENTRANT (Push, appareil en veille ou application fermée)
+ * Notification persistante avec « Répondre » / « Refuser », réaffichée toutes les quelques
+ * secondes (renotify : son et vibration du système à chaque fois) tant que l'appel sonne, pour
+ * imiter une sonnerie. Arrêt dès que la notification est fermée (réponse, refus, appel manqué)
+ * ou que l'appel expire. Le son est celui des notifications du système : une page web ne peut
+ * pas jouer de sonnerie en boucle sur un téléphone en veille.
+ */
+const CALL_RING_INTERVAL_MS = 4000;
+const CALL_RING_MAX_MS = 30000;
+async function ringCallNotification(payload, baseOptions) {
+  const expiresAt = Number(payload.data?.expiresAt) || Date.now() + CALL_RING_MAX_MS;
+  const stopAt = Math.min(expiresAt, Date.now() + CALL_RING_MAX_MS);
+  const options = {
+    ...baseOptions,
+    requireInteraction: true,
+    renotify: true,
+    vibrate: [400, 200, 400, 200, 400],
+    actions: [
+      { action: 'answer', title: 'Répondre' },
+      { action: 'decline', title: 'Refuser' }
+    ]
+  };
+  await self.registration.showNotification(payload.title, options);
+  while (Date.now() + CALL_RING_INTERVAL_MS < stopAt) {
+    await new Promise((resolve) => setTimeout(resolve, CALL_RING_INTERVAL_MS));
+    const still = await self.registration.getNotifications({ tag: options.tag });
+    if (still.length === 0) return; // réponse, refus ou appel manqué
+    await self.registration.showNotification(payload.title, options);
+  }
+}
 
 // Clic sur une notification système déclenchée via ServiceWorkerRegistration ou Web Push
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const notifData = event.notification.data || {};
+
+  // « Refuser » un appel depuis la notification : refus immédiat, sans ouvrir l'application
+  if (notifData.type === 'call' && event.action === 'decline') {
+    event.waitUntil(fetch('/api/calls/decline', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callerId: notifData.callerId })
+    }).catch(() => { /* hors ligne : l'appel expirera */ }));
+    return;
+  }
   const targetUrl = notifData.url || '/';
   const targetSenderId = notifData.senderId;
 

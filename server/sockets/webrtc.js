@@ -1,6 +1,13 @@
 import { db } from '../db.js';
 import { getUserRoom, isUserOnline } from '../sessionStore.js';
 import { canInteract } from '../middleware/auth.js';
+import { dispatchPushNotification, countPushSubscriptions } from '../routes/push.js';
+
+// Accusé de réception de l'appel par un appareil de l'appelé : sans lui, l'appelant n'entend
+// pas « ça sonne » (un téléphone en veille garde une connexion « fantôme » pendant ~45 s).
+export const CALL_ACK_TIMEOUT_MS = 4000;
+// Push d'appel : courte durée de vie (un appel périmé ne doit pas arriver) et urgence haute
+const CALL_PUSH_TTL_S = 45;
 
 export const isValidRtcSignal = (signal) => {
   if (typeof signal === 'string') return signal.length > 0 && signal.length <= 65536;
@@ -48,7 +55,9 @@ const clearActive = (uid) => {
 };
 export const isUserBusy = (userId) => activeCalls.has(userId);
 
-// APPELS EN ATTENTE (sonnerie) : "<appelant>:<appelé>" -> expiration (ms).
+// APPELS EN ATTENTE (sonnerie) : "<appelant>:<appelé>" -> { expires, offre chiffrée, … }.
+// L'offre est gardée pour la redonner à un appareil de l'appelé qui se (re)connecte pendant la
+// sonnerie (réveil par Push, téléphone sorti de veille).
 // SÉCURITÉ : call_accept / call_reject ne sont acceptés que pour un appel réellement
 // en attente. Sans cela, n'importe quel contact pouvait émettre call_accept et faire
 // passer un utilisateur (et lui-même) en « occupé » sans aucun appel (DoS d'appels),
@@ -56,15 +65,19 @@ export const isUserBusy = (userId) => activeCalls.has(userId);
 export const PENDING_CALL_TTL_MS = 60 * 1000;
 const pendingCalls = new Map();
 const pendingKey = (callerId, calleeId) => `${callerId}:${calleeId}`;
-const setPending = (callerId, calleeId) => {
-  pendingCalls.set(pendingKey(callerId, calleeId), Date.now() + PENDING_CALL_TTL_MS);
+const setPending = (callerId, calleeId, call = {}) => {
+  pendingCalls.set(pendingKey(callerId, calleeId), { expires: Date.now() + PENDING_CALL_TTL_MS, ringing: false, pushed: false, ...call });
+};
+const getPending = (callerId, calleeId) => {
+  const entry = pendingCalls.get(pendingKey(callerId, calleeId));
+  return entry && entry.expires > Date.now() ? entry : null;
 };
 /** Consomme l'appel en attente caller→callee s'il existe et n'a pas expiré. */
 const takePending = (callerId, calleeId) => {
   const key = pendingKey(callerId, calleeId);
-  const expires = pendingCalls.get(key);
+  const entry = pendingCalls.get(key);
   pendingCalls.delete(key);
-  return expires !== undefined && expires > Date.now();
+  return entry !== undefined && entry.expires > Date.now();
 };
 const clearPendingFor = (userId) => {
   for (const key of pendingCalls.keys()) {
@@ -74,8 +87,8 @@ const clearPendingFor = (userId) => {
 };
 const pendingCleanupTimer = setInterval(() => {
   const now = Date.now();
-  for (const [key, expires] of pendingCalls.entries()) {
-    if (expires <= now) pendingCalls.delete(key);
+  for (const [key, entry] of pendingCalls.entries()) {
+    if (entry.expires <= now) pendingCalls.delete(key);
   }
 }, 60000);
 if (pendingCleanupTimer.unref) pendingCleanupTimer.unref();
@@ -85,8 +98,59 @@ const asId = (v) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
+const callPushPayload = (callerId, callee, entry) => ({
+  type: 'call',
+  title: `${entry.callerName} — OpenWLM`,
+  body: entry.audioOnly ? '📞 Appel audio entrant' : '📹 Appel vidéo entrant',
+  tag: `openwlm-call-${callerId}`,
+  senderId: callerId,
+  data: { url: `/?chat=${callerId}`, senderId: callerId, type: 'call', callerId, expiresAt: entry.expires }
+});
+
+/**
+ * Présente l'appel à des sockets de l'appelé en exigeant un accusé de réception.
+ * Renvoie le nombre d'appareils qui ont confirmé (la sonnerie s'affiche chez eux).
+ */
+const deliverIncomingCall = (target, callerId, entry) => new Promise((resolve) => {
+  target.timeout(CALL_ACK_TIMEOUT_MS).emit('incoming_call', {
+    caller: callerId,
+    callerName: entry.callerName,
+    signal: entry.signal,
+    audioOnly: entry.audioOnly,
+  }, (_err, responses) => {
+    // Diffusion vers une room : tableau des réponses reçues à temps ; socket unique : une valeur
+    const list = Array.isArray(responses) ? responses : (responses ? [responses] : []);
+    resolve(list.filter((r) => r && r.ok).length);
+  });
+});
+
+/** L'appelé a confirmé : l'appelant entend « ça sonne » (une seule fois). */
+const markRinging = (io, callerId, calleeId) => {
+  const entry = getPending(callerId, calleeId);
+  if (!entry || entry.ringing) return;
+  entry.ringing = true;
+  io.to(getUserRoom(callerId)).emit('call_ringing', { target: calleeId });
+};
+
+/** Refus d'un appel en attente (bouton de l'appel, ou bouton « Refuser » de la notification). */
+export const declinePendingCall = (io, callerId, calleeId) => {
+  if (!takePending(callerId, calleeId)) return false;
+  io.to(getUserRoom(callerId)).emit('call_rejected', { by: calleeId });
+  return true;
+};
+
 export const registerWebRtcHandlers = (io, socket) => {
   const self = socket.user.id;
+
+  // Appareil de l'appelé qui se (re)connecte pendant une sonnerie (ex. ouvert depuis la
+  // notification Push d'appel) : l'appel en attente lui est présenté à son tour.
+  for (const [key, entry] of pendingCalls.entries()) {
+    const [callerId, calleeId] = key.split(':').map(Number);
+    if (calleeId !== self || entry.expires <= Date.now()) continue;
+    deliverIncomingCall(socket, callerId, entry).then((acks) => {
+      if (acks > 0) markRinging(io, callerId, self);
+    });
+  }
 
   socket.on('call_request', (data) => {
     const { target, signal, audioOnly } = data || {};
@@ -99,7 +163,9 @@ export const registerWebRtcHandlers = (io, socket) => {
       return socket.emit('call_error', { message: 'Signal WebRTC invalide ou trop volumineux.' });
     }
 
-    if (!isUserOnline(targetId)) {
+    const online = isUserOnline(targetId);
+    // Hors ligne et aucun appareil réveillable par Push : injoignable
+    if (!online && countPushSubscriptions(targetId) === 0) {
       return socket.emit('call_unavailable', { target: targetId });
     }
     if (isUserBusy(targetId)) {
@@ -109,15 +175,27 @@ export const registerWebRtcHandlers = (io, socket) => {
     const callerUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(self);
     if (!callerUser) return;
 
-    setPending(self, targetId);
-    io.to(getUserRoom(targetId)).emit('incoming_call', {
-      caller: self,
-      callerName: callerUser.nickname || callerUser.username,
-      signal,
-      audioOnly: !!audioOnly,
-    });
-    // Retour à l'appelant : le contact est bien en train de sonner
-    socket.emit('call_ringing', { target: targetId });
+    setPending(self, targetId, { callerName: callerUser.nickname || callerUser.username, signal, audioOnly: !!audioOnly });
+    const entry = getPending(self, targetId);
+
+    (async () => {
+      // 1) Les appareils connectés doivent CONFIRMER la réception (une connexion fantôme ne répond pas)
+      const acks = online ? await deliverIncomingCall(io.to(getUserRoom(targetId)), self, entry) : 0;
+      if (acks > 0) return markRinging(io, self, targetId);
+      if (!getPending(self, targetId)) return; // raccroché entre-temps
+
+      // 2) Aucun appareil n'a confirmé : réveil par une notification Push d'appel
+      const push = await dispatchPushNotification(targetId, callPushPayload(self, targetId, entry), { TTL: CALL_PUSH_TTL_S, urgency: 'high' });
+      const current = getPending(self, targetId);
+      if (!current || current.ringing) return;
+      current.pushed = push.sent > 0;
+      if (!online && !current.pushed) {
+        pendingCalls.delete(pendingKey(self, targetId));
+        return socket.emit('call_unavailable', { target: targetId });
+      }
+      // L'appelant patiente : l'appareil sera sonné s'il se reconnecte pendant la sonnerie
+      socket.emit('call_waking', { target: targetId, pushed: current.pushed });
+    })().catch((err) => console.error('[Calls] Erreur de remise d\'appel :', err));
   });
 
   socket.on('call_accept', (data) => {
@@ -137,9 +215,7 @@ export const registerWebRtcHandlers = (io, socket) => {
     if (!targetId) return;
     if (!canInteract(self, targetId).allowed) return;
     if (!rtcRateAllowed(self, 20)) return;
-    if (!takePending(targetId, self)) return;
-
-    io.to(getUserRoom(targetId)).emit('call_rejected', { by: self });
+    declinePendingCall(io, targetId, self);
   });
 
   socket.on('webrtc_signal', (data) => {
@@ -167,7 +243,19 @@ export const registerWebRtcHandlers = (io, socket) => {
     if (!canInteract(self, targetId).allowed) return;
 
     clearActive(self);
-    // L'appelant raccroche pendant la sonnerie : l'appel ne peut plus être accepté
+    // L'appelant raccroche pendant la sonnerie : l'appel ne peut plus être accepté. Si l'appelé
+    // avait été réveillé par Push, sa notification d'appel devient « Appel manqué ».
+    const ringing = getPending(self, targetId);
+    if (ringing?.pushed) {
+      dispatchPushNotification(targetId, {
+        type: 'call_cancel',
+        title: `${ringing.callerName} — OpenWLM`,
+        body: '📵 Appel manqué',
+        tag: `openwlm-call-${self}`,
+        senderId: self,
+        data: { url: `/?chat=${self}`, senderId: self, type: 'call_cancel' }
+      }, { TTL: 3600, urgency: 'normal' }).catch(() => { /* ignore */ });
+    }
     pendingCalls.delete(pendingKey(self, targetId));
     pendingCalls.delete(pendingKey(targetId, self));
     if (isUserOnline(targetId)) {

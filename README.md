@@ -27,7 +27,7 @@ OpenWLM is an independent educational, open-source project and a tribute to 2000
 - **Built-in test contact ("OpenWLM")**: virtual system contact (ID `-1`) with a quickstart button in the empty state, so new users can try chat, emoticons, sounds, Wizz/nudges, Tic-Tac-Toe and Connect Four (`/p4`) without a second account.
 - **Messaging**: rich text, classic emoticons, and custom end-to-end encrypted emoticons.
 - **Emoticons in names and status messages**: classic emoticons can be used in display names and personal status messages (PSM); they are rendered in the contact list, chat tabs, conversation headers and game scoreboards, using alpha-transparent PNG and APNG assets.
-- **Audio & video calls (WebRTC)**: peer-to-peer voice and video calls with encrypted signaling; during an audio call, either side can turn on their camera or share their screen.
+- **Audio & video calls (WebRTC)**: peer-to-peer voice and video calls with encrypted signaling; during an audio call, either side can turn on their camera or share their screen. The caller only sees "ringing" once a device of the contact has confirmed the call; a sleeping phone is woken by a call push notification (Answer / Decline), see [docs/CALLS.md](docs/CALLS.md).
 - **Voice clips**: record and stream end-to-end encrypted audio messages.
 - **Winks & nudges**: animated full-screen winks and the screen-shaking Wizz.
 - **Presence**: Available, Busy, Away and Appear offline; the status you pick is restored when the app restarts; automatic "Away" after a configurable inactivity delay, optionally based on the inactivity of the whole computer (see [Automatic "Away" status](#automatic-away-status)).

@@ -37,7 +37,8 @@ interface SignalPayload {
   video?: boolean;
 }
 
-type CallStatus = 'calling' | 'remoteRinging' | 'ringing' | 'connecting' | 'connected' | 'reconnecting' | 'ended';
+// 'waking' : aucun appareil de l'appelé n'a confirmé la réception (veille ?) — réveil par Push en cours
+type CallStatus = 'calling' | 'waking' | 'remoteRinging' | 'ringing' | 'connecting' | 'connected' | 'reconnecting' | 'ended';
 type Quality = 'good' | 'fair' | 'poor';
 
 const DEFAULT_ICE: RTCConfiguration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
@@ -158,6 +159,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   // Lecture du son bloquée par le navigateur (autoplay) : bouton « Activer le son »
   const [audioBlocked, setAudioBlocked] = useState(false);
+  // Réveil de l'appelé par une notification Push (pas d'appareil ayant confirmé la réception)
+  const [wakingPushed, setWakingPushed] = useState(false);
   const camOnRef = useRef(!audioOnly);
   const sharingRef = useRef(false);
 
@@ -813,7 +816,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       } catch (e) { console.error('[WebRTC] Erreur traitement signal:', e); }
     };
 
-    const onRinging = (d: { target: number }) => { if (d.target === activeChatId && !isReceivingCall) setCallStatus('remoteRinging'); };
+    // « Ça sonne » n'arrive que lorsqu'un appareil de l'appelé a CONFIRMÉ la réception de l'appel
+    const onRinging = (d: { target: number }) => { if (d.target === activeChatId && !isReceivingCall) setCallStatus((st) => (st === 'connected' || st === 'connecting' ? st : 'remoteRinging')); };
+    const onWaking = (d: { target: number; pushed?: boolean }) => {
+      if (d.target !== activeChatId || isReceivingCall) return;
+      setWakingPushed(!!d.pushed);
+      setCallStatus((st) => (st === 'calling' ? 'waking' : st));
+    };
     const onAccepted = (d: { by: number }) => { if (d.by === activeChatId) setCallStatus((st) => (st === 'connected' ? st : 'connecting')); };
     const onRejected = (d: { by: number }) => { if (d.by === activeChatId) finish(t.videoCall.rejected); };
     const onBusy = (d: { target: number }) => { if (d.target === activeChatId) finish(t.videoCall.busy); };
@@ -823,6 +832,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
 
     socket.on('webrtc_signal', handleSignal);
     socket.on('call_ringing', onRinging);
+    socket.on('call_waking', onWaking);
     socket.on('call_accepted', onAccepted);
     socket.on('call_rejected', onRejected);
     socket.on('call_busy', onBusy);
@@ -833,6 +843,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     return () => {
       socket.off('webrtc_signal', handleSignal);
       socket.off('call_ringing', onRinging);
+      socket.off('call_waking', onWaking);
       socket.off('call_accepted', onAccepted);
       socket.off('call_rejected', onRejected);
       socket.off('call_busy', onBusy);
@@ -858,6 +869,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     switch (callStatus) {
       case 'calling': return formatNickname(t.videoCall.calling.replace('{name}', contactName));
       case 'remoteRinging': return formatNickname(t.videoCall.remoteRinging.replace('{name}', contactName));
+      case 'waking': return formatNickname((wakingPushed ? t.videoCall.waking : t.videoCall.wakingNoPush).replace('{name}', contactName));
       case 'connecting': return t.videoCall.connecting;
       case 'reconnecting': return t.videoCall.reconnecting;
       case 'ended': return t.videoCall.ended;

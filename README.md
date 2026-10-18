@@ -63,6 +63,8 @@ Options → **Layout**, **Messages** and **Sounds** are saved in the browser (`w
 
 Code: `src/utils/appPrefs.ts` (storage, React hook, sound rules), used by `SoundManager`, `GameSfx`, the contact list and the conversation.
 
+Options → **Security** groups the account and device security settings: change password, keys remembered on this device (Forget this device), global private mode, your safety number, reset your keys, and the list of blocked contacts (Unblock).
+
 ---
 
 ## Architecture & Security Hardening

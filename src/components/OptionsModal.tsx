@@ -4,13 +4,14 @@ import { isSystemNotificationSupported } from '../utils/NotificationManager';
 import { isAndroidDevice, isPushSupported, type PushBackendStatus } from '../utils/PushNotificationManager';
 import { saveAwayTimeout, saveEnableAutoAway, clampAwayTimeout, AWAY_TIMEOUT_MIN, AWAY_TIMEOUT_MAX } from '../utils/profileStorage';
 import type { SystemIdlePermission, SystemIdleSupport } from '../utils/systemIdle';
-import type { User } from '../types';
+import type { Contact, User } from '../types';
+import { formatNickname } from '../utils/NicknameFormatter';
 import { useAppPrefs, updateAppPrefs } from '../utils/appPrefs';
 import LocalDB from '../utils/LocalDB';
 import SoundManager from '../utils/SoundManager';
 
 /**
- * Modale d'options (Paramètres). Onglets « Personnel » et « Alertes ».
+ * Modale d'options (Paramètres) : Personnel, Disposition, Messages, Alertes, Sons, Sécurité.
  *
  * Composant de présentation piloté par props : le profil (pseudo, PSM), les préférences
  * (auto-absence, toasts) et l'état/les actions de notifications viennent de `App` / des
@@ -44,6 +45,20 @@ interface OptionsModalProps {
   handleTestAlert: () => void;
   handleTestPush: () => void;
   syncProfile: (updates: Partial<User>) => void;
+  /** Onglet Sécurité : regroupe des actions qui existent aussi dans le menu principal. */
+  security: {
+    contacts: Contact[];
+    onUnblock: (contactId: number) => void;
+    isDeviceRemembered: boolean;
+    onForgetDevice: () => void;
+    globalPrivateMode: boolean;
+    onToggleGlobalPrivate: () => void;
+    /** Code de sécurité déjà formaté (vide tant que les clés ne sont pas chargées). */
+    safetyNumber: string;
+    /** Ces deux actions ouvrent leur propre fenêtre : la modale d'options se ferme d'abord. */
+    onChangePassword: () => void;
+    onResetKeys: () => void;
+  };
   onClose: () => void;
 }
 
@@ -74,15 +89,17 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   handleTestAlert,
   handleTestPush,
   syncProfile,
+  security,
   onClose
 }) => {
   const { t, language, setLanguage } = useI18n();
-  const [optionsTab, setOptionsTab] = useState<'personal' | 'layout' | 'messages' | 'alerts' | 'sounds'>('personal');
+  const [optionsTab, setOptionsTab] = useState<'personal' | 'layout' | 'messages' | 'alerts' | 'sounds' | 'security'>('personal');
   const prefs = useAppPrefs();
   const [cacheCleared, setCacheCleared] = useState(false);
   // Brouillon du délai d'inactivité : permet d'effacer le champ pour retaper une valeur
   const [awayTimeoutDraft, setAwayTimeoutDraft] = useState(() => String(awayTimeout));
   const [systemIdleDenied, setSystemIdleDenied] = useState(false);
+  const blockedContacts = security.contacts.filter(c => !c.isBot && (c.blocked === true || Number(c.blocked) === 1));
 
   return (
     <div className="modal-bg">
@@ -99,7 +116,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
             <div className={`options-nav-item ${optionsTab === 'messages' ? 'active' : ''}`} onClick={() => setOptionsTab('messages')}>{t.settings.tabMessages}</div>
             <div className={`options-nav-item ${optionsTab === 'alerts' ? 'active' : ''}`} onClick={() => setOptionsTab('alerts')}>{t.settings.tabAlerts}</div>
             <div className={`options-nav-item ${optionsTab === 'sounds' ? 'active' : ''}`} onClick={() => setOptionsTab('sounds')}>{t.settings.tabSounds}</div>
-            <div className="options-nav-item">{t.settings.tabSecurity}</div>
+            <div className={`options-nav-item ${optionsTab === 'security' ? 'active' : ''}`} onClick={() => setOptionsTab('security')}>{t.settings.tabSecurity}</div>
             <div className="options-nav-item">{t.settings.tabConnection}</div>
           </div>
 
@@ -278,6 +295,57 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     {t.settings.messagesClearCache}
                   </button>
                   {cacheCleared && <span className="options-hint" role="status" style={{ marginLeft: '8px' }}>{t.settings.messagesCacheCleared}</span>}
+                </div>
+              </div>
+            )}
+
+            {optionsTab === 'security' && (
+              <div className="options-section" data-testid="options-security">
+                <div className="options-title">{t.settings.tabSecurity}</div>
+
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.securityPassword}</label>
+                  <div className="options-hint">{t.settings.securityPasswordHint}</div>
+                  <button type="button" className="win-btn" style={{ marginTop: '5px' }} onClick={security.onChangePassword}>{t.settings.securityChangePassword}</button>
+                </div>
+
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.securityDevice}</label>
+                  <div className="options-hint">{security.isDeviceRemembered ? t.settings.securityDeviceRemembered : t.settings.securityDeviceNotRemembered}</div>
+                  {security.isDeviceRemembered && (
+                    <button type="button" className="win-btn" style={{ marginTop: '5px', color: '#b33927' }} onClick={security.onForgetDevice}>🔓 {t.auth.forgetDevice}</button>
+                  )}
+                </div>
+
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.securityPrivacy}</label>
+                  <PrefCheckbox id="pref-sec-global-private" checked={security.globalPrivateMode} onChange={security.onToggleGlobalPrivate} label={t.settings.securityGlobalPrivate} />
+                  <div className="options-hint">{t.settings.securityGlobalPrivateHint}</div>
+                </div>
+
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.securityBlocked}</label>
+                  <div className="options-hint">{t.settings.securityBlockedHint}</div>
+                  {blockedContacts.length === 0 ? (
+                    <div className="options-hint" style={{ fontStyle: 'italic', marginTop: '4px' }}>{t.settings.securityBlockedNone}</div>
+                  ) : (
+                    <ul className="options-blocked-list" data-testid="blocked-list">
+                      {blockedContacts.map(c => (
+                        <li key={c.id}>
+                          <span className="options-blocked-name" title={c.username}>{formatNickname(c.nickname || c.username)}</span>
+                          <button type="button" className="win-btn" onClick={() => security.onUnblock(c.id)}>{t.settings.securityUnblock}</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="options-subsection">
+                  <label className="options-label">{t.settings.securityKeys}</label>
+                  <div className="options-hint">{t.settings.securityKeysHint}</div>
+                  <div className="options-safety-number" data-testid="my-safety-number">{security.safetyNumber || '…'}</div>
+                  <button type="button" className="win-btn" style={{ marginTop: '6px', color: '#c02717' }} onClick={security.onResetKeys}>{t.settings.securityResetKeys}</button>
+                  <div className="options-hint">{t.settings.securityResetKeysHint}</div>
                 </div>
               </div>
             )}

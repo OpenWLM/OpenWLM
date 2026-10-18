@@ -40,6 +40,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Sounds**: master switch, volume (with a test button), per-event switches (message, contact sign-in, nudge, wink, call ringtone, games) and "mute while Busy" (the ringtone stays on). Every sound in the app now goes through these rules: SoundManager, game sounds, call ringtone, wink audio.
 - Code: `src/utils/appPrefs.ts`; E2E test `e2e/options-prefs.spec.ts` (three accounts, each setting checked for its real effect).
 
+### Options: Security
+- The **Security** tab, empty until now, groups what was scattered across the main menu and the right-click menu: change password, the keys remembered on this device ("Forget this device"), global private mode, my safety number, "Reset my keys", and a new **list of blocked contacts** with an Unblock button. The main-menu entries stay where they were.
+- No server change: the list uses the contact list already loaded, unblocking uses the existing route. E2E test in `e2e/options-prefs.spec.ts`.
+
 ### Fixes (code review of 2026-10-17)
 - **Status on a second device**: a device without a stored preference no longer forces "Available" over the status chosen on another device still connected; it adopts the current status (and remembers it as its own preference). The socket handshake no longer imposes a status when the device has none.
 - **Shared computer**: the sign-in screen no longer pre-selects a status inherited from another account (the global "last status" is gone); it only pre-selects the remembered account's own preference, and the choice is sent only if the selector was changed. The server's `status` field in the login response is no longer mistaken for a user choice.

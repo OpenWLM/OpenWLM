@@ -864,6 +864,13 @@ body, html {
   cursor: pointer;
 }
 
+/* Options → Sécurité */
+.options-blocked-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 140px; overflow-y: auto; border: 1px solid #d5dfe5; border-radius: 3px; }
+.options-blocked-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 6px; font-size: 11px; }
+.options-blocked-list li + li { border-top: 1px solid #eef2f5; }
+.options-blocked-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.options-safety-number { margin-top: 5px; font-family: Consolas, 'Courier New', monospace; font-size: 12px; letter-spacing: 0.5px; word-break: break-word; color: #1e395b; }
+
 .dropdown-divider {
   height: 1px;
   background: #e0e0e0;

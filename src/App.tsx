@@ -3232,6 +3232,14 @@ const App: React.FC = () => {
   /**
    * RÉINITIALISATION DES CLÉS E2E (OUVERTURE DE LA MODALE DE CONFIRMATION)
    */
+  // Mode privé global (menu principal et Options → Sécurité)
+  const toggleGlobalPrivateMode = () => {
+    const newGlobal = !globalPrivateMode;
+    setGlobalPrivateMode(newGlobal);
+    // Persisté côté serveur, qui diffuse le nouvel état aux contacts (user_status_changed)
+    axios.post('/api/user/global-private', { userId: user?.id, globalPrivate: newGlobal }).catch(console.error);
+  };
+
   const handleResetE2EKeys = () => {
     setShowStatusMenu(false);
     setResetE2EPassword('');
@@ -3886,13 +3894,7 @@ const App: React.FC = () => {
                       </div>
                     ))}
                     <div className="dropdown-item separator"></div>
-                    <div className="dropdown-item" onClick={() => { 
-                      const newGlobal = !globalPrivateMode;
-                      setGlobalPrivateMode(newGlobal); 
-                      setShowStatusMenu(false); 
-                      // Persisté côté serveur, qui diffuse le nouvel état aux contacts (user_status_changed)
-                      axios.post('/api/user/global-private', { userId: user?.id, globalPrivate: newGlobal }).catch(console.error);
-                    }}>
+                    <div className="dropdown-item" onClick={() => { toggleGlobalPrivateMode(); setShowStatusMenu(false); }}>
                       {globalPrivateMode ? t.roster.globalPrivateOn : t.roster.globalPrivateOff}
                     </div>
                     <div className="dropdown-item" onClick={() => { setShowOptionsModal(true); setShowStatusMenu(false); }}>{t.roster.optionsMenu}</div>
@@ -4780,6 +4782,17 @@ const App: React.FC = () => {
           handleTestAlert={handleTestAlert}
           handleTestPush={handleTestPush}
           syncProfile={syncProfile}
+          security={{
+            contacts,
+            onUnblock: (contactId) => handleBlockContact(contactId, false),
+            isDeviceRemembered,
+            onForgetDevice: () => { handleForgetDevice(); },
+            globalPrivateMode,
+            onToggleGlobalPrivate: toggleGlobalPrivateMode,
+            safetyNumber: myFingerprint ? formatSafetyNumber(myFingerprint) : '',
+            onChangePassword: () => { setShowOptionsModal(false); setShowPasswordModal(true); },
+            onResetKeys: () => { setShowOptionsModal(false); handleResetE2EKeys(); }
+          }}
           onClose={() => setShowOptionsModal(false)}
         />
       )}

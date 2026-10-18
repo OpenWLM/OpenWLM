@@ -40,6 +40,10 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Sons** : activation générale, volume (avec bouton de test), un interrupteur par événement (message, connexion d'un contact, Wizz, clin d'œil, sonnerie d'appel, jeux) et « couper les sons en Occupé » (la sonnerie reste active). Tous les sons de l'app passent désormais par ces règles : SoundManager, sons des jeux, sonnerie d'appel, son des clins d'œil.
 - Code : `src/utils/appPrefs.ts` ; test E2E `e2e/options-prefs.spec.ts` (trois comptes, effet réel de chaque réglage vérifié).
 
+### Options : Sécurité
+- L'onglet **Sécurité**, vide jusqu'ici, regroupe ce qui était éparpillé entre le menu principal et le clic droit : changer de mot de passe, clés mémorisées sur cet appareil (« Oublier cet appareil »), mode privé global, mon code de sécurité, « Réinitialiser mes clés », et une nouvelle **liste des contacts bloqués** avec un bouton Débloquer. Les entrées du menu principal restent en place.
+- Aucun changement côté serveur : la liste s'appuie sur la liste de contacts déjà chargée, le déblocage sur la route existante. Test E2E dans `e2e/options-prefs.spec.ts`.
+
 ### Correctifs (revue de code du 2026-10-17)
 - **Statut sur un second appareil** : un appareil sans préférence mémorisée n'impose plus « Disponible » au statut choisi sur un autre appareil encore connecté ; il adopte le statut en cours (et le mémorise comme sa propre préférence). Le handshake du socket n'impose plus de statut quand l'appareil n'en a pas.
 - **Poste partagé** : l'écran de connexion ne présélectionne plus un statut hérité d'un autre compte (le « dernier statut » global est supprimé) ; il ne présélectionne que la préférence du compte mémorisé, et le choix n'est envoyé que si le sélecteur a été modifié. Le champ `status` de la réponse de login n'est plus pris pour un choix de l'utilisateur.

@@ -201,3 +201,55 @@ test('options : disposition, messages et sons appliqués', async ({ browser }) =
   expect(saved.sounds.muteWhenBusy).toBe(true);
   expect(saved.messages.keepLocalHistory).toBe(false);
 });
+
+test('Options → Sécurité : bloqués (débloquer), mode privé global, code de sécurité, raccourcis', async ({ browser }) => {
+  test.setTimeout(120000);
+  const stamp = Date.now();
+  const nameA = `seca_${stamp}`;
+  const nameB = `secb_${stamp}`;
+  const a = await newUserPage(browser, nameA);
+  const b = await newUserPage(browser, nameB);
+  await befriend(a, b, nameB);
+  const meA = (await (await a.request.get('/api/user/me')).json()).user;
+  const contactsOfA = async () => (await (await a.request.get(`/api/contacts/${meA.id}`)).json()) as { username: string; id: number; blocked: number }[];
+  const idB = (await contactsOfA()).find((c) => c.username === nameB)!.id;
+
+  // Aucun bloqué au départ
+  await expect(a.locator('.contact-row', { hasText: nameB })).toBeVisible({ timeout: 45000 });
+  await openOptionsTab(a, 'Security');
+  const sec = a.getByTestId('options-security');
+  await expect(sec).toContainText('No blocked contacts.');
+  // Code de sécurité affiché (clés chargées)
+  await expect(a.getByTestId('my-safety-number')).not.toHaveText('…');
+  await closeOptions(a);
+
+  // A bloque B (menu clic droit) → B apparaît dans la liste ; « Débloquer » le retire
+  await a.locator('.contact-row', { hasText: nameB }).click({ button: 'right' });
+  await a.locator('.dropdown-item', { hasText: 'Block' }).first().click();
+  await expect.poll(async () => (await contactsOfA()).find((c) => c.id === idB)?.blocked, { timeout: 10000 }).toBe(1);
+  await openOptionsTab(a, 'Security');
+  await expect(a.getByTestId('blocked-list')).toContainText(nameB);
+  await a.getByTestId('blocked-list').getByRole('button', { name: 'Unblock' }).click();
+  await expect(sec).toContainText('No blocked contacts.', { timeout: 10000 });
+  expect((await contactsOfA()).find((c) => c.id === idB)?.blocked).toBe(0);
+
+  // Mode privé global : la case pilote le même réglage que le menu (persisté côté serveur)
+  const meGlobal = async () => (await (await a.request.get('/api/user/me')).json()).user.global_private;
+  await a.locator('#pref-sec-global-private').click();
+  await expect(a.locator('#pref-sec-global-private')).toBeChecked();
+  await expect.poll(meGlobal, { timeout: 10000 }).toBe(1);
+  await a.locator('#pref-sec-global-private').click();
+  await expect(a.locator('#pref-sec-global-private')).not.toBeChecked();
+  await expect.poll(meGlobal, { timeout: 10000 }).toBe(0);
+
+  // Raccourcis : changer de mot de passe ferme les Options et ouvre sa fenêtre
+  await sec.getByRole('button', { name: 'Change password…' }).click();
+  await expect(a.locator('.wlm-options-modal')).toHaveCount(0);
+  await expect(a.locator('#old-password')).toBeVisible();
+  await a.locator('.modal-box .win-close-btn').click();
+
+  // Réinitialiser mes clés : ouvre la fenêtre de confirmation (rien n'est réinitialisé ici)
+  await openOptionsTab(a, 'Security');
+  await sec.getByRole('button', { name: 'Reset my keys…' }).click();
+  await expect(a.locator('.wlm-reset-modal')).toBeVisible();
+});

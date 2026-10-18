@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { deriveZeroKnowledgeKeys } from '../utils/Security';
 import { useI18n } from '../i18n';
-import { evaluatePassword, type PasswordStrengthLevel } from '../utils/PasswordStrength';
+import { PASSWORD_MIN_LENGTH } from '../utils/PasswordStrength';
+import { PasswordStrengthMeter } from './PasswordStrengthMeter';
 import { solveProofOfWork, type PowChallenge } from '../utils/ProofOfWork';
 
 /**
@@ -62,27 +63,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
   const [captchaData, setCaptchaData] = useState<{ id: string; text: string; num1?: number; num2?: number; pow?: PowChallenge } | null>(null);
   const [isSolvingPow, setIsSolvingPow] = useState(false);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
-
-  // Évaluation dynamique de la robustesse et de la conformité du mot de passe
-  const passwordEval = useMemo(() => evaluatePassword(password), [password]);
-
-  const getStrengthName = (level: PasswordStrengthLevel) => {
-    switch (level) {
-      case 'weak': return t.auth.passwordStrengthWeak || 'Faible';
-      case 'fair': return t.auth.passwordStrengthFair || 'Moyenne';
-      case 'good': return t.auth.passwordStrengthGood || 'Bonne';
-      case 'excellent': return t.auth.passwordStrengthExcellent || 'Excellente';
-    }
-  };
-
-  const getStrengthFeedback = (level: PasswordStrengthLevel) => {
-    switch (level) {
-      case 'weak': return t.auth.passwordFeedbackWeak;
-      case 'fair': return t.auth.passwordFeedbackFair;
-      case 'good': return t.auth.passwordFeedbackGood;
-      case 'excellent': return t.auth.passwordFeedbackExcellent;
-    }
-  };
 
   /**
    * Formate la question du captcha selon la langue active
@@ -146,7 +126,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
 
     // Politique mot de passe OpenWLM : 12 caractères minimum requis
     if (!isLogin) {
-      if (password.length < 12) {
+      if (password.length < PASSWORD_MIN_LENGTH) {
         setError(t.auth.passwordPolicy);
         return;
       }
@@ -286,43 +266,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
               placeholder={!isLogin ? t.auth.passwordPlaceholderSignup : undefined}
               required 
             />
-            {!isLogin && (
-              <div className="auth-password-guidance">
-                <div className="auth-password-help-text">
-                  {t.auth.passwordHelp}
-                </div>
-
-                {password.length > 0 && (
-                  <div className="auth-password-eval-box">
-                    <div className={`auth-compliance-status ${passwordEval.isConformant ? 'compliant' : 'non-compliant'}`}>
-                      {passwordEval.isConformant ? (
-                        <span>✓ {t.auth.passwordLengthMet.replace('{count}', String(password.length))}</span>
-                      ) : (
-                        <span>✗ {t.auth.passwordLengthRequired} ({password.length}/12)</span>
-                      )}
-                    </div>
-
-                    <div className="auth-strength-box">
-                      <div className="auth-strength-header">
-                        <span className="auth-strength-label">{t.auth.passwordStrengthLabel}</span>
-                        <span className={`auth-strength-badge ${passwordEval.strengthLevel}`}>
-                          {getStrengthName(passwordEval.strengthLevel)}
-                        </span>
-                      </div>
-                      <div className="auth-strength-bar">
-                        <div 
-                          className={`auth-strength-fill ${passwordEval.strengthLevel}`} 
-                          style={{ width: `${(passwordEval.score / 4) * 100}%` }}
-                        />
-                      </div>
-                      <div className="auth-strength-desc">
-                        {getStrengthFeedback(passwordEval.strengthLevel)}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            {!isLogin && <PasswordStrengthMeter password={password} />}
           </div>
 
           {/* Sélecteur de statut MSN classique (uniquement à la connexion) */}

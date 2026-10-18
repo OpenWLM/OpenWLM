@@ -9,6 +9,9 @@
  * - Calcul 100% local, immédiat et sans dépendance externe lourde.
  */
 
+/** Longueur minimale exigée (inscription et changement de mot de passe). */
+export const PASSWORD_MIN_LENGTH = 12;
+
 export type PasswordStrengthLevel = 'weak' | 'fair' | 'good' | 'excellent';
 
 export interface PasswordEvaluation {
@@ -23,7 +26,7 @@ export interface PasswordEvaluation {
 
 export function evaluatePassword(password: string): PasswordEvaluation {
   const len = password.length;
-  const isConformant = len >= 12;
+  const isConformant = len >= PASSWORD_MIN_LENGTH;
   const isRecommendedLength = len >= 15;
   const hasSpaces = /\s/.test(password);
 

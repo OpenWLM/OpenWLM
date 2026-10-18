@@ -42,6 +42,28 @@ const isValidRsaJwk = (k) => {
 };
 
 export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => {
+  /**
+   * Après révocation des sessions (token_version incrémenté) : la connexion temps réel de
+   * l'appareil à l'origine de la demande (`keepSocketId`) est conservée avec la nouvelle
+   * version ; les autres reçoivent `session_revoked` puis sont coupées. Couper aussi celle de
+   * l'appareil courant créait une course : la coupure arrivait avant la réponse HTTP portant
+   * le nouveau cookie, et l'appareil se croyait révoqué.
+   */
+  const cutOtherSessions = (userId, keepSocketId, newTv) => {
+    let disconnected = 0;
+    for (const sock of io.sockets.sockets.values()) {
+      if (!sock.user || sock.user.id !== userId) continue;
+      if (keepSocketId && sock.id === keepSocketId) {
+        sock.tokenTv = newTv;
+        continue;
+      }
+      try { sock.emit('session_revoked'); } catch { /* ignore */ }
+      sock.disconnect(true);
+      disconnected++;
+    }
+    return disconnected;
+  };
+
   const router = Router();
 
   /**
@@ -458,7 +480,9 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
         maxAge: 24 * 60 * 60 * 1000,
         path: '/'
       });
-      io.in(getUserRoom(userId)).disconnectSockets(true);
+      // Appareil courant conservé (`socketId`), autres appareils coupés
+      const keepSocketId = typeof req.body.socketId === 'string' && req.body.socketId.length <= 64 ? req.body.socketId : null;
+      cutOtherSessions(userId, keepSocketId, newTv);
 
       changePasswordAccountLimiter.reset(userId);
       res.json({ success: true });
@@ -509,17 +533,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
         path: '/'
       });
 
-      let disconnected = 0;
-      for (const sock of io.sockets.sockets.values()) {
-        if (!sock.user || sock.user.id !== userId) continue;
-        if (currentSocketId && sock.id === currentSocketId) {
-          sock.tokenTv = newTv; // appareil courant : sa connexion reste valide
-          continue;
-        }
-        try { sock.emit('session_revoked'); } catch { /* ignore */ }
-        sock.disconnect(true);
-        disconnected++;
-      }
+      const disconnected = cutOtherSessions(userId, currentSocketId, newTv);
 
       res.json({ success: true, disconnected, pushRemoved });
     } catch (err) {

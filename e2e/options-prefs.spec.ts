@@ -265,7 +265,8 @@ test('Options → Sécurité : bloqués (débloquer), mode privé global, code d
   await sec.getByRole('button', { name: 'Change password…' }).click();
   await expect(a.locator('.wlm-options-modal')).toHaveCount(0);
   await expect(a.locator('#old-password')).toBeVisible();
-  await a.locator('.modal-box .win-close-btn').click();
+  await a.getByRole('dialog', { name: 'Change password' }).getByRole('button', { name: 'Cancel' }).first().click();
+  await expect(a.locator('#old-password')).toHaveCount(0);
 
   // Réinitialiser mes clés : ouvre la fenêtre de confirmation (rien n'est réinitialisé ici)
   await openOptionsTab(a, 'Security');
@@ -422,4 +423,70 @@ test('Réinitialiser mes clés : seules les données de CE compte sont effacées
   ]));
   expect(other, 'clés et copie locale de l\'autre compte conservées').toEqual([true, true]);
   await ctx.close();
+});
+
+test('Changer le mot de passe : fenêtre Aero, confirmation, complexité, autres appareils déconnectés', async ({ browser }) => {
+  test.setTimeout(150000);
+  const name = `pwd_${Date.now()}`;
+  const NEW_PASSWORD = 'Nouvelle phrase de passe E2E 2026';
+  const pc = await newUserPage(browser, name);
+
+  // Même compte sur un « téléphone »
+  const phoneCtx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
+  const phone = await phoneCtx.newPage();
+  phone.on('dialog', (d) => d.accept());
+  const signIn = async (password: string) => {
+    await phone.goto('/');
+    await phone.locator('.auth-field input[type="text"]').first().fill(name);
+    await phone.locator('.auth-field input[type="password"]').fill(password);
+    await phone.locator('button.wlm-btn-auth').click();
+  };
+  await signIn(PASSWORD);
+  await expect(phone.locator('.status-trigger')).toBeVisible({ timeout: 45000 });
+
+  // Ouverture depuis Options → Sécurité
+  await openOptionsTab(pc, 'Security');
+  await pc.getByTestId('options-security').getByRole('button', { name: 'Change password…' }).click();
+  const dialog = pc.getByRole('dialog', { name: 'Change password' });
+  await expect(dialog).toBeVisible();
+  const submit = dialog.getByRole('button', { name: 'Change password', exact: true });
+  await expect(submit).toBeDisabled();
+
+  // Complexité comme à l'inscription : trop court, puis conforme
+  await dialog.locator('#old-password').fill(PASSWORD);
+  await dialog.locator('#new-password').fill('court');
+  await expect(dialog.getByTestId('password-strength')).toContainText('(5/12)');
+  await dialog.locator('#new-password').fill(NEW_PASSWORD);
+  await expect(dialog.getByTestId('password-strength')).toContainText('✓');
+
+  // Confirmation : différente → refus, identique → bouton actif
+  await dialog.locator('#confirm-password').fill(`${NEW_PASSWORD}x`);
+  await expect(dialog.getByTestId('password-match')).toContainText('do not match');
+  await expect(submit).toBeDisabled();
+  await dialog.locator('#confirm-password').fill(NEW_PASSWORD);
+  await expect(dialog.getByTestId('password-match')).toContainText('Both passwords match');
+
+  // Mot de passe actuel faux : erreur dans la fenêtre (pas d'alert)
+  await dialog.locator('#old-password').fill('pas le bon mot de passe');
+  await submit.click();
+  await expect(dialog.getByRole('alert')).toContainText('Current password is incorrect.', { timeout: 30000 });
+
+  // Bon mot de passe actuel : changé
+  await dialog.locator('#old-password').fill(PASSWORD);
+  await submit.click();
+  await expect(dialog.getByRole('status')).toContainText('Password changed', { timeout: 30000 });
+  await expect(dialog).toHaveCount(0, { timeout: 10000 });
+
+  // Le « téléphone » revient à l'écran de connexion ; le PC reste connecté (reconnexion temps réel)
+  await expect(phone.locator('.wlm-auth-form')).toBeVisible({ timeout: 20000 });
+  await expect(phone.locator('.wlm-auth-form')).toContainText('your session was closed from another device');
+  expect((await pc.request.get('/api/user/me')).status()).toBe(200);
+  await openOptionsTab(pc, 'Connection');
+  await expect(pc.getByTestId('diag-realtime')).toContainText('Connected', { timeout: 15000 });
+  await closeOptions(pc);
+
+  // L'ancien mot de passe ne fonctionne plus, le nouveau oui
+  await signIn(NEW_PASSWORD);
+  await expect(phone.locator('.status-trigger')).toBeVisible({ timeout: 45000 });
+  await phoneCtx.close();
 });

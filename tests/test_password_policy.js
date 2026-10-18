@@ -74,16 +74,27 @@ test('UI Logic: Auth.tsx enforces length >= 12 and removes rigid legacy regex', 
     'Legacy artificial complexity regex should not exist in Auth.tsx'
   );
 
-  // Ensure minimal length rule exists
+  // Ensure minimal length rule exists (shared constant = 12)
   assert.ok(
-    authTsx.includes('password.length < 12'),
-    'Auth.tsx should block submission when password.length < 12'
+    authTsx.includes('password.length < PASSWORD_MIN_LENGTH'),
+    'Auth.tsx should block submission when password.length < PASSWORD_MIN_LENGTH'
   );
+  const strengthTs = fs.readFileSync(path.join(rootDir, 'src/utils/PasswordStrength.ts'), 'utf8');
+  assert.ok(strengthTs.includes('export const PASSWORD_MIN_LENGTH = 12;'), 'Minimum length should be 12');
 
-  // Ensure dynamic feedback is rendered
-  assert.ok(authTsx.includes('auth-password-guidance'), 'Guidance container should exist in Auth.tsx');
-  assert.ok(authTsx.includes('auth-compliance-status'), 'Compliance status element should exist in Auth.tsx');
-  assert.ok(authTsx.includes('auth-strength-bar'), 'Strength progress bar should exist in Auth.tsx');
+  // Ensure dynamic feedback is rendered (shared meter, also used to change the password)
+  assert.ok(authTsx.includes('<PasswordStrengthMeter password={password} />'), 'Auth.tsx should render the strength meter');
+  const meterTsx = fs.readFileSync(path.join(rootDir, 'src/components/PasswordStrengthMeter.tsx'), 'utf8');
+  assert.ok(meterTsx.includes('auth-password-guidance'), 'Guidance container should exist in the meter');
+  assert.ok(meterTsx.includes('auth-compliance-status'), 'Compliance status element should exist in the meter');
+  assert.ok(meterTsx.includes('auth-strength-bar'), 'Strength progress bar should exist in the meter');
+});
+
+test('UI Logic: changing the password applies the same rules, with a confirmation', () => {
+  const modalTsx = fs.readFileSync(path.join(rootDir, 'src/components/PasswordModal.tsx'), 'utf8');
+  assert.ok(modalTsx.includes('<PasswordStrengthMeter password={next} />'), 'Same strength meter as sign-up');
+  assert.ok(modalTsx.includes('evaluatePassword(next).isConformant'), 'Submission requires a conformant new password');
+  assert.ok(modalTsx.includes("confirm === next"), 'Submission requires the confirmation to match');
 });
 
 test('i18n: FR and EN translation files contain all required guidance and strength keys', () => {

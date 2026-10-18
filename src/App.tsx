@@ -817,8 +817,6 @@ const App: React.FC = () => {
   } = useProfile({
     user,
     setUser,
-    myKeysRef,
-    setShowPasswordModal,
     setIsDeviceRemembered,
     setPersistenceNotice,
     forgetDeviceSuccessText: t.auth.forgetDeviceSuccess
@@ -1773,6 +1771,8 @@ const App: React.FC = () => {
   useEffect(() => { activeCallIdRef.current = activeCallId; }, [activeCallId]);
   // Déconnexion lisible depuis les handlers socket (enregistrés une fois par session)
   const handleLogoutRef = useRef<((reason?: string, opts?: { local?: boolean }) => Promise<void>) | null>(null);
+  // Déconnexion en cours sur CET appareil : la coupure de connexion qui suit n'est pas à vérifier
+  const loggingOutRef = useRef(false);
   useEffect(() => { resyncOpenChatsRef.current = resyncOpenChats; }, [resyncOpenChats]);
 
   useEffect(() => {
@@ -1827,14 +1827,25 @@ const App: React.FC = () => {
       // l'écran de connexion, sans appeler /api/logout (qui révoquerait la session des autres).
       let checkingSession = false;
       const verifySessionOrLogout = async () => {
-        if (checkingSession) return;
+        if (checkingSession || loggingOutRef.current) return;
         checkingSession = true;
+        // Une seconde chance après un court délai : un autre onglet de ce navigateur vient
+        // peut-être de recevoir le cookie renouvelé (même stockage de cookies)
+        const sessionStatus = async () => {
+          try { await axios.get('/api/user/me'); return 'valid'; } catch (err) {
+            const r = (err as { response?: { status?: number; data?: { code?: string } } }).response;
+            return r?.status === 401 && r.data?.code === 'session_revoked' ? 'revoked' : 'unknown';
+          }
+        };
         try {
-          await axios.get('/api/user/me');
-          if (!newSocket.connected) newSocket.connect();
-        } catch (err) {
-          const r = (err as { response?: { status?: number; data?: { code?: string } } }).response;
-          if (r?.status === 401 && r.data?.code === 'session_revoked') {
+          let st = await sessionStatus();
+          if (st === 'revoked') {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            st = await sessionStatus();
+          }
+          if (st === 'valid') {
+            if (!newSocket.connected) newSocket.connect();
+          } else if (st === 'revoked') {
             await handleLogoutRef.current?.('session_revoked', { local: true });
           }
         } finally {
@@ -1842,6 +1853,12 @@ const App: React.FC = () => {
         }
       };
       newSocket.on('session_revoked', () => { verifySessionOrLogout(); });
+      // Connexion coupée PAR LE SERVEUR (changement de mot de passe, déconnexion sur un autre
+      // appareil…) : Socket.IO ne se reconnecte pas seul dans ce cas. Session toujours valide
+      // (cookie renouvelé) → reconnexion ; révoquée → écran de connexion.
+      newSocket.on('disconnect', (reason) => {
+        if (reason === 'io server disconnect' && !loggingOutRef.current) verifySessionOrLogout();
+      });
       newSocket.on('connect_error', (err: Error & { data?: { code?: string } }) => {
         if (err?.data?.code === 'session_revoked') verifySessionOrLogout();
       });
@@ -3407,6 +3424,8 @@ const App: React.FC = () => {
   // `local` : session déjà révoquée par le serveur — on nettoie seulement cet appareil
   // (appeler /api/logout révoquerait aussi la session de l'appareil à l'origine de la demande).
   const handleLogout = async (reason?: string, opts: { local?: boolean } = {}) => {
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true;
     if (reason) console.warn("[Session] Déconnexion:", reason); 
     const currentToken = user?.token;
     if (!opts.local) {
@@ -4741,7 +4760,7 @@ const App: React.FC = () => {
       {showPasswordModal && (
         <PasswordModal
           onClose={() => setShowPasswordModal(false)}
-          onSubmit={handleChangePassword}
+          onSubmit={(current, next) => handleChangePassword(current, next, socket?.id)}
         />
       )}
 

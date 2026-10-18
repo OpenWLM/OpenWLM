@@ -24,6 +24,7 @@ import {
   type SystemIdleSupport
 } from '../utils/systemIdle';
 import type { User } from '../types';
+import type { ChangePasswordResult } from '../components/PasswordModal';
 
 /**
  * DOMAINE PROFIL PERSONNEL
@@ -43,8 +44,6 @@ export interface UseProfileOptions {
   user: User | null;
   setUser: Dispatch<SetStateAction<User | null>>;
   /** Clés E2EE courantes (le changement de mot de passe re-chiffre la clé privée). */
-  myKeysRef: { current: { privateKeyJwk?: any } | null };
-  setShowPasswordModal: Dispatch<SetStateAction<boolean>>;
   setIsDeviceRemembered: Dispatch<SetStateAction<boolean>>;
   setPersistenceNotice: Dispatch<SetStateAction<string | null>>;
   /** Texte i18n affiché après « oublier cet appareil ». */
@@ -79,7 +78,7 @@ export interface ProfileApi {
   enableSystemIdle: () => Promise<SystemIdlePermission>;
   disableSystemIdle: () => void;
   syncProfile: (updates: Partial<User>) => Promise<void>;
-  handleChangePassword: (e: React.FormEvent) => Promise<void>;
+  handleChangePassword: (currentPassword: string, newPassword: string, socketId?: string) => Promise<ChangePasswordResult>;
   handleForgetDevice: () => Promise<void>;
 }
 
@@ -87,8 +86,6 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
   const {
     user,
     setUser,
-    myKeysRef,
-    setShowPasswordModal,
     setIsDeviceRemembered,
     setPersistenceNotice,
     forgetDeviceSuccessText
@@ -261,36 +258,30 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
   /**
    * CHANGEMENT DE MOT DE PASSE (re-chiffrement Zero-Knowledge de la clé privée)
    */
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    const oldPInput = document.getElementById('old-password') as HTMLInputElement;
-    const newPInput = document.getElementById('new-password') as HTMLInputElement;
-    const oldP = oldPInput ? oldPInput.value : '';
-    const newP = newPInput ? newPInput.value : '';
-
-    if (!oldP || !newP) {
-      alert("Veuillez renseigner l'ancien et le nouveau mot de passe.");
-      return;
-    }
-
+  // `socketId` : connexion temps réel de cet appareil, conservée par le serveur (les autres sont coupées)
+  const handleChangePassword = async (oldP: string, newP: string, socketId?: string): Promise<ChangePasswordResult> => {
+    if (!user || !oldP || !newP) return { ok: false, error: 'failed' };
     try {
       // 1. Dériver oldAuthKeyHex et oldVaultKey depuis l'ancien mot de passe
       const { authKeyHex: oldAuthKeyHex, vaultKey: oldVaultKey } = await deriveZeroKnowledgeKeys(user.username, oldP);
 
-      // 2. Déchiffrer la clé privée RSA existante
-      let privateKeyJwk = myKeysRef.current?.privateKeyJwk;
-      if (!privateKeyJwk && user.encrypted_private_key) {
-        const vault = typeof user.encrypted_private_key === 'string'
-          ? JSON.parse(user.encrypted_private_key)
-          : user.encrypted_private_key;
+      // 2. Clé privée RSA en clair (JWK), obtenue en déchiffrant le coffre avec l'ancien mot de
+      //    passe (échec = ancien mot de passe incorrect). La clé de la session ne convient pas :
+      //    elle est NON EXTRACTIBLE (CryptoKey), la re-chiffrer donnait un coffre vide.
+      let vaultSource = user.encrypted_private_key;
+      if (!vaultSource) {
+        const me = await axios.get('/api/user/me');
+        vaultSource = me.data?.user?.encrypted_private_key;
+      }
+      if (!vaultSource) return { ok: false, error: 'failed' };
+      let privateKeyJwk: JsonWebKey | null = null;
+      try {
+        const vault = typeof vaultSource === 'string' ? JSON.parse(vaultSource) : vaultSource;
         privateKeyJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, oldVaultKey);
+      } catch {
+        privateKeyJwk = null;
       }
-
-      if (!privateKeyJwk) {
-        alert("Impossible de déchiffrer votre clé privée actuelle. Vérifiez l'ancien mot de passe.");
-        return;
-      }
+      if (!privateKeyJwk || typeof privateKeyJwk !== 'object' || !privateKeyJwk.d) return { ok: false, error: 'wrongCurrent' };
 
       // 3. Dériver newAuthKeyHex et newVaultKey depuis le nouveau mot de passe
       const { authKeyHex: newAuthKeyHex, vaultKey: newVaultKey } = await deriveZeroKnowledgeKeys(user.username, newP);
@@ -298,23 +289,25 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       // 4. Re-chiffrer la clé privée RSA avec newVaultKey
       const newEncryptedPrivateKey = await encryptPrivateKeyVault(privateKeyJwk, newVaultKey);
 
-      // 5. Envoyer { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey }
+      // 5. Envoyer { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey }. Le serveur vérifie
+      //    l'ancien mot de passe, renouvelle le cookie de CET appareil et coupe les connexions
+      //    des autres (ils reviennent à l'écran de connexion).
       const res = await axios.post('/api/user/change-password', {
         oldAuthKeyHex,
         newAuthKeyHex,
-        newEncryptedPrivateKey
+        newEncryptedPrivateKey,
+        socketId
       });
-
       if (res.data && res.data.success) {
         setUser(prev => prev ? { ...prev, encrypted_private_key: JSON.stringify(newEncryptedPrivateKey) } : null);
-        if (oldPInput) oldPInput.value = '';
-        if (newPInput) newPInput.value = '';
-        alert('Mot de passe changé avec succès !');
-        setShowPasswordModal(false);
+        return { ok: true };
       }
-    } catch (err: any) {
+      return { ok: false, error: 'failed' };
+    } catch (err: unknown) {
+      const r = (err as { response?: { status?: number; data?: { error?: string } } }).response;
       console.error("Échec changement mot de passe:", err);
-      alert(err.response?.data?.error || 'Erreur lors du changement de mot de passe');
+      if (r?.status === 401) return { ok: false, error: 'wrongCurrent' };
+      return { ok: false, error: 'failed', message: r?.data?.error };
     }
   };
 

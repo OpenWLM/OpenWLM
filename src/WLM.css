@@ -4405,6 +4405,29 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   cursor: pointer;
 }
 
+/* Fenêtre « Changer le mot de passe » (même habillage Aero) */
+.wlm-password-dialog { width: min(92vw, 420px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
+.wlm-password-dialog form { display: flex; flex-direction: column; min-height: 0; }
+.wlm-password-dialog .win-close-btn { margin-left: auto; }
+.wlm-password-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; font-size: 12px; }
+.wlm-password-field { display: flex; flex-direction: column; gap: 4px; }
+.wlm-password-field label { font-size: 11.5px; font-weight: 600; color: #1a3a5c; }
+.wlm-password-field input {
+  padding: 6px 8px;
+  border: 1px solid #a9c3da;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 12.5px;
+  box-shadow: inset 0 1px 2px rgba(0, 40, 80, 0.08);
+}
+.wlm-password-field input:focus { outline: none; border-color: #3c8dde; box-shadow: 0 0 0 2px rgba(60, 141, 222, 0.25); }
+.wlm-password-check { font-size: 11px; font-weight: 500; }
+.wlm-password-check.ok { color: #1e7e34; }
+.wlm-password-check.bad { color: #c0392b; }
+.wlm-password-note { font-size: 11px; color: #3b5c7e; line-height: 1.4; }
+.wlm-password-error { font-size: 11.5px; font-weight: 600; color: #c53030; }
+.wlm-password-success { font-size: 11.5px; font-weight: 600; color: #1e7e34; }
+
 @keyframes wlm-aero-fade {
   from { opacity: 0; }
   to { opacity: 1; }

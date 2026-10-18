@@ -392,7 +392,6 @@
     "messagesWinks": "Lire automatiquement les clins d'œil reçus",
     "messagesHistory": "Historique",
     "messagesLocalHistory": "Garder une copie chiffrée des conversations sur cet appareil",
-    "messagesLocalHistoryHint": "Affiche les conversations plus vite à l'ouverture. Désactivé, la copie est effacée et l'historique est toujours rechargé depuis le serveur.",
     "messagesClearCache": "Effacer la copie locale",
     "messagesCacheCleared": "Copie locale effacée.",
     "soundsEnable": "Activer les sons",

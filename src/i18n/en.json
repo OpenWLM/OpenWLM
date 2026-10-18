@@ -392,7 +392,6 @@
     "messagesWinks": "Play received winks automatically",
     "messagesHistory": "History",
     "messagesLocalHistory": "Keep an encrypted copy of conversations on this device",
-    "messagesLocalHistoryHint": "Shows conversations faster when you open them. When off, the copy is deleted and history is always reloaded from the server.",
     "messagesClearCache": "Delete the local copy",
     "messagesCacheCleared": "Local copy deleted.",
     "soundsEnable": "Turn on sounds",

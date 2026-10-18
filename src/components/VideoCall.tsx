@@ -4,7 +4,7 @@ import { Socket } from 'socket.io-client';
 import { useI18n } from '../i18n';
 import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 import { formatNickname } from '../utils/NicknameFormatter';
-import { startCallKeepAlive } from '../utils/callKeepAlive';
+import { startCallKeepAlive, keepScreenOn } from '../utils/callKeepAlive';
 import {
   encryptMessagePayload,
   decryptMessagePayload,
@@ -584,6 +584,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     if (!callActive) return;
     return startCallKeepAlive({ title: keepAliveTitle, onHangUp: () => finishRef.current() });
   }, [callActive, keepAliveTitle]);
+
+  // Vidéo en cours (la mienne ou celle du correspondant) : garder l'écran allumé
+  const videoFlowing = callActive && (camOn || sharingScreen || remoteVideoOn);
+  useEffect(() => {
+    if (!videoFlowing) return;
+    return keepScreenOn();
+  }, [videoFlowing]);
 
   // Minuteur d'appel
   useEffect(() => {

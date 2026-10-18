@@ -79,3 +79,38 @@ export const startCallKeepAlive = (opts: { title: string; onHangUp: () => void }
     }
   };
 };
+
+/**
+ * ÉCRAN ALLUMÉ PENDANT LA VIDÉO (API Screen Wake Lock, tous appareils)
+ *
+ * Écran éteint, la caméra se coupe : tant que de la vidéo circule (la mienne ou celle du
+ * correspondant), on demande au système de ne pas mettre l'écran en veille. Le verrou est
+ * relâché par le système quand la page passe en arrière-plan : il est redemandé au retour.
+ * L'utilisateur peut toujours éteindre l'écran avec le bouton (l'audio continue alors sur
+ * Android, cf. ci-dessus). Sans l'API (navigateur ancien), rien ne change.
+ */
+export const keepScreenOn = (): (() => void) => {
+  const wl = typeof navigator !== 'undefined' ? (navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock : undefined;
+  if (!wl) return () => { /* API absente */ };
+  let stopped = false;
+  let sentinel: { release(): Promise<void> } | null = null;
+  let pending = false;
+  const acquire = () => {
+    if (stopped || sentinel || pending || document.visibilityState !== 'visible') return;
+    pending = true;
+    wl.request('screen').finally(() => { pending = false; }).then((s) => {
+      if (stopped) { s.release().catch(() => { /* ignore */ }); return; }
+      sentinel = s;
+      (s as unknown as EventTarget).addEventListener?.('release', () => { if (sentinel === s) sentinel = null; });
+    }).catch(() => { /* refusé (batterie faible…) : l'écran suivra le délai du système */ });
+  };
+  const onVisible = () => acquire();
+  document.addEventListener('visibilitychange', onVisible);
+  acquire();
+  return () => {
+    stopped = true;
+    document.removeEventListener('visibilitychange', onVisible);
+    sentinel?.release().catch(() => { /* ignore */ });
+    sentinel = null;
+  };
+};

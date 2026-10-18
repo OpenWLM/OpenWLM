@@ -85,6 +85,11 @@ TURN_PASSWORD=<credential>
   l'appel). Uniquement sur Android : sur iPhone, iOS coupe le micro des pages web écran
   verrouillé, seule une application native peut l'éviter. La caméra se coupe toujours écran
   éteint. Code : `src/utils/callKeepAlive.ts`.
+- **Écran allumé pendant la vidéo** (tous appareils) : tant que de la vidéo circule (ma caméra,
+  mon partage d'écran ou la vidéo du correspondant), l'application demande au système de garder
+  l'écran allumé (API Screen Wake Lock). Le verrou est redemandé au retour dans l'application
+  et relâché dès que la vidéo s'arrête. En appel audio, l'écran peut s'éteindre normalement.
+  On peut toujours l'éteindre avec le bouton : sur Android, l'audio continue.
 - **Timeout « pas de réponse »** (45 s) côté appelant.
 - **Erreurs média explicites** (permission refusée / aucun périphérique / déjà utilisé).
 - **Signalisation WebRTC centralisée** dans `<VideoCall/>` (fin du buffer ICE global fuyant).

@@ -40,8 +40,9 @@ const registerAndLogin = async (page: Page, username: string) => {
 // mais chaque compte de test a la sienne.
 const fakeClientIp = () => `10.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}`;
 
-const newUserPage = async (browser: Browser, username: string, userAgent?: string) => {
-  const ctx = await browser.newContext({ permissions: ['camera', 'microphone'], locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() }, ...(userAgent ? { userAgent } : {}) });
+const newUserPage = async (browser: Browser, username: string, opts: { userAgent?: string; init?: () => void } = {}) => {
+  const ctx = await browser.newContext({ permissions: ['camera', 'microphone'], locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() }, ...(opts.userAgent ? { userAgent: opts.userAgent } : {}) });
+  if (opts.init) await ctx.addInitScript(opts.init);
   const page = await ctx.newPage();
   await registerAndLogin(page, username);
   return page;
@@ -83,7 +84,17 @@ test('Android : pendant l\'appel, média de maintien + notification multimédia 
   const nameB = `kab_${stamp}`;
   const a = await newUserPage(browser, nameA);
   const androidUa = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
-  const b = await newUserPage(browser, nameB, androidUa);
+  // Screen Wake Lock simulé : compte les verrous actifs (l'API réelle dépend de l'écran)
+  const b = await newUserPage(browser, nameB, { userAgent: androidUa, init: () => {
+    const w = window as unknown as { __wakeLocks: number };
+    w.__wakeLocks = 0;
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => {
+      w.__wakeLocks++;
+      const target = new EventTarget();
+      let released = false;
+      return Object.assign(target, { release: async () => { if (!released) { released = true; w.__wakeLocks--; } } });
+    } } });
+  } });
   await connect(a, b, nameA, nameB);
 
   await a.locator('.contact-row', { hasText: nameB }).click();
@@ -96,9 +107,20 @@ test('Android : pendant l\'appel, média de maintien + notification multimédia 
   // Ordinateur : rien
   expect(await mediaSessionState(a)).toEqual({ title: null, state: 'none' });
 
+  // Écran : libre en audio, maintenu allumé dès que de la vidéo circule
+  const wakeLocks = () => b.evaluate(() => (window as unknown as { __wakeLocks: number }).__wakeLocks);
+  expect(await wakeLocks()).toBe(0);
+  await b.getByRole('button', { name: 'Turn camera on' }).click();
+  await expect.poll(wakeLocks, { timeout: 10000 }).toBe(1);
+  await b.getByRole('button', { name: 'Turn camera off' }).click();
+  await expect.poll(wakeLocks, { timeout: 10000 }).toBe(0);
+  await a.getByRole('button', { name: 'Turn camera on' }).click();
+  await expect.poll(wakeLocks, { timeout: 20000 }).toBe(1);
+
   // Fin d'appel : la notification disparaît
   await a.getByRole('button', { name: 'Hang up' }).first().click();
   await expect.poll(() => mediaSessionState(b), { timeout: 15000 }).toEqual({ title: null, state: 'none' });
+  await expect.poll(wakeLocks, { timeout: 10000 }).toBe(0);
 });
 
 test('appel audio → activation de la caméra en cours d\'appel → le pair reçoit la vidéo', async ({ browser }) => {

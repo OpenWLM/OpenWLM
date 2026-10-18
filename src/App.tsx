@@ -41,6 +41,7 @@ import { AvatarModal } from './components/AvatarModal';
 import { WinksModal } from './components/WinksModal';
 import { BgModal } from './components/BgModal';
 import { PasswordModal } from './components/PasswordModal';
+import { getExistingPushSubscription } from './utils/PushNotificationManager';
 import { AddContactModal } from './components/AddContactModal';
 import { FontModal, type FontSettings } from './components/FontModal';
 import { AllEmoticonsModal } from './components/AllEmoticonsModal';
@@ -1238,6 +1239,12 @@ const App: React.FC = () => {
           }
         }
       } catch (err) {
+        const r = (err as { response?: { status?: number; data?: { code?: string } } }).response;
+        if (r?.status === 401 && r.data?.code === 'session_revoked') {
+          // Session révoquée depuis un autre appareil : retour à l'écran de connexion
+          await handleLogoutRef.current?.('session_revoked', { local: true });
+          return;
+        }
         console.warn("[Session] Impossible de synchroniser le profil:", err);
       }
 
@@ -1755,6 +1762,8 @@ const App: React.FC = () => {
     fetchPendingConversations();
   }, [loadChatHistory, fetchPendingConversations]);
   const resyncOpenChatsRef = useRef(resyncOpenChats);
+  // Déconnexion lisible depuis les handlers socket (enregistrés une fois par session)
+  const handleLogoutRef = useRef<((reason?: string, opts?: { local?: boolean }) => Promise<void>) | null>(null);
   useEffect(() => { resyncOpenChatsRef.current = resyncOpenChats; }, [resyncOpenChats]);
 
   useEffect(() => {
@@ -1802,6 +1811,32 @@ const App: React.FC = () => {
       // Fenêtre de silence après notre propre (re)connexion : les contacts qui se
       // reconnectent en masse (ex. redémarrage du serveur) ne déclenchent pas une rafale.
       let signInQuietUntil = Date.now() + 10000;
+      // SESSION RÉVOQUÉE (« Déconnecter mes autres sessions », changement de mot de passe,
+      // déconnexion sur un autre appareil) : le serveur coupe la connexion temps réel. Un autre
+      // onglet du MÊME navigateur partage le cookie, qui vient peut-être d'être renouvelé : on
+      // vérifie donc la session avant tout. Valide → simple reconnexion ; révoquée → retour à
+      // l'écran de connexion, sans appeler /api/logout (qui révoquerait la session des autres).
+      let checkingSession = false;
+      const verifySessionOrLogout = async () => {
+        if (checkingSession) return;
+        checkingSession = true;
+        try {
+          await axios.get('/api/user/me');
+          if (!newSocket.connected) newSocket.connect();
+        } catch (err) {
+          const r = (err as { response?: { status?: number; data?: { code?: string } } }).response;
+          if (r?.status === 401 && r.data?.code === 'session_revoked') {
+            await handleLogoutRef.current?.('session_revoked', { local: true });
+          }
+        } finally {
+          checkingSession = false;
+        }
+      };
+      newSocket.on('session_revoked', () => { verifySessionOrLogout(); });
+      newSocket.on('connect_error', (err: Error & { data?: { code?: string } }) => {
+        if (err?.data?.code === 'session_revoked') verifySessionOrLogout();
+      });
+
       newSocket.on('connect', () => {
         signInQuietUntil = Date.now() + 10000;
         refreshResumableGames();
@@ -3339,21 +3374,27 @@ const App: React.FC = () => {
   /**
    * DÉCONNEXION (PURGE COMPLÈTE DE LA MÉMOIRE VIVE)
    */
-  const handleLogout = async (reason?: string) => {
+  // `local` : session déjà révoquée par le serveur — on nettoie seulement cet appareil
+  // (appeler /api/logout révoquerait aussi la session de l'appareil à l'origine de la demande).
+  const handleLogout = async (reason?: string, opts: { local?: boolean } = {}) => {
     if (reason) console.warn("[Session] Déconnexion:", reason); 
     const currentToken = user?.token;
-    if (socket) {
-      socket.emit('manual_disconnect');
-    }
-    // SÉCURITÉ : Révocation du token côté serveur via l'endpoint dédié et suppression du cookie HttpOnly
-    try {
-      await fetch('/api/logout', {
-        method: 'POST',
-        headers: currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {},
-        credentials: 'include'
-      });
-    } catch (e) {
-      console.warn('[Logout] Erreur appel /api/logout:', e);
+    if (!opts.local) {
+      if (socket) {
+        socket.emit('manual_disconnect');
+      }
+      // SÉCURITÉ : Révocation du token côté serveur via l'endpoint dédié et suppression du cookie HttpOnly
+      try {
+        await fetch('/api/logout', {
+          method: 'POST',
+          headers: currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {},
+          credentials: 'include'
+        });
+      } catch (e) {
+        console.warn('[Logout] Erreur appel /api/logout:', e);
+      }
+    } else if (socket) {
+      socket.disconnect();
     }
     draftsRef.current = {};
     // SÉCURITÉ : Purge complète du stockage JS
@@ -3363,6 +3404,8 @@ const App: React.FC = () => {
       localStorage.removeItem('wlm_open_chats');
       localStorage.removeItem('wlm_active_chat');
       sessionStorage.clear();
+      // Message affiché sur l'écran de connexion après le rechargement
+      if (reason === 'session_revoked') sessionStorage.setItem('wlm_session_notice', 'revoked');
     } catch {}
 
     // SÉCURITÉ : Purger les clés E2EE mémorisées sur cet appareil
@@ -3378,6 +3421,18 @@ const App: React.FC = () => {
     setMyKeys(null);
     setUser(null);
     window.location.reload(); 
+  };
+  useEffect(() => { handleLogoutRef.current = handleLogout; });
+
+  // Options → Sécurité : couper les autres appareils, garder celui-ci (connexion et Push)
+  const revokeOtherSessions = async (): Promise<{ ok: boolean; disconnected?: number }> => {
+    try {
+      const sub = await getExistingPushSubscription().catch(() => null);
+      const res = await axios.post('/api/sessions/revoke-others', { socketId: socket?.id, keepPushEndpoint: sub?.endpoint });
+      return { ok: true, disconnected: Number(res.data?.disconnected) || 0 };
+    } catch {
+      return { ok: false };
+    }
   };
 
 
@@ -4791,7 +4846,8 @@ const App: React.FC = () => {
             onToggleGlobalPrivate: toggleGlobalPrivateMode,
             safetyNumber: myFingerprint ? formatSafetyNumber(myFingerprint) : '',
             onChangePassword: () => { setShowOptionsModal(false); setShowPasswordModal(true); },
-            onResetKeys: () => { setShowOptionsModal(false); handleResetE2EKeys(); }
+            onResetKeys: () => { setShowOptionsModal(false); handleResetE2EKeys(); },
+            onRevokeOtherSessions: revokeOtherSessions
           }}
           onClose={() => setShowOptionsModal(false)}
         />

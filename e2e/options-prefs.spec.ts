@@ -7,6 +7,7 @@ import { test, expect, type Browser, type Page } from '@playwright/test';
  */
 
 const PASSWORD = 'MotDePasseE2E-1234';
+const REMEMBER_LABEL = 'Remember my E2EE keys on this device';
 
 const registerAndLogin = async (page: Page, username: string) => {
   page.on('dialog', (d) => d.accept());
@@ -252,4 +253,51 @@ test('Options → Sécurité : bloqués (débloquer), mode privé global, code d
   await openOptionsTab(a, 'Security');
   await sec.getByRole('button', { name: 'Reset my keys…' }).click();
   await expect(a.locator('.wlm-reset-modal')).toBeVisible();
+});
+
+test('Options → Sécurité : « Déconnecter mes autres sessions » (autre appareil coupé, onglets de cet appareil conservés)', async ({ browser }) => {
+  test.setTimeout(150000);
+  const name = `rvk_${Date.now()}`;
+  // « Téléphone » : la session ouverte à l'inscription
+  const phone = await newUserPage(browser, name);
+
+  // « PC » : même compte, autre navigateur, clés mémorisées (un 2e onglet s'ouvre déjà connecté)
+  const pcCtx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
+  const pc = await pcCtx.newPage();
+  pc.on('dialog', (d) => d.accept());
+  await pc.goto('/');
+  await pc.locator('.auth-field input[type="text"]').first().fill(name);
+  await pc.locator('.auth-field input[type="password"]').fill(PASSWORD);
+  await pc.getByLabel(REMEMBER_LABEL).check();
+  await pc.locator('button.wlm-btn-auth').click();
+  await expect(pc.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
+  await expect(pc.locator('.status-trigger')).toBeVisible();
+
+  // Second onglet du PC (même cookie) : doit rester connecté
+  const pcTab2 = await pcCtx.newPage();
+  await pcTab2.goto('/');
+  await expect(pcTab2.locator('.status-trigger')).toBeVisible({ timeout: 45000 });
+
+  // Confirmation intégrée (Annuler puis Oui), puis déconnexion des autres sessions
+  await openOptionsTab(pc, 'Security');
+  const box = pc.getByTestId('revoke-sessions');
+  await box.getByRole('button', { name: 'Sign out my other sessions' }).click();
+  await box.getByRole('button', { name: 'Cancel' }).click();
+  await box.getByRole('button', { name: 'Sign out my other sessions' }).click();
+  await box.getByRole('button', { name: 'Yes, sign them out' }).click();
+  await expect(box).toContainText('Your other sessions have been signed out.', { timeout: 10000 });
+
+  // Le téléphone revient à l'écran de connexion, avec l'explication
+  await expect(phone.locator('.wlm-auth-form')).toBeVisible({ timeout: 20000 });
+  await expect(phone.locator('.wlm-auth-form')).toContainText('your session was closed from another device');
+
+  // Le PC (les deux onglets) reste connecté, y compris après rechargement
+  await pc.waitForTimeout(2000);
+  await expect(pc.locator('.wlm-auth-form')).toHaveCount(0);
+  await expect(pcTab2.locator('.wlm-auth-form')).toHaveCount(0);
+  expect((await pc.request.get('/api/user/me')).status()).toBe(200);
+  await pcTab2.reload();
+  await expect(pcTab2.locator('.status-trigger')).toBeVisible({ timeout: 45000 });
+  await expect(pcTab2.locator('.wlm-auth-form')).toHaveCount(0);
+  await pcCtx.close();
 });

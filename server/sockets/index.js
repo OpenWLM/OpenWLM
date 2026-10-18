@@ -58,7 +58,9 @@ export const setupSocketHandlers = (io, broadcastStatusToContacts) => {
       const currentTv = dbUser.token_version || 0;
       const tokenTv = payload.tv !== undefined ? payload.tv : 0;
       if (tokenTv !== currentTv) {
-        return next(new Error("Session révoquée. Veuillez vous reconnecter."));
+        const revoked = new Error("Session révoquée. Veuillez vous reconnecter.");
+        revoked.data = { code: 'session_revoked' }; // lu par le client (connect_error)
+        return next(revoked);
       }
 
       socket.user = dbUser;

@@ -10,6 +10,7 @@ import {
   inviteRateLimiter, 
   changePasswordAccountLimiter, 
   resetE2eAccountLimiter, 
+  revokeSessionsAccountLimiter,
   canInteract, 
   isValidPath, 
   hashPassword, 
@@ -464,6 +465,66 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     } catch (err) {
       console.error("Change password error:", err);
       res.status(500).json({ error: 'Erreur lors du changement de mot de passe.' });
+    }
+  });
+
+  /**
+   * Déconnecter mes autres sessions (Options → Sécurité)
+   *
+   * Même mécanisme que le changement de mot de passe : le compteur de sessions du compte
+   * (token_version) augmente, ce qui invalide toutes les connexions ouvertes, puis CET appareil
+   * reçoit aussitôt un nouveau cookie valide. Les connexions temps réel des autres appareils
+   * reçoivent `session_revoked` et sont coupées ; celle de l'appareil courant (`socketId`) est
+   * conservée. Les abonnements Push des autres appareils sont supprimés (un téléphone perdu ne
+   * reçoit plus de notifications), sauf celui de cet appareil (`keepPushEndpoint`).
+   */
+  router.post('/sessions/revoke-others', authenticateToken, sensitiveRateLimiter, (req, res) => {
+    const userId = req.user.id;
+    const limit = revokeSessionsAccountLimiter.attempt(userId);
+    if (!limit.allowed) {
+      return res.status(429).json({ error: "Trop de demandes. Veuillez réessayer plus tard." });
+    }
+    const { socketId, keepPushEndpoint } = req.body || {};
+    const currentSocketId = typeof socketId === 'string' && socketId.length <= 64 ? socketId : null;
+    const keepEndpoint = typeof keepPushEndpoint === 'string' && keepPushEndpoint.length <= 2048 ? keepPushEndpoint : null;
+
+    try {
+      let pushRemoved = 0;
+      db.transaction(() => {
+        db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(userId);
+        pushRemoved = keepEndpoint
+          ? db.prepare('DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint != ?').run(userId, keepEndpoint).changes
+          : db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId).changes;
+      })();
+
+      const newTv = (db.prepare('SELECT token_version FROM users WHERE id = ?').get(userId) || {}).token_version || 0;
+      const newToken = jwt.sign({ id: userId, username: req.user.username, tv: newTv }, SECRET, { expiresIn: '24h' });
+      const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+      const isSecure = (isProd || Boolean(req.headers['cf-ray'] || isHttps)) && isHttps;
+      res.cookie('token', newToken, {
+        httpOnly: true,
+        secure: isSecure,
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 * 1000,
+        path: '/'
+      });
+
+      let disconnected = 0;
+      for (const sock of io.sockets.sockets.values()) {
+        if (!sock.user || sock.user.id !== userId) continue;
+        if (currentSocketId && sock.id === currentSocketId) {
+          sock.tokenTv = newTv; // appareil courant : sa connexion reste valide
+          continue;
+        }
+        try { sock.emit('session_revoked'); } catch { /* ignore */ }
+        sock.disconnect(true);
+        disconnected++;
+      }
+
+      res.json({ success: true, disconnected, pushRemoved });
+    } catch (err) {
+      console.error("Revoke sessions error:", err);
+      res.status(500).json({ error: "Erreur lors de la déconnexion des autres sessions." });
     }
   });
 

@@ -89,7 +89,8 @@ export const authenticateToken = (req, res, next) => {
     const currentTv = dbUser.token_version || 0;
     const tokenTv = payload.tv !== undefined ? payload.tv : 0;
     if (tokenTv !== currentTv) {
-      return res.status(401).json({ error: "Session révoquée. Veuillez vous reconnecter." });
+      // `code` : permet au client de distinguer une session révoquée d'un simple échec réseau
+      return res.status(401).json({ error: "Session révoquée. Veuillez vous reconnecter.", code: 'session_revoked' });
     }
 
     req.user = dbUser;
@@ -236,12 +237,14 @@ export const loginAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 
 export const signupAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 5 });
 export const changePasswordAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 export const resetE2eAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+export const revokeSessionsAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 
 export const accountLimiters = [
   loginAccountLimiter,
   signupAccountLimiter,
   changePasswordAccountLimiter,
-  resetE2eAccountLimiter
+  resetE2eAccountLimiter,
+  revokeSessionsAccountLimiter
 ];
 
 export const createIpRateLimiter = ({ windowMs, limit, message }) => {

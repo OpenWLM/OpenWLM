@@ -58,6 +58,8 @@ interface OptionsModalProps {
     /** Ces deux actions ouvrent leur propre fenêtre : la modale d'options se ferme d'abord. */
     onChangePassword: () => void;
     onResetKeys: () => void;
+    /** Coupe les autres appareils (cet appareil reste connecté). */
+    onRevokeOtherSessions: () => Promise<{ ok: boolean; disconnected?: number }>;
   };
   onClose: () => void;
 }
@@ -99,6 +101,13 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   // Brouillon du délai d'inactivité : permet d'effacer le champ pour retaper une valeur
   const [awayTimeoutDraft, setAwayTimeoutDraft] = useState(() => String(awayTimeout));
   const [systemIdleDenied, setSystemIdleDenied] = useState(false);
+  // « Déconnecter mes autres sessions » : confirmation dans l'onglet (pas de fenêtre du navigateur)
+  const [revokeStep, setRevokeStep] = useState<'idle' | 'confirm' | 'busy' | 'done' | 'error'>('idle');
+  const confirmRevoke = async () => {
+    setRevokeStep('busy');
+    const r = await security.onRevokeOtherSessions();
+    setRevokeStep(r.ok ? 'done' : 'error');
+  };
   const blockedContacts = security.contacts.filter(c => !c.isBot && (c.blocked === true || Number(c.blocked) === 1));
 
   return (
@@ -315,6 +324,24 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   {security.isDeviceRemembered && (
                     <button type="button" className="win-btn" style={{ marginTop: '5px', color: '#b33927' }} onClick={security.onForgetDevice}>🔓 {t.auth.forgetDevice}</button>
                   )}
+                </div>
+
+                <div className="options-subsection" data-testid="revoke-sessions">
+                  <label className="options-label">{t.settings.securitySessions}</label>
+                  <div className="options-hint">{t.settings.securitySessionsHint}</div>
+                  {revokeStep === 'confirm' || revokeStep === 'busy' ? (
+                    <div className="options-confirm-box" role="alertdialog" aria-label={t.settings.securityRevokeOthers}>
+                      <div className="options-hint">{t.settings.securityRevokeConfirm}</div>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                        <button type="button" className="win-btn" style={{ color: '#c02717' }} disabled={revokeStep === 'busy'} onClick={confirmRevoke}>{t.settings.securityRevokeConfirmBtn}</button>
+                        <button type="button" className="win-btn" disabled={revokeStep === 'busy'} onClick={() => setRevokeStep('idle')}>{t.common.cancel}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" className="win-btn" style={{ marginTop: '5px' }} onClick={() => setRevokeStep('confirm')}>{t.settings.securityRevokeOthers}</button>
+                  )}
+                  {revokeStep === 'done' && <div className="options-hint" role="status" style={{ color: '#1b7d23' }}>{t.settings.securityRevokeDone}</div>}
+                  {revokeStep === 'error' && <div className="options-hint" role="status" style={{ color: '#c02717' }}>{t.settings.securityRevokeError}</div>}
                 </div>
 
                 <div className="options-subsection">

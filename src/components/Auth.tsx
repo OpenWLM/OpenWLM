@@ -50,7 +50,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
   const [chosenStatus, setChosenStatus] = useState<string | null>(null);
   const status = chosenStatus ?? (initialStatus && username.trim() === initialUsername ? initialStatus : 'online');
   const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError] = useState('');
+  // Session révoquée depuis un autre appareil : message affiché sur l'écran de connexion jusqu'à
+  // la prochaine tentative (pas effacé au montage : la page se recharge juste après la déconnexion)
+  const [error, setError] = useState(() => {
+    try {
+      if (sessionStorage.getItem('wlm_session_notice') === 'revoked') return t.auth.sessionRevokedNotice;
+    } catch { /* stockage indisponible */ }
+    return '';
+  });
   const [isDeriving, setIsDeriving] = useState(false);
   const [captchaData, setCaptchaData] = useState<{ id: string; text: string; num1?: number; num2?: number; pow?: PowChallenge } | null>(null);
   const [isSolvingPow, setIsSolvingPow] = useState(false);
@@ -129,6 +136,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    try { sessionStorage.removeItem('wlm_session_notice'); } catch { /* ignore */ }
 
     // Validation basique côté client
     if (!username || !password) {

@@ -42,7 +42,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Options: Security
 - The **Security** tab, empty until now, groups what was scattered across the main menu and the right-click menu: change password, the keys remembered on this device ("Forget this device"), global private mode, my safety number, "Reset my keys", and a new **list of blocked contacts** with an Unblock button. The main-menu entries stay where they were.
-- No server change: the list uses the contact list already loaded, unblocking uses the existing route. E2E test in `e2e/options-prefs.spec.ts`.
+- No server change for the list: it uses the contact list already loaded, unblocking uses the existing route. E2E test in `e2e/options-prefs.spec.ts`.
+- **Sign out my other sessions**: new `POST /api/sessions/revoke-others` (signed in, rate-limited to 10 per 15 min per account; WAF rules regenerated). Same mechanism as a password change: the account's session counter goes up, which invalidates every open session, and this device immediately gets a new valid cookie. The other devices' real-time connections receive `session_revoked` and are closed; their push subscriptions are deleted (a lost phone no longer gets notifications), except this device's. Confirmation inside the tab, no password asked.
+- **Revoked devices go back to the sign-in screen**: until now, a device whose session had been revoked (password change, sign-out on another device) stayed on a dead screen. The server now returns a `session_revoked` code (HTTP 401 and real-time connection error); the app then checks its session: still valid (another tab of the same browser, whose cookie was just renewed) → it simply reconnects; revoked → local sign-out (keys and local data deleted, without calling `/api/logout`, which would revoke the requesting device too), with an explanation on the sign-in screen.
+- The Options window can no longer be taller than the screen: the tab content scrolls, OK / Cancel stay visible.
+- Tests: `tests/test_revoke_sessions.js` (other devices cut, this one kept, push, `session_revoked` code, rate limit); E2E with a "phone" and a "PC" with two tabs.
 
 ### Fixes (code review of 2026-10-17)
 - **Status on a second device**: a device without a stored preference no longer forces "Available" over the status chosen on another device still connected; it adopts the current status (and remembers it as its own preference). The socket handshake no longer imposes a status when the device has none.

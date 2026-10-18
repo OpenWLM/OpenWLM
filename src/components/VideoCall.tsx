@@ -4,6 +4,7 @@ import { Socket } from 'socket.io-client';
 import { useI18n } from '../i18n';
 import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 import { formatNickname } from '../utils/NicknameFormatter';
+import { startCallKeepAlive } from '../utils/callKeepAlive';
 import {
   encryptMessagePayload,
   decryptMessagePayload,
@@ -571,6 +572,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   useEffect(() => {
     if (!isReceivingCall && callStatus === 'calling' && !hasInitialized.current) initCall();
   }, [isReceivingCall, callStatus, initCall]);
+
+  // Android : garder la page active écran éteint pendant l'appel (cf. callKeepAlive)
+  const finishRef = useRef(finish);
+  useEffect(() => { finishRef.current = finish; }, [finish]);
+  const callActive = callStatus === 'connecting' || callStatus === 'connected' || callStatus === 'reconnecting';
+  const keepAliveTitle = t.videoCall.conversationWith
+    .replace('{type}', (audioOnly ? t.videoCall.audio : t.videoCall.video).toLowerCase())
+    .replace('{name}', contactName);
+  useEffect(() => {
+    if (!callActive) return;
+    return startCallKeepAlive({ title: keepAliveTitle, onHangUp: () => finishRef.current() });
+  }, [callActive, keepAliveTitle]);
 
   // Minuteur d'appel
   useEffect(() => {

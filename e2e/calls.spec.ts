@@ -40,8 +40,8 @@ const registerAndLogin = async (page: Page, username: string) => {
 // mais chaque compte de test a la sienne.
 const fakeClientIp = () => `10.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}`;
 
-const newUserPage = async (browser: Browser, username: string) => {
-  const ctx = await browser.newContext({ permissions: ['camera', 'microphone'], locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
+const newUserPage = async (browser: Browser, username: string, userAgent?: string) => {
+  const ctx = await browser.newContext({ permissions: ['camera', 'microphone'], locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() }, ...(userAgent ? { userAgent } : {}) });
   const page = await ctx.newPage();
   await registerAndLogin(page, username);
   return page;
@@ -58,6 +58,47 @@ const remoteAudioState = (page: Page) => page.getByTestId('remote-audio').evalua
 const remoteVideoPlaying = (page: Page) => page.locator('.wlm-video-remote').evaluate((el) => {
   const v = el as HTMLVideoElement;
   return !v.classList.contains('wlm-video-remote-audio') && v.videoWidth > 0;
+});
+
+// Met deux comptes en contact (API) et attend qu'ils apparaissent dans les listes
+const connect = async (a: Page, b: Page, nameA: string, nameB: string) => {
+  expect((await a.request.post('/api/invite', { data: { receiverUsername: nameB } })).ok()).toBeTruthy();
+  const meB = await (await b.request.get('/api/user/me')).json();
+  const invites = await (await b.request.get(`/api/invitations/${meB.user.id}`)).json();
+  expect(invites.length).toBeGreaterThan(0);
+  expect((await b.request.post('/api/accept-invite', { data: { invitationId: invites[0].id } })).ok()).toBeTruthy();
+  await expect(a.locator('.contact-row', { hasText: nameB })).toBeVisible({ timeout: 45000 });
+  await expect(b.locator('.contact-row', { hasText: nameA })).toBeVisible({ timeout: 45000 });
+};
+
+const mediaSessionState = (page: Page) => page.evaluate(() => ({
+  title: navigator.mediaSession.metadata?.title ?? null,
+  state: navigator.mediaSession.playbackState
+}));
+
+test('Android : pendant l\'appel, média de maintien + notification multimédia (écran éteint)', async ({ browser }) => {
+  test.setTimeout(120000);
+  const stamp = Date.now();
+  const nameA = `kaa_${stamp}`;
+  const nameB = `kab_${stamp}`;
+  const a = await newUserPage(browser, nameA);
+  const androidUa = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+  const b = await newUserPage(browser, nameB, androidUa);
+  await connect(a, b, nameA, nameB);
+
+  await a.locator('.contact-row', { hasText: nameB }).click();
+  await a.getByText('Call', { exact: true }).click();
+  await b.getByRole('button', { name: 'Accept' }).click({ timeout: 30000 });
+  await expect(b.locator('.wlm-call-timer').first()).toBeVisible({ timeout: 30000 });
+
+  // Android : notification multimédia « Conversation audio avec A », lecture en cours
+  await expect.poll(() => mediaSessionState(b), { timeout: 10000 }).toEqual({ title: `Conversation audio with ${nameA}`, state: 'playing' });
+  // Ordinateur : rien
+  expect(await mediaSessionState(a)).toEqual({ title: null, state: 'none' });
+
+  // Fin d'appel : la notification disparaît
+  await a.getByRole('button', { name: 'Hang up' }).first().click();
+  await expect.poll(() => mediaSessionState(b), { timeout: 15000 }).toEqual({ title: null, state: 'none' });
 });
 
 test('appel audio → activation de la caméra en cours d\'appel → le pair reçoit la vidéo', async ({ browser }) => {

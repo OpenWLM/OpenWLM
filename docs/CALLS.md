@@ -76,6 +76,15 @@ TURN_PASSWORD=<credential>
   Push ne fonctionne que pour l'app installée sur l'écran d'accueil (iOS 16.4+), et la
   répétition y est peu fiable ; sur Android avec Chrome, ça fonctionne bien. La notification
   d'appel contient le nom de l'appelant (comme celles des messages), jamais l'offre.
+- **Écran éteint (Android)** : Chromium (Chrome, Brave…) suspend une page écran éteint au bout
+  de quelques secondes, sauf si elle joue un « vrai » média (c'est ce qui permet à YouTube de
+  continuer). L'audio d'un appel WebRTC n'en bénéficie pas. Pendant l'appel, l'application joue
+  donc en boucle un fichier quasi silencieux (environ -90 dB, généré à la volée) et affiche
+  « Conversation audio avec X » dans la notification multimédia : la page reste active et l'appel
+  continue écran éteint. Le bouton pause de la notification est ignoré (il ne coupe pas
+  l'appel). Uniquement sur Android : sur iPhone, iOS coupe le micro des pages web écran
+  verrouillé, seule une application native peut l'éviter. La caméra se coupe toujours écran
+  éteint. Code : `src/utils/callKeepAlive.ts`.
 - **Timeout « pas de réponse »** (45 s) côté appelant.
 - **Erreurs média explicites** (permission refusée / aucun périphérique / déjà utilisé).
 - **Signalisation WebRTC centralisée** dans `<VideoCall/>` (fin du buffer ICE global fuyant).

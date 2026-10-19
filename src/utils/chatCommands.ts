@@ -32,6 +32,13 @@ export const BUILTIN_COMMANDS: readonly CommandInfo[] = [
   { name: 'help', needsArg: false, descKey: 'cmdHelp' }
 ];
 
+/**
+ * Commandes propres au contact de test OpenWLM : dans sa conversation, elles lui sont
+ * adressées (aide, wizz, jeux…) au lieu d'être traitées comme des commandes générales.
+ */
+const TEST_CONTACT_COMMANDS = new Set(['/help', '/?', 'aide', '/wizz', '/sons', '/sound', '/audio', '/emo', '/emoticones', '/emojis', '/morpion', '/game', '/jeu', '/p4', '/puissance4', '/connect4']);
+export const isTestContactCommand = (input: string) => TEST_CONTACT_COMMANDS.has(input.trim().toLowerCase());
+
 export const isBuiltinCommand = (name: string): name is BuiltinCommand =>
   BUILTIN_COMMANDS.some((c) => c.name === name);
 

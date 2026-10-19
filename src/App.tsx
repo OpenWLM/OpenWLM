@@ -60,6 +60,10 @@ import AeroConfirmDialog from './components/AeroConfirmDialog';
 import RosterResizer from './components/RosterResizer';
 import FormatPicker from './components/FormatPicker';
 import ConversationSearch from './components/ConversationSearch';
+import { useConversationSearchShortcut } from './hooks/useConversationSearchShortcut';
+import CommandHelper from './components/CommandHelper';
+import { useSentHistory } from './hooks/useSentHistory';
+import { runChatCommand } from './utils/runChatCommand';
 import HelpModal from './components/HelpModal';
 import {
   decideNotificationType,
@@ -97,7 +101,7 @@ import {
 import { useAppPrefs, getAppPrefs, updateAppPrefs, setPresenceForSounds } from './utils/appPrefs';
 import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
 import { systemLine } from './utils/systemLine';
-import { parseChatInput, BUILTIN_COMMANDS, commandSuggestions } from './utils/chatCommands';
+import { commandSuggestions, isTestContactCommand } from './utils/chatCommands';
 import { hasPlusFormatting, renderPlusText, stripPlusTags } from './utils/plusFormat';
 import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
 import { notify } from './utils/dialogs';
@@ -599,13 +603,9 @@ const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
   // Brouillons non envoyés, un par conversation (le champ de saisie est partagé entre onglets)
   const draftsRef = useRef<Record<number, string>>({});
-  // Rappel des messages envoyés (Ctrl+↑ / Ctrl+↓) : liste de la session, position, brouillon en cours
-  const sentHistoryRef = useRef<string[]>([]);
-  const recallIndexRef = useRef<number | null>(null);
-  const recallDraftRef = useRef('');
   const [showHelp, setShowHelp] = useState(false);
-  // Conversation dans laquelle la recherche (Ctrl+F) est ouverte : changer d'onglet la ferme
-  const [searchChatId, setSearchChatId] = useState<number | null>(null);
+  const sentHistory = useSentHistory();
+  const { searchChatId, closeSearch } = useConversationSearchShortcut(activeChatIdRef);
 
   // Conversation à laquelle appartient le contenu actuel du champ (null = ne pas sauvegarder)
   const draftChatIdRef = useRef<number | null>(activeChatId);
@@ -2670,131 +2670,32 @@ const App: React.FC = () => {
   /**
    * ENVOI D'UN MESSAGE TEXTE
    */
-  // --- Rappel des messages envoyés (Ctrl+↑ / Ctrl+↓), pour toute la session ---
-  const rememberSentInput = (text: string) => {
-    const hist = sentHistoryRef.current;
-    if (hist[hist.length - 1] !== text) hist.push(text);
-    if (hist.length > 50) hist.shift();
-    recallIndexRef.current = null;
-  };
-
-  const recallSentInput = (direction: -1 | 1) => {
-    const hist = sentHistoryRef.current;
-    if (hist.length === 0) return;
-    let idx = recallIndexRef.current;
-    if (idx === null) {
-      if (direction === 1) return;
-      recallDraftRef.current = inputText;
-      idx = hist.length - 1;
-    } else {
-      idx += direction;
-    }
-    if (idx < 0) idx = 0;
-    if (idx >= hist.length) {
-      recallIndexRef.current = null;
-      setRichInput(recallDraftRef.current);
-      return;
-    }
-    recallIndexRef.current = idx;
-    setRichInput(hist[idx]);
-  };
-
-  /** Nom simple (sans balises) d'une conversation, pour (!N) des textes rapides. */
-  const plainContactName = (chatId: number) => {
-    if (chatId === SYSTEM_BOT_ID) return 'OpenWLM';
-    const c = contacts.find(x => x.id === chatId);
-    return (c && (stripPlusTags(c.nickname) || c.username)) || '';
-  };
-
-  const changeMyStatus = (status: string) => {
-    setMyStatus(status);
-    savePreferredStatus(user?.id, status);
-    syncProfile({ status });
-  };
-
-  /**
-   * Exécute une commande « / ». Renvoie le texte à envoyer (texte rapide, /me) ou null si la
-   * commande a été traitée sur place (ou refusée, avec un message).
-   */
-  const runChatCommand = async (raw: string): Promise<{ text: string; action?: boolean } | null> => {
-    const parsed = parseChatInput(raw, appPrefs.messages.quickTexts, plainContactName(activeChatId));
-    if (parsed.kind === 'text') return { text: parsed.text };
-    if (parsed.kind === 'quickText') return { text: parsed.text };
-    if (parsed.kind === 'unknown') {
-      notify(t.extras.unknownCommand.replace('{name}', parsed.name), { icon: '⚠️' });
-      return null;
-    }
-    const { name, arg } = parsed;
-    const info = BUILTIN_COMMANDS.find(c => c.name === name);
-    if (info?.needsArg && !arg) {
-      notify(t.extras.missingParameter.split('{name}').join(name).replace('{usage}', `<${t.extras.argText}>`), { icon: '⚠️' });
-      return null;
-    }
-    const done = () => { setInputText(''); return null; };
-    switch (name) {
-      case 'me': return { text: arg, action: true };
-      case 'clear':
-        setMessages(prev => ({ ...prev, [activeChatId]: [] }));
-        return done();
-      case 'online': case 'busy': case 'away': case 'offline':
-        changeMyStatus(name);
-        return done();
-      case 'nick':
-        if (arg.length > 300 || stripPlusTags(arg).length > 50) { notify(t.extras.nickTooLong, { icon: '⚠️' }); return null; }
-        setMyNickname(arg);
-        syncProfile({ nickname: arg });
-        return done();
-      case 'psm':
-        if (arg.length > 600 || stripPlusTags(arg).length > 150) { notify(t.extras.psmTooLong, { icon: '⚠️' }); return null; }
-        setMyPSM(arg);
-        syncProfile({ psm: arg });
-        return done();
-      case 'all': {
-        const targets = openChatIds.filter(id => id !== SYSTEM_BOT_ID);
-        if (targets.length === 0) { notify(t.extras.allNone); return null; }
-        let sent = 0;
-        for (const id of targets) if (await sendTextToChat(id, arg)) sent++;
-        notify(t.extras.allSent.replace('{count}', String(sent)), { icon: '✅' });
-        return done();
-      }
-      case 'signout':
-        setInputText('');
-        handleLogout();
-        return null;
-      case 'help':
-        setShowHelp(true);
-        return done();
-    }
-    return null;
-  };
-
-  // Commandes propres au contact de test (gérées par lui, pas par les commandes générales)
-  const BOT_COMMANDS = new Set(['/help', '/?', 'aide', '/wizz', '/sons', '/sound', '/audio', '/emo', '/emoticones', '/emojis', '/morpion', '/game', '/jeu', '/p4', '/puissance4', '/connect4']);
-
-  // Ctrl+F (Cmd+F) : recherche dans la conversation affichée plutôt que dans la page
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f' && activeChatIdRef.current !== 0) {
-        e.preventDefault();
-        setSearchChatId(activeChatIdRef.current);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
   // Liste d'aide des commandes, affichée pendant la saisie de « /… »
   const commandHelper = activeChatId !== 0 ? commandSuggestions(inputText, appPrefs.messages.quickTexts) : null;
 
   const handleSendMessage = async () => {
     const raw = inputText;
     if (!raw.trim()) return;
-    rememberSentInput(raw);
-    const isBotCommand = activeChatId === SYSTEM_BOT_ID && BOT_COMMANDS.has(raw.trim().toLowerCase());
+    sentHistory.remember(raw);
+    const isBotCommand = activeChatId === SYSTEM_BOT_ID && isTestContactCommand(raw);
     let outgoing = raw;
     let action = false;
     if (!isBotCommand && raw.startsWith('/')) {
-      const result = await runChatCommand(raw);
+      const result = await runChatCommand(raw, {
+        chatId: activeChatId,
+        contacts,
+        openChatIds,
+        quickTexts: appPrefs.messages.quickTexts,
+        texts: t.extras,
+        clearInput: () => setInputText(''),
+        clearConversation: (chatId) => setMessages(prev => ({ ...prev, [chatId]: [] })),
+        setStatus: (status) => { setMyStatus(status); savePreferredStatus(user?.id, status); syncProfile({ status }); },
+        setNickname: (nickname) => { setMyNickname(nickname); syncProfile({ nickname }); },
+        setPsm: (psm) => { setMyPSM(psm); syncProfile({ psm }); },
+        sendText: (chatId, text) => sendTextToChat(chatId, text),
+        signOut: handleLogout,
+        openHelp: () => setShowHelp(true)
+      });
       if (!result) return; // commande exécutée, ou erreur affichée
       outgoing = result.text;
       action = !!result.action;
@@ -4007,7 +3908,7 @@ const App: React.FC = () => {
     // Rappel des messages envoyés
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
-      recallSentInput(e.key === 'ArrowUp' ? -1 : 1);
+      sentHistory.recall(e.key === 'ArrowUp' ? -1 : 1, inputText, setRichInput);
       return;
     }
     // Complétion de la commande « / » en cours
@@ -4525,7 +4426,7 @@ const App: React.FC = () => {
                {/* Historique des messages + actions rapides de l'assistant */}
                {/* Recherche dans la conversation (Ctrl+F) */}
                {searchChatId === activeChatId && activeChatId !== 0 && (
-                 <ConversationSearch contentKey={messages[activeChatId]} onClose={() => setSearchChatId(null)} />
+                 <ConversationSearch contentKey={messages[activeChatId]} onClose={closeSearch} />
                )}
                <ChatMessageLog
                  messages={messages[activeChatId] || []}
@@ -4545,23 +4446,7 @@ const App: React.FC = () => {
                <div className="chat-footer">
                   <div className="chat-input-bubble">
                      {/* Liste des commandes « / » et textes rapides correspondant à la saisie */}
-                     {commandHelper && commandHelper.length > 0 && (
-                       <div className="cmd-helper" role="listbox" aria-label={t.extras.helperHint} data-testid="command-helper">
-                         {commandHelper.slice(0, 8).map(c => (
-                           <div
-                             key={`${c.kind}-${c.name}`}
-                             className="cmd-helper-item"
-                             role="option"
-                             aria-selected={false}
-                             onMouseDown={e => { e.preventDefault(); setRichInput(`/${c.name} `); }}
-                           >
-                             <span className="cmd-helper-name">/{c.name}{c.kind === 'command' && c.needsArg ? ` <${t.extras.argText}>` : ''}</span>
-                             <span className="cmd-helper-desc">{c.kind === 'command' ? t.extras[c.descKey] : `${t.extras.quickTextTag} : ${stripPlusTags(c.text)}`}</span>
-                           </div>
-                         ))}
-                         <div className="cmd-helper-hint">{t.extras.helperHint}</div>
-                       </div>
-                     )}
+                     {commandHelper && <CommandHelper items={commandHelper} onPick={name => setRichInput(`/${name} `)} />}
                      {/* Champ riche : rend les émoticônes en image pendant la frappe */}
                      <div
                         ref={chatInputRef}

@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Cleanup
+- Removed unused resources.
+- **Fix**: the test contact's scene pointed to a file that never existed (`0002.png` instead of `0002.jpg`).
+
 ### Tests
 - **New E2E tests for file transfer and voice messages** (`e2e/files-voice.spec.ts`), which had no end-to-end test so far (their end-to-end encryption was already in place). File: sent by A, stored encrypted on the server (the plaintext does not appear in the stored file), downloaded by B with exactly the same content. Voice message: recorded with Chromium's fake microphone, received by B, encrypted in the server history (no audio in clear), and actually played (timer moving).
 

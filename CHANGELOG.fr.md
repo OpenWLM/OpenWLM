@@ -11,6 +11,10 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Ménage
+- Ménage des ressources non utilisées.
+- **Correctif** : la scène du contact de test pointait vers un fichier qui n'a jamais existé (`0002.png` au lieu de `0002.jpg`).
+
 ### Tests
 - **Nouveaux tests E2E du transfert de fichier et des messages vocaux** (`e2e/files-voice.spec.ts`), qui n'avaient jusqu'ici aucun test de bout en bout (leur chiffrement de bout en bout existait déjà). Fichier : envoyé par A, stocké chiffré sur le serveur (le texte n'apparaît pas dans le fichier stocké), téléchargé par B avec exactement le même contenu. Message vocal : enregistré avec le faux micro de Chromium, reçu par B, chiffré dans l'historique du serveur (aucun son en clair), et réellement lu (minuteur qui avance).
 

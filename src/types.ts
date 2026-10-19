@@ -95,7 +95,7 @@ export const SYSTEM_BOT_CONTACT: Contact = {
   psm: 'En ligne pour vos tests',
   status: 'online',
   avatar: '/assets/usertiles/robot.png',
-  scene: '/assets/scenes/0002.png',
+  scene: '/assets/scenes/0002.jpg',
   blocked: 0,
   isBot: true
 };

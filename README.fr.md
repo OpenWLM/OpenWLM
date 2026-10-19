@@ -63,7 +63,7 @@ Options → **Disposition**, **Messages** et **Sons** sont enregistrées dans le
 
 Code : `src/utils/appPrefs.ts` (stockage, hook React, règles des sons), utilisé par `SoundManager`, `GameSfx`, la liste de contacts et la conversation.
 
-Options → **Sécurité** regroupe les réglages de sécurité du compte et de l'appareil : changer de mot de passe, clés mémorisées sur cet appareil (Oublier cet appareil), mode privé global, votre code de sécurité, réinitialiser vos clés, la liste des contacts bloqués (Débloquer), et **Déconnecter mes autres sessions** (tous les autres appareils reviennent à l'écran de connexion et ne reçoivent plus de notifications ; celui-ci reste connecté). Se déconnecter sur un appareil déconnecte toujours tous les autres.
+Options → **Sécurité** regroupe les réglages de sécurité du compte et de l'appareil : changer de mot de passe, clés mémorisées sur cet appareil (Supprimer mes clés de cet appareil), mode privé global, votre code de sécurité, réinitialiser vos clés, la liste des contacts bloqués (Débloquer), et **Se déconnecter des autres appareils** (tous les autres appareils reviennent à l'écran de connexion et ne reçoivent plus de notifications ; celui-ci reste connecté). Se déconnecter sur un appareil déconnecte toujours tous les autres.
 
 Options → **Connexion** est un diagnostic en lecture seule : connexion temps réel (état, transport, temps de réponse du serveur, Se reconnecter), notifications (permission, Push sur le serveur et sur cet appareil, service worker), un test réseau pour les appels (relais TURN, accès par Internet, sans appeler personne) et les fonctions du navigateur utilisées. **Copier le rapport** donne un texte à coller pour demander de l'aide, sans secret.
 

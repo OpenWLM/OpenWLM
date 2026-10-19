@@ -105,7 +105,7 @@ test('mode privé : message reçu onglet fermé affiché, puis retrouvé après 
   await a.locator('#pref-local-history').click();
   await a.getByTestId('clear-local-confirm').getByRole('button', { name: 'Yes, delete' }).click();
   await expect(a.locator('#pref-local-history')).not.toBeChecked();
-  await a.getByRole('button', { name: 'OK', exact: true }).click();
+  await a.getByRole('dialog', { name: 'Options' }).getByRole('button', { name: 'Close' }).click();
   await a.reload();
   await expect(a.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
   await a.locator('.contact-row', { hasText: nameB }).click();

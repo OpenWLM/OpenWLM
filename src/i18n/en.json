@@ -35,9 +35,9 @@
     "deviceRememberedBadge": "Device remembered (E2EE)",
     "deviceRememberedTooltip": "E2EE keys saved on this device",
     "deviceRememberedSuccess": "E2EE keys saved on this device.",
-    "forgetDevice": "Forget this device",
+    "forgetDevice": "Remove my keys from this device",
     "sessionRevokedNotice": "You have been signed out: your session was closed from another device (or your password changed).",
-    "forgetDeviceSuccess": "This device has been forgotten. Your local E2EE keys have been removed.",
+    "forgetDeviceSuccess": "Your encryption keys have been removed from this device.",
     "nicknameLabel": "Nickname:",
     "captchaLabel": "Anti-Robot Verification:",
     "captchaPlaceholder": "Your answer",
@@ -71,7 +71,7 @@
     "invalidServerResponse": "Invalid or altered server response.",
     "signupSuccess": "Account created successfully! You can now sign in.",
     "unexpectedError": "An unexpected error occurred.",
-    "logout": "Sign out",
+    "logout": "Sign out everywhere",
     "changePassword": "Change password"
   },
   "status": {
@@ -120,7 +120,8 @@
     "contextClearHistory": "Clear conversation history",
     "contextDelete": "Delete",
     "contextBlock": "Block",
-    "contextUnblock": "Unblock"
+    "contextUnblock": "Unblock",
+    "signOutOtherDevices": "Sign out my other devices"
   },
   "chat": {
     "files": "Files",
@@ -440,11 +441,11 @@
     "securityResetKeysHint": "Only if you suspect your key was compromised: your contacts will have to verify your number again.",
     "securitySessions": "Sessions",
     "securitySessionsHint": "You may be signed in on other devices (phone, another computer). If one is lost or in doubt, sign them out: this device stays signed in.",
-    "securityRevokeOthers": "Sign out my other sessions",
+    "securityRevokeOthers": "Sign out my other devices",
     "securityRevokeConfirm": "All your other devices will go back to the sign-in screen and will no longer receive notifications. Continue?",
     "securityRevokeConfirmBtn": "Yes, sign them out",
-    "securityRevokeDone": "Your other sessions have been signed out.",
-    "securityRevokeError": "Could not sign out your other sessions. Please try again later.",
+    "securityRevokeDone": "Your other devices have been signed out.",
+    "securityRevokeError": "Could not sign out your other devices. Please try again later.",
     "connRealtime": "Real-time connection",
     "connState": "State",
     "connStateConnected": "Connected",
@@ -541,7 +542,8 @@
     "webPushConfigured": "Active (VAPID keys configured)",
     "pushTestButton": "Test Push notification",
     "pushTestSuccess": "Test Push notification sent successfully!",
-    "pushTestError": "Failed to send test Web Push"
+    "pushTestError": "Failed to send test Web Push",
+    "autoSavedNote": "Changes are saved automatically."
   },
   "modals": {
     "addContactTitle": "Add a contact",

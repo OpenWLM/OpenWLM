@@ -23,6 +23,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Server errors translated**: sign-in, sign-up and invitation errors now carry a code (`invalid_credentials`, `username_taken`, `captcha_wrong`, `invite_self`…) translated by the app; a 429 shows "Too many attempts". Other server errors are still written in French by the server: the French interface shows them as is, the English interface shows its own translated message.
 - E2E test `e2e/i18n-en.spec.ts` (English interface: wrong password, test contact, invitation error, private-mode and nudge lines on both sides).
 
+### Main menu and Options window
+- **Language**: chosen only in Options → Personal (removed from the contact-list menu).
+- **Sessions in the menu**: "Sign out" becomes **Sign out everywhere**, followed by **Sign out my other devices** (with a confirmation; same action as in Options → Security, renamed there too). "Forget this device" becomes **Remove my keys from this device**, which says what it does.
+- **Options window**: no more OK / Cancel / Apply, since every setting is saved as soon as it changes; the nickname and personal message are saved when leaving the field (or Enter) and when closing. Closes with ✕, Escape or a click outside. Aero look (gradient title bar, rounded corners, blue tab column) like the other dialogs, with a "Changes are saved automatically" note.
+- E2E test: no language in the menu, sign out my other devices from the menu, nickname saved on close, personal message saved when leaving the field.
+
 ## [1.6.1] - 2026-10-19
 
 ### Fixes (review of 1.6.0)

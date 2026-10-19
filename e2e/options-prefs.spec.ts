@@ -56,7 +56,8 @@ const openOptionsTab = async (p: Page, tab: string) => {
   await p.locator('.dropdown-item', { hasText: 'Options' }).first().click();
   await p.locator('.options-nav-item', { hasText: tab }).click();
 };
-const closeOptions = (p: Page) => p.getByRole('button', { name: 'OK', exact: true }).click();
+// Plus de bouton OK : tout est enregistré tout de suite, la fenêtre se ferme avec ✕
+const closeOptions = (p: Page) => p.getByRole('dialog', { name: 'Options' }).getByRole('button', { name: 'Close' }).click();
 const setStatus = async (p: Page, label: string) => {
   await p.locator('.status-trigger').click();
   await p.locator('.dropdown-item', { hasText: label }).first().click();
@@ -110,7 +111,7 @@ test('options : disposition, messages et sons appliqués', async ({ browser }) =
   await expect(a.locator('.wlm-bot-badge')).toHaveCount(0);
 
   await c.locator('.status-trigger').click();
-  await c.getByText('Sign out', { exact: true }).click();
+  await c.getByText('Sign out everywhere', { exact: true }).click();
   await expect(rowC.locator('.status-square')).toHaveClass(/offline/, { timeout: 20000 });
   await openOptionsTab(a, 'Layout');
   await a.locator('#pref-show-offline').uncheck();
@@ -300,11 +301,11 @@ test('Options → Sécurité : « Déconnecter mes autres sessions » (autre app
   // Confirmation intégrée (Annuler puis Oui), puis déconnexion des autres sessions
   await openOptionsTab(pc, 'Security');
   const box = pc.getByTestId('revoke-sessions');
-  await box.getByRole('button', { name: 'Sign out my other sessions' }).click();
+  await box.getByRole('button', { name: 'Sign out my other devices' }).click();
   await box.getByRole('button', { name: 'Cancel' }).click();
-  await box.getByRole('button', { name: 'Sign out my other sessions' }).click();
+  await box.getByRole('button', { name: 'Sign out my other devices' }).click();
   await box.getByRole('button', { name: 'Yes, sign them out' }).click();
-  await expect(box).toContainText('Your other sessions have been signed out.', { timeout: 10000 });
+  await expect(box).toContainText('Your other devices have been signed out.', { timeout: 10000 });
 
   // Le téléphone revient à l'écran de connexion, avec l'explication
   await expect(phone.locator('.wlm-auth-form')).toBeVisible({ timeout: 20000 });
@@ -489,4 +490,44 @@ test('Changer le mot de passe : fenêtre Aero, confirmation, complexité, autres
   await signIn(NEW_PASSWORD);
   await expect(phone.locator('.status-trigger')).toBeVisible({ timeout: 45000 });
   await phoneCtx.close();
+});
+
+test('Menu principal et Options : langue dans Options seulement, enregistrement automatique, déconnexion des autres appareils', async ({ browser }) => {
+  test.setTimeout(120000);
+  const name = `menu_${Date.now()}`;
+  const a = await newUserPage(browser, name);
+
+  // Menu principal : plus de choix de langue ; libellés de session
+  await a.locator('.status-trigger').click();
+  const menu = a.locator('.wlm-status-dropdown');
+  await expect(menu).not.toContainText('English (EN)');
+  await expect(menu).not.toContainText('Français (FR)');
+  await expect(menu.getByText('Sign out everywhere', { exact: true })).toBeVisible();
+  await expect(menu.getByText('Sign out my other devices', { exact: true })).toBeVisible();
+
+  // « Se déconnecter des autres appareils » : confirmation, puis message de résultat
+  await menu.getByText('Sign out my other devices', { exact: true }).click();
+  const confirm = a.getByRole('dialog').filter({ hasText: 'Sign out my other devices' });
+  await confirm.getByRole('button', { name: 'Yes, sign them out' }).click();
+  await expect(a.locator('.wlm-toast-persistence')).toContainText('Your other devices have been signed out.', { timeout: 10000 });
+  await expect(a.locator('.status-trigger')).toBeVisible();
+
+  // Options : plus de OK / Annuler / Appliquer ; la langue est dans Personnel
+  await openOptionsTab(a, 'Personal');
+  const dialog = a.getByRole('dialog', { name: 'Options' });
+  for (const label of ['OK', 'Cancel', 'Apply']) await expect(dialog.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  await expect(dialog.locator('select.wlm-auth-select')).toBeVisible();
+
+  // Pseudo enregistré à la fermeture (Échap), sans bouton
+  await dialog.locator('#opt-nickname').fill(`Pseudo ${name}`);
+  await a.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(async () => (await (await a.request.get('/api/user/me')).json()).user.nickname, { timeout: 10000 }).toBe(`Pseudo ${name}`);
+
+  // Message perso enregistré en quittant le champ
+  await openOptionsTab(a, 'Personal');
+  await dialog.locator('#opt-psm').fill('Enregistré tout seul');
+  await dialog.locator('#opt-psm').press('Enter');
+  await expect.poll(async () => (await (await a.request.get('/api/user/me')).json()).user.psm, { timeout: 10000 }).toBe('Enregistré tout seul');
+  await closeOptions(a);
 });

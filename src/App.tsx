@@ -408,7 +408,7 @@ function renderRichTokens(root: HTMLElement, tokens: RichToken[]): void {
  */
 
 const App: React.FC = () => {
-  const { t, language, setLanguage } = useI18n();
+  const { t, language } = useI18n();
 
   const getStatusLabel = (id: string) => {
     switch (id) {
@@ -491,6 +491,7 @@ const App: React.FC = () => {
   const [showAllEmoticonsModal, setShowAllEmoticonsModal] = useState(false);
   const [showFontModal, setShowFontModal] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [confirmSignOutOthers, setConfirmSignOutOthers] = useState(false);
   const [showCustomEmoticonsModal, setShowCustomEmoticonsModal] = useState(false);
   const [myCustomEmoticons, setMyCustomEmoticons] = useState<MyEmoticonRecord[]>([]);
   const [customEmoticonsMap, setCustomEmoticonsMap] = useState<Record<string, {
@@ -4021,10 +4022,9 @@ const App: React.FC = () => {
                       {globalPrivateMode ? t.roster.globalPrivateOn : t.roster.globalPrivateOff}
                     </div>
                     <div className="dropdown-item" onClick={() => { setShowOptionsModal(true); setShowStatusMenu(false); }}>{t.roster.optionsMenu}</div>
-                    <div className="dropdown-item" onClick={() => { setLanguage(language === 'fr' ? 'en' : 'fr'); setShowStatusMenu(false); }}>
-                      🌐 {language === 'fr' ? 'English (EN)' : 'Français (FR)'}
-                    </div>
+                    {/* La langue se choisit dans Options → Personnel */}
                     <div className="dropdown-item" onClick={() => handleLogout()}>{t.auth.logout}</div>
+                    <div className="dropdown-item" onClick={() => { setShowStatusMenu(false); setConfirmSignOutOthers(true); }}>{t.roster.signOutOtherDevices}</div>
                     {isDeviceRemembered && (
                       <div 
                         className="dropdown-item" 
@@ -4926,6 +4926,23 @@ const App: React.FC = () => {
             onRevokeOtherSessions: revokeOtherSessions
           }}
           onClose={() => setShowOptionsModal(false)}
+        />
+      )}
+
+      {/* Menu principal → « Se déconnecter des autres appareils » */}
+      {confirmSignOutOthers && (
+        <AeroConfirmDialog
+          title={t.roster.signOutOtherDevices}
+          message={t.settings.securityRevokeConfirm}
+          icon="🔒"
+          confirmLabel={t.settings.securityRevokeConfirmBtn}
+          cancelLabel={t.common.cancel}
+          onConfirm={async () => {
+            setConfirmSignOutOthers(false);
+            const r = await revokeOtherSessions();
+            setPersistenceNotice(r.ok ? t.settings.securityRevokeDone : t.settings.securityRevokeError);
+          }}
+          onCancel={() => setConfirmSignOutOthers(false)}
         />
       )}
 

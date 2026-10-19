@@ -60,7 +60,7 @@ test('connexion d\'un contact → toast « has just signed in »', async ({ brow
 
   // B se déconnecte (passe hors ligne immédiatement chez A)
   await b.locator('.status-trigger').click();
-  await b.getByText('Sign out', { exact: true }).click();
+  await b.getByText('Sign out everywhere', { exact: true }).click();
   await expect(b.locator('.wlm-auth-form')).toBeVisible({ timeout: 15000 });
 
   // Laisser passer la fenêtre de silence qui suit la connexion de A (10 s)

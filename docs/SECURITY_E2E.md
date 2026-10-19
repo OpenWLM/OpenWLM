@@ -262,7 +262,7 @@ l'authentification et l'abus côté serveur :
   par le serveur (depuis la 1.4.0). La clé est désormais obtenue en déchiffrant le coffre avec
   le mot de passe actuel, puis re-chiffrée avec le nouveau, sur l'appareil. Le mot de passe ne
   quitte toujours pas l'appareil (seule la clé d'authentification dérivée est envoyée).
-- **Révocation des sessions** : « Déconnecter mes autres sessions » (`POST /api/sessions/revoke-others`)
+- **Révocation des sessions** : « Se déconnecter des autres appareils » (`POST /api/sessions/revoke-others`)
   incrémente le compteur de sessions du compte (`token_version`), renouvelle le cookie de
   l'appareil courant, coupe les connexions temps réel des autres appareils et supprime leurs
   abonnements Push. Les appareils révoqués (y compris après un changement de mot de passe ou une

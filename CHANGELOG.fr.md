@@ -23,6 +23,12 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Erreurs du serveur traduites** : les erreurs de connexion, d'inscription et d'invitation portent désormais un code (`invalid_credentials`, `username_taken`, `captcha_wrong`, `invite_self`…) traduit par l'app ; un 429 affiche « Trop de tentatives ». Les autres erreurs restent rédigées en français par le serveur : l'interface française les affiche telles quelles, l'interface anglaise affiche son propre message traduit.
 - Test E2E `e2e/i18n-en.spec.ts` (interface anglaise : mauvais mot de passe, contact de test, erreur d'invitation, lignes de mode privé et de Wizz des deux côtés).
 
+### Menu principal et fenêtre Options
+- **Langue** : se choisit uniquement dans Options → Personnel (retirée du menu de la liste de contacts).
+- **Sessions dans le menu** : « Se déconnecter » devient **Se déconnecter de partout**, suivi de **Se déconnecter des autres appareils** (avec confirmation ; même action que dans Options → Sécurité, renommée là aussi). « Oublier cet appareil » devient **Supprimer mes clés de cet appareil**, qui dit ce que fait l'action.
+- **Fenêtre Options** : plus de OK / Annuler / Appliquer, puisque chaque réglage est enregistré dès qu'il change ; le pseudo et le message perso sont enregistrés en quittant le champ (ou Entrée) et à la fermeture. Fermeture par ✕, Échap ou un clic à côté. Habillage Aero (barre de titre en dégradé, coins arrondis, colonne d'onglets bleue) comme les autres boîtes de dialogue, avec la mention « Les modifications sont enregistrées automatiquement ».
+- Test E2E : plus de langue dans le menu, déconnexion des autres appareils depuis le menu, pseudo enregistré à la fermeture, message perso enregistré en quittant le champ.
+
 ## [1.6.1] - 2026-10-19
 
 ### Correctifs (revue de la 1.6.0)

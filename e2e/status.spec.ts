@@ -92,7 +92,7 @@ test('statut choisi conservé au redémarrage ; « Apparaître hors ligne » ne 
   await expect(a.locator('.status-label')).toContainText('Available', { timeout: 20000 });
   await setStatus(a, 'Busy');
   await a.locator('.status-trigger').click();
-  await a.getByText('Sign out', { exact: true }).click();
+  await a.getByText('Sign out everywhere', { exact: true }).click();
   // Après déconnexion, rien ne trahit le compte précédent : pas de présélection héritée
   await expect(a.locator('.wlm-auth-form select')).toHaveValue('online', { timeout: 15000 });
   await a.locator('.auth-field input[type="text"]').first().fill(nameA);
@@ -182,7 +182,7 @@ test('inactivité de tout l\'ordinateur (API Idle Detection) : Absent si inactif
   await expect(a.locator('#check-system-idle')).toBeChecked({ timeout: 10000 });
   await expect(a.locator('#system-idle-hint')).toContainText('Active', { timeout: 10000 });
   expect(await a.evaluate(() => localStorage.getItem('wlm_system_idle'))).toBe('true');
-  await a.getByRole('button', { name: 'OK', exact: true }).click();
+  await a.getByRole('dialog', { name: 'Options' }).getByRole('button', { name: 'Close' }).click();
 
   // Utilisateur inactif sur tout l'ordinateur → Absent
   await cdp.send('Emulation.setIdleOverride', { isUserActive: false, isScreenUnlocked: true });

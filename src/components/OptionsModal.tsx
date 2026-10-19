@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../i18n';
 import { isSystemNotificationSupported } from '../utils/NotificationManager';
 import { isAndroidDevice, isPushSupported, type PushBackendStatus } from '../utils/PushNotificationManager';
@@ -128,12 +128,32 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   };
   const blockedContacts = security.contacts.filter(c => !c.isBot && (c.blocked === true || Number(c.blocked) === 1));
 
+  // Tous les réglages s'enregistrent dès qu'ils changent (plus de OK / Annuler / Appliquer).
+  // Pseudo et message perso : enregistrés en quittant le champ (ou Entrée) et à la fermeture.
+  const savedProfileRef = useRef({ nickname: myNickname, psm: myPSM });
+  const saveProfile = () => {
+    const saved = savedProfileRef.current;
+    if (saved.nickname === myNickname && saved.psm === myPSM) return;
+    savedProfileRef.current = { nickname: myNickname, psm: myPSM };
+    syncProfile({ nickname: myNickname, psm: myPSM });
+  };
+  const close = () => { saveProfile(); onClose(); };
+  const closeRef = useRef(close);
+  useEffect(() => { closeRef.current = close; });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeRef.current(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') e.currentTarget.blur(); };
+
   return (
-    <div className="modal-bg">
-      <div className="modal-box wlm-options-modal" style={{ width: '550px' }}>
-        <div className="win-modal-header">
-          <span>{t.settings.optionsTitle}</span>
-          <button className="win-close-btn" onClick={onClose}>✕</button>
+    <div className="modal-bg" onClick={close}>
+      <div className="modal-box wlm-options-modal" style={{ width: '560px' }} role="dialog" aria-modal="true" aria-label={t.settings.optionsTitle} onClick={e => e.stopPropagation()}>
+        <div className="wlm-aero-dialog-titlebar wlm-options-titlebar">
+          <span className="wlm-aero-dialog-icon" aria-hidden="true">⚙️</span>
+          <span className="wlm-aero-dialog-title">{t.settings.optionsTitle}</span>
+          <button type="button" className="win-close-btn" onClick={close} aria-label={t.common.close} title={t.common.close}>✕</button>
         </div>
 
         <div className="options-body">
@@ -157,8 +177,12 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   <div className="options-hint">{t.settings.nicknameSub}</div>
                   <input
                     className="win-input"
+                    id="opt-nickname"
                     value={myNickname}
+                    maxLength={50}
                     onChange={e => setMyNickname(e.target.value)}
+                    onBlur={saveProfile}
+                    onKeyDown={blurOnEnter}
                     style={{ width: '90%' }}
                   />
                 </div>
@@ -167,8 +191,12 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   <div className="options-hint">{t.settings.psmSub}</div>
                   <input
                     className="win-input"
+                    id="opt-psm"
                     value={myPSM}
+                    maxLength={150}
                     onChange={e => setMyPSM(e.target.value)}
+                    onBlur={saveProfile}
+                    onKeyDown={blurOnEnter}
                     style={{ width: '90%' }}
                   />
                 </div>
@@ -664,11 +692,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
           </div>
         </div>
 
-        <div className="win-modal-footer">
-          <button className="win-btn" onClick={() => { syncProfile({ nickname: myNickname, psm: myPSM }); onClose(); }}>{t.common.ok}</button>
-          <button className="win-btn" onClick={onClose}>{t.common.cancel}</button>
-          <button className="win-btn" onClick={() => syncProfile({ nickname: myNickname, psm: myPSM })}>{t.common.apply}</button>
-        </div>
+        <div className="wlm-options-statusbar">{t.settings.autoSavedNote}</div>
       </div>
     </div>
   );

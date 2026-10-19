@@ -35,9 +35,9 @@
     "deviceRememberedBadge": "Appareil mémorisé (E2EE)",
     "deviceRememberedTooltip": "Clés E2EE mémorisées sur cet appareil",
     "deviceRememberedSuccess": "Clés E2EE mémorisées sur cet appareil.",
-    "forgetDevice": "Oublier cet appareil",
+    "forgetDevice": "Supprimer mes clés de cet appareil",
     "sessionRevokedNotice": "Vous avez été déconnecté : votre session a été fermée depuis un autre appareil (ou votre mot de passe a changé).",
-    "forgetDeviceSuccess": "Cet appareil a été oublié. Vos clés E2EE locales ont été supprimées.",
+    "forgetDeviceSuccess": "Vos clés de chiffrement ont été supprimées de cet appareil.",
     "nicknameLabel": "Pseudo :",
     "captchaLabel": "Validation Anti-Robot :",
     "captchaPlaceholder": "Votre réponse",
@@ -71,7 +71,7 @@
     "invalidServerResponse": "Réponse du serveur invalide ou altérée.",
     "signupSuccess": "Compte créé avec succès ! Vous pouvez maintenant vous connecter.",
     "unexpectedError": "Une erreur inattendue est survenue.",
-    "logout": "Se déconnecter",
+    "logout": "Se déconnecter de partout",
     "changePassword": "Changer le mot de passe"
   },
   "status": {
@@ -120,7 +120,8 @@
     "contextClearHistory": "Effacer l'historique de conversation",
     "contextDelete": "Supprimer",
     "contextBlock": "Bloquer",
-    "contextUnblock": "Débloquer"
+    "contextUnblock": "Débloquer",
+    "signOutOtherDevices": "Se déconnecter des autres appareils"
   },
   "chat": {
     "files": "Fichiers",
@@ -440,11 +441,11 @@
     "securityResetKeysHint": "À réserver à une suspicion de compromission : vos contacts devront revérifier votre code.",
     "securitySessions": "Sessions",
     "securitySessionsHint": "Vous êtes peut-être connecté sur d'autres appareils (téléphone, autre ordinateur). En cas de perte ou de doute, déconnectez-les : cet appareil reste connecté.",
-    "securityRevokeOthers": "Déconnecter mes autres sessions",
+    "securityRevokeOthers": "Se déconnecter des autres appareils",
     "securityRevokeConfirm": "Tous vos autres appareils reviendront à l'écran de connexion et ne recevront plus de notifications. Continuer ?",
     "securityRevokeConfirmBtn": "Oui, les déconnecter",
-    "securityRevokeDone": "Vos autres sessions ont été déconnectées.",
-    "securityRevokeError": "Impossible de déconnecter les autres sessions. Réessayez plus tard.",
+    "securityRevokeDone": "Vos autres appareils ont été déconnectés.",
+    "securityRevokeError": "Impossible de déconnecter les autres appareils. Réessayez plus tard.",
     "connRealtime": "Connexion temps réel",
     "connState": "État",
     "connStateConnected": "Connecté",
@@ -541,7 +542,8 @@
     "webPushConfigured": "Actif (clés VAPID configurées)",
     "pushTestButton": "Tester la notification Push",
     "pushTestSuccess": "Notification Push de test envoyée avec succès !",
-    "pushTestError": "Échec du test Web Push"
+    "pushTestError": "Échec du test Web Push",
+    "autoSavedNote": "Les modifications sont enregistrées automatiquement."
   },
   "modals": {
     "addContactTitle": "Ajouter un contact",

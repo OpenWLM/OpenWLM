@@ -4794,6 +4794,8 @@ const App: React.FC = () => {
           onSubmit={async (current, next) => {
             const result = await handleChangePassword(current, next, socket?.id);
             if (result.ok) dropInMemoryToken();
+            // Session révoquée entre-temps (autre appareil) : retour à l'écran de connexion
+            if (!result.ok && result.error === 'revoked') await handleLogoutRef.current?.('session_revoked', { local: true });
             return result;
           }}
         />

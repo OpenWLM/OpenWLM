@@ -2,7 +2,7 @@
  * Lance le serveur OpenWLM pour les tests E2E sur une BASE TEMPORAIRE isolée.
  * (Ne touche jamais messenger.db de production.)
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,6 +13,10 @@ const root = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openwlm-e2e-'));
 const PORT = process.env.E2E_PORT || '3100';
 const JWT_SECRET = 'e2e-secret-'.repeat(6);
+
+// Comptes de démonstration (npm run db:seed) dans la base temporaire : e2e/auth.spec.ts
+// vérifie qu'on peut s'y connecter comme l'annonce le README
+spawnSync(process.execPath, [path.join(root, 'scripts', 'seed-demo.js')], { cwd: tmp, stdio: 'inherit' });
 
 const child = spawn(process.execPath, [path.join(root, 'server', 'index.js')], {
   cwd: tmp,

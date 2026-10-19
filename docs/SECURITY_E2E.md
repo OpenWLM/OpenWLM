@@ -266,7 +266,12 @@ l'authentification et l'abus côté serveur :
   incrémente le compteur de sessions du compte (`token_version`), renouvelle le cookie de
   l'appareil courant, coupe les connexions temps réel des autres appareils et supprime leurs
   abonnements Push. Les appareils révoqués (y compris après un changement de mot de passe ou une
-  déconnexion ailleurs) reviennent à l'écran de connexion et effacent leurs données locales.
+  déconnexion ailleurs) reviennent à l'écran de connexion et effacent leurs clés mémorisées et
+  leurs données de session. La copie locale chiffrée des conversations est conservée : elle
+  reste illisible sans la clé privée, qui ne revient sur l'appareil qu'après une connexion avec
+  le mot de passe. Elle n'est pas effacée, car une révocation suit aussi un changement de mot
+  de passe ou une déconnexion sur un autre de ses appareils : l'effacer ferait perdre les
+  messages privés, qui n'existent que là.
 - **Copie locale des messages privés** : les messages en mode privé, jamais stockés par le
   serveur, sont désormais conservés dans la copie locale (IndexedDB), chiffrée avec la clé
   publique de l'utilisateur comme le reste de l'historique local. L'option peut être désactivée

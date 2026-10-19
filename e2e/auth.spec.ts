@@ -51,3 +51,19 @@ test('auth : inscription puis connexion → l’application se charge', async ({
   await expect(page.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
   await expect(page.locator('.auth-error')).toHaveCount(0);
 });
+
+test('compte de démonstration (npm run db:seed) : connexion possible, contact Bob présent', async ({ browser }) => {
+  test.setTimeout(120000);
+  const ip = `10.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}`;
+  const ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': ip } });
+  const page = await ctx.newPage();
+  page.on('dialog', (d) => d.accept());
+  await page.goto('/');
+  await page.locator('.auth-field input[type="text"]').first().fill('alice@openwlm.local');
+  await page.locator('.auth-field input[type="password"]').fill('DemoPassword123!');
+  await page.locator('button.wlm-btn-auth').click();
+  // Première connexion : l'app crée les clés de chiffrement du compte
+  await expect(page.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
+  await expect(page.locator('.contact-row', { hasText: 'Bob' })).toBeVisible({ timeout: 30000 });
+  await ctx.close();
+});

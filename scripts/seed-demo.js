@@ -1,150 +1,76 @@
 /**
  * OpenWLM - Script de peuplement de démonstration / développement
- * Crée 2 comptes fictifs sans aucune donnée personnelle pour tester l'application en local.
+ * Crée 2 comptes fictifs sans aucune donnée personnelle pour tester l'application en local :
+ *   alice@openwlm.local / bob@openwlm.local — mot de passe : DemoPassword123!
+ *
+ * Utilise la base du répertoire courant (`messenger.db`, comme le serveur) et son schéma réel
+ * (server/db.js). À lancer depuis la racine du dépôt : `npm run db:seed`.
+ *
+ * Mot de passe : le navigateur n'envoie jamais le mot de passe, mais une clé d'authentification
+ * dérivée (PBKDF2-SHA256 600 000 itérations, sel « openwlm-salt:<identifiant> », puis HKDF
+ * « openwlm-auth-key-v1 » — cf. deriveZeroKnowledgeKeys dans src/utils/Security.ts). Le serveur
+ * stocke un PBKDF2-SHA512 de cette clé (cf. hashPassword dans server/middleware/auth.js). Le
+ * script reproduit exactement ces deux étapes, sinon les comptes de démo ne peuvent pas se
+ * connecter. Les clés de chiffrement sont créées par l'app à la première connexion.
  */
-import Database from 'better-sqlite3';
 import crypto from 'crypto';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { db } from '../server/db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const dbPath = path.join(__dirname, '..', 'messenger.db');
+const DEMO_PASSWORD = 'DemoPassword123!';
 
-const db = new Database(dbPath);
+// Même dérivation que le client (src/utils/Security.ts → deriveZeroKnowledgeKeys)
+const deriveAuthKeyHex = (username, password) => {
+  const masterKey = crypto.pbkdf2Sync(password, 'openwlm-salt:' + username.trim().toLowerCase(), 600000, 32, 'sha256');
+  return Buffer.from(crypto.hkdfSync('sha256', masterKey, Buffer.alloc(32), 'openwlm-auth-key-v1', 32)).toString('hex');
+};
 
-// 1. Initialiser le schéma si nécessaire
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    salt TEXT NOT NULL,
-    nickname TEXT,
-    psm TEXT,
-    avatar TEXT,
-    scene TEXT,
-    status TEXT DEFAULT 'offline',
-    global_private INTEGER DEFAULT 0,
-    public_key TEXT,
-    encrypted_private_key TEXT,
-    token_version INTEGER DEFAULT 0
-  );
+// Même stockage que le serveur (server/middleware/auth.js → hashPassword)
+const serverHash = (authKeyHex) => {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(authKeyHex, salt, 210000, 64, 'sha512').toString('hex');
+  return { salt, hash };
+};
 
-  CREATE TABLE IF NOT EXISTS contacts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    contact_id INTEGER NOT NULL,
-    status INTEGER DEFAULT 1,
-    blocked INTEGER DEFAULT 0,
-    FOREIGN KEY(user_id) REFERENCES users(id),
-    FOREIGN KEY(contact_id) REFERENCES users(id),
-    UNIQUE(user_id, contact_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS invitations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sender_id INTEGER NOT NULL,
-    receiver_id INTEGER NOT NULL,
-    status TEXT DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(sender_id) REFERENCES users(id),
-    FOREIGN KEY(receiver_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sender_id INTEGER NOT NULL,
-    receiver_id INTEGER NOT NULL,
-    text TEXT,
-    style TEXT,
-    audio TEXT,
-    type TEXT DEFAULT 'text',
-    timestamp TEXT NOT NULL,
-    FOREIGN KEY(sender_id) REFERENCES users(id),
-    FOREIGN KEY(receiver_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS shared_files (
-    id TEXT PRIMARY KEY,
-    sender_id INTEGER NOT NULL,
-    receiver_id INTEGER NOT NULL,
-    filename TEXT NOT NULL,
-    original_name TEXT NOT NULL,
-    file_size INTEGER NOT NULL,
-    file_type TEXT NOT NULL,
-    token TEXT NOT NULL,
-    expires_at INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(sender_id) REFERENCES users(id),
-    FOREIGN KEY(receiver_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS custom_emoticons (
-    id TEXT PRIMARY KEY,
-    owner_id INTEGER NOT NULL,
-    shortcut TEXT NOT NULL,
-    mime_type TEXT NOT NULL,
-    file_size INTEGER NOT NULL,
-    width INTEGER NOT NULL,
-    height INTEGER NOT NULL,
-    is_animated INTEGER DEFAULT 0,
-    asset_filename TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY(owner_id) REFERENCES users(id)
-  );
-`);
+const DEMO_ACCOUNTS = [
+  { username: 'alice@openwlm.local', nickname: 'Alice (Démo)', psm: 'En ligne sur OpenWLM !', avatar: '/assets/usertiles/chess.png', scene: '/assets/scenes/0006.png' },
+  { username: 'bob@openwlm.local', nickname: 'Bob (Démo)', psm: 'Disponible pour discuter', avatar: '/assets/usertiles/frog.png', scene: '/assets/scenes/0001.png' }
+];
 
 console.log('--- Initialisation de la base de démonstration OpenWLM ---');
 
-// Calcul du hash PBKDF2 pour le mot de passe démo standard "DemoPassword123!"
-// AuthKey = SHA256("DemoPassword123!")
-const demoAuthKey = crypto.createHash('sha256').update('DemoPassword123!').digest('hex');
-const saltAlice = crypto.randomBytes(16).toString('hex');
-const hashAlice = crypto.pbkdf2Sync(demoAuthKey, saltAlice, 210000, 64, 'sha512').toString('hex');
-
-const saltBob = crypto.randomBytes(16).toString('hex');
-const hashBob = crypto.pbkdf2Sync(demoAuthKey, saltBob, 210000, 64, 'sha512').toString('hex');
+const credentials = DEMO_ACCOUNTS.map((a) => serverHash(deriveAuthKeyHex(a.username, DEMO_PASSWORD)));
 
 db.transaction(() => {
-  // Purger les éventuels comptes démo précédents
-  const existingAlice = db.prepare('SELECT id FROM users WHERE username = ?').get('alice@openwlm.local');
-  const existingBob = db.prepare('SELECT id FROM users WHERE username = ?').get('bob@openwlm.local');
-
-  if (existingAlice || existingBob) {
-    const ids = [existingAlice?.id, existingBob?.id].filter(Boolean);
-    db.prepare(`DELETE FROM contacts WHERE user_id IN (${ids.join(',')}) OR contact_id IN (${ids.join(',')})`).run();
-    db.prepare(`DELETE FROM messages WHERE sender_id IN (${ids.join(',')}) OR receiver_id IN (${ids.join(',')})`).run();
-    db.prepare(`DELETE FROM users WHERE id IN (${ids.join(',')})`).run();
+  // Purger les éventuels comptes démo précédents (lignes dépendantes d'abord)
+  const ids = DEMO_ACCOUNTS
+    .map((a) => db.prepare('SELECT id FROM users WHERE username = ?').get(a.username)?.id)
+    .filter(Boolean);
+  if (ids.length) {
+    const list = ids.join(',');
+    const dependents = [
+      ['contacts', 'user_id', 'contact_id'], ['messages', 'sender_id', 'receiver_id'],
+      ['invitations', 'sender_id', 'receiver_id'], ['shared_files', 'sender_id', 'receiver_id'],
+      ['conversation_privacy', 'owner_id', 'contact_id'], ['conversation_read_cursors', 'user_id', 'contact_id'],
+      ['push_subscriptions', 'user_id', 'user_id'], ['custom_emoticons', 'owner_id', 'owner_id']
+    ];
+    for (const [table, a, b] of dependents) {
+      db.prepare(`DELETE FROM ${table} WHERE ${a} IN (${list}) OR ${b} IN (${list})`).run();
+    }
+    db.prepare(`DELETE FROM users WHERE id IN (${list})`).run();
   }
 
-  // 1. Créer Alice Demo
-  const resAlice = db.prepare(`
+  const created = DEMO_ACCOUNTS.map((a, i) => Number(db.prepare(`
     INSERT INTO users (username, password_hash, salt, nickname, psm, avatar, scene, status, token_version)
-    VALUES (?, ?, ?, 'Alice (Démo)', 'En ligne sur OpenWLM !', '/assets/usertiles/chess.png', '/assets/scenes/0006.png', 'online', 0)
-  `).run('alice@openwlm.local', hashAlice, saltAlice);
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'offline', 0)
+  `).run(a.username, credentials[i].hash, credentials[i].salt, a.nickname, a.psm, a.avatar, a.scene).lastInsertRowid));
 
-  // 2. Créer Bob Demo
-  const resBob = db.prepare(`
-    INSERT INTO users (username, password_hash, salt, nickname, psm, avatar, scene, status, token_version)
-    VALUES (?, ?, ?, 'Bob (Démo)', 'Disponible pour discuter', '/assets/usertiles/frog.png', '/assets/scenes/0001.png', 'online', 0)
-  `).run('bob@openwlm.local', hashBob, saltBob);
-
-  const aliceId = resAlice.lastInsertRowid;
-  const bobId = resBob.lastInsertRowid;
-
-  // 3. Contact mutuel
-  db.prepare('INSERT INTO contacts (user_id, contact_id, status, blocked) VALUES (?, ?, 1, 0)').run(aliceId, bobId);
-  db.prepare('INSERT INTO contacts (user_id, contact_id, status, blocked) VALUES (?, ?, 1, 0)').run(bobId, aliceId);
-
-  // 4. Message d'accueil de bienvenue
-  db.prepare(`
-    INSERT INTO messages (sender_id, receiver_id, text, style, type, timestamp)
-    VALUES (?, ?, 'Salut Bob, bienvenue sur OpenWLM !', ?, 'text', ?)
-  `).run(aliceId, bobId, JSON.stringify({ font: 'Segoe UI', color: '#000000', size: 10 }), new Date().toISOString());
-
-  console.log('✅ Base de démonstration initialisée avec succès !');
-  console.log('\nComptes disponibles pour les tests :');
-  console.log('  1. Utilisateur: alice@openwlm.local | Mot de passe: DemoPassword123!');
-  console.log('  2. Utilisateur: bob@openwlm.local   | Mot de passe: DemoPassword123!');
+  // Contact mutuel. Pas de message pré-rempli : l'app n'affiche que des messages signés et
+  // chiffrés, qu'un script ne peut pas produire sans les clés des comptes.
+  const contact = db.prepare('INSERT INTO contacts (user_id, contact_id, status, blocked) VALUES (?, ?, 1, 0)');
+  contact.run(created[0], created[1]);
+  contact.run(created[1], created[0]);
 })();
+
+console.log('✅ Base de démonstration initialisée avec succès !');
+console.log('\nComptes disponibles pour les tests :');
+for (const a of DEMO_ACCOUNTS) console.log(`  - ${a.username} | Mot de passe : ${DEMO_PASSWORD}`);

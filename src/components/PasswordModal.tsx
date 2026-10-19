@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../i18n';
 import { evaluatePassword } from '../utils/PasswordStrength';
 import { PasswordStrengthMeter } from './PasswordStrengthMeter';
@@ -12,7 +12,7 @@ import { PasswordStrengthMeter } from './PasswordStrengthMeter';
  * des clés, re-chiffrement du coffre, appel serveur) est fait par `onSubmit`.
  */
 
-export type ChangePasswordResult = { ok: true } | { ok: false; error: 'wrongCurrent' | 'failed'; message?: string };
+export type ChangePasswordResult = { ok: true } | { ok: false; error: 'wrongCurrent' | 'revoked' | 'failed'; message?: string };
 
 interface PasswordModalProps {
   onClose: () => void;
@@ -27,6 +27,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ onClose, onSubmit 
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Fermeture automatique après succès : annulée si la fenêtre disparaît avant
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); }, []);
 
   const conformant = evaluatePassword(next).isConformant;
   const matches = confirm.length > 0 && confirm === next;
@@ -45,7 +48,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ onClose, onSubmit 
     if (result.ok) {
       setDone(true);
       setCurrent(''); setNext(''); setConfirm('');
-      setTimeout(onClose, 1800);
+      closeTimerRef.current = setTimeout(onClose, 1800);
     } else {
       setError(result.error === 'wrongCurrent' ? t.modals.changePasswordWrongCurrent : (result.message || t.modals.changePasswordFailed));
     }

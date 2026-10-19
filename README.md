@@ -144,6 +144,8 @@ This initializes two fictitious accounts with zero personal data:
 - `alice@openwlm.local` (Password: `DemoPassword123!`)
 - `bob@openwlm.local` (Password: `DemoPassword123!`)
 
+They are already contacts; their encryption keys are created at first sign-in. Run it from the repository root (same `messenger.db` as the server).
+
 > *Note: If you do not run `npm run db:seed`, the server automatically creates a fresh, empty database on first launch.*
 
 ### 3. Web Push & VAPID Provisioning (Recommended for PWA & Android)

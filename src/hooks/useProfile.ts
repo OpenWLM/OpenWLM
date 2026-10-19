@@ -304,8 +304,10 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       }
       return { ok: false, error: 'failed' };
     } catch (err: unknown) {
-      const r = (err as { response?: { status?: number; data?: { error?: string } } }).response;
+      const r = (err as { response?: { status?: number; data?: { error?: string; code?: string } } }).response;
       console.error("Échec changement mot de passe:", err);
+      // Session révoquée pendant que la fenêtre était ouverte : pas un mauvais mot de passe
+      if (r?.status === 401 && r.data?.code === 'session_revoked') return { ok: false, error: 'revoked' };
       if (r?.status === 401) return { ok: false, error: 'wrongCurrent' };
       return { ok: false, error: 'failed', message: r?.data?.error };
     }

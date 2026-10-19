@@ -144,6 +144,8 @@ Ce script crée deux comptes fictifs (sans aucune donnée personnelle) :
 - `alice@openwlm.local` (Mot de passe: `DemoPassword123!`)
 - `bob@openwlm.local` (Mot de passe: `DemoPassword123!`)
 
+Ils sont déjà en contact l'un avec l'autre ; leurs clés de chiffrement sont créées à la première connexion. À lancer depuis la racine du dépôt, serveur arrêté ou non (même base `messenger.db`).
+
 > *Note : Si vous ne lancez pas `npm run db:seed`, le serveur créera automatiquement une base vierge au premier démarrage.*
 
 ### 3. Provisioning Web Push & Clés VAPID (Recommandé pour PWA & Android)

@@ -9,6 +9,14 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [Non publié]
+
+### Corrections
+- **Inactivité de tout l'ordinateur** (Chrome / Edge) : quand le navigateur refusait de démarrer la détection alors que l'autorisation était accordée (PWA ouverte au démarrage de Windows ou à la sortie de veille, par exemple), l'option restait inopérante jusqu'à ce qu'on retire puis rende l'autorisation, et annonçait à tort une autorisation retirée. La détection est maintenant relancée quand la fenêtre revient au premier plan (et après 5 s, 15 s et 60 s), les Options affichent un message dédié et l'erreur du navigateur est écrite dans la console.
+- `scripts/openwlm-service.sh install` refuse un dossier sans `.env` : lancé depuis un dépôt de développement, il faisait tourner le service depuis ce dossier (sans secrets ni base de prod).
+
+---
+
 ## [1.7.0] - 2026-10-19
 
 ### Mise à jour depuis la 1.6.x

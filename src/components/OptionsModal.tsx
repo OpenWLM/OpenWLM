@@ -34,6 +34,7 @@ interface OptionsModalProps {
   setAwayTimeout: (value: number) => void;
   systemIdleEnabled: boolean;
   systemIdleRunning: boolean;
+  systemIdleStartFailed: boolean;
   systemIdleSupport: SystemIdleSupport;
   enableSystemIdle: () => Promise<SystemIdlePermission>;
   disableSystemIdle: () => void;
@@ -84,6 +85,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   setAwayTimeout,
   systemIdleEnabled,
   systemIdleRunning,
+  systemIdleStartFailed,
   systemIdleSupport,
   enableSystemIdle,
   disableSystemIdle,
@@ -309,6 +311,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                       : systemIdleSupport === 'insecure' ? t.settings.systemIdleInsecure
                       : systemIdleDenied ? t.settings.systemIdleDenied
                       : systemIdleEnabled && systemIdleRunning ? t.settings.systemIdleActive
+                      : systemIdleEnabled && systemIdleStartFailed ? t.settings.systemIdleRetrying
                       : systemIdleEnabled ? t.settings.systemIdleBlocked
                       : t.settings.systemIdleHint}
                   </div>

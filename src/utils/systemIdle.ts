@@ -100,7 +100,9 @@ export const startSystemIdleDetection = async (
     });
     await detector.start({ threshold: Math.max(SYSTEM_IDLE_MIN_THRESHOLD_MS, thresholdMs), signal: controller.signal });
     return () => controller.abort();
-  } catch {
+  } catch (error) {
+    // Garder la réponse exacte du navigateur : c'est la seule trace d'un démarrage refusé
+    console.warn('[OpenWLM] IdleDetector.start() a échoué :', error);
     controller.abort();
     return null;
   }

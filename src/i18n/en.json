@@ -502,6 +502,7 @@
     "systemIdleHint": "You only go \"Away\" when you stop using the computer or lock the screen. Asks for the browser's permission. Chrome and Edge on desktop only.",
     "systemIdleActive": "Active: OpenWLM follows the computer's inactivity and screen lock. It only learns \"active\" or \"idle\", never what you do in other applications.",
     "systemIdleBlocked": "Enabled but not running: the permission was withdrawn in the browser settings. OpenWLM uses inactivity in its own window instead.",
+    "systemIdleRetrying": "Enabled, but the browser refused to start the detection. It retries as soon as the window is back in the foreground; meanwhile OpenWLM uses inactivity in its own window.",
     "systemIdleDenied": "Permission refused: OpenWLM keeps using inactivity in its own window. You can allow it in the site settings of your browser.",
     "systemIdleUnsupported": "Not available in this browser (Chrome or Edge on desktop only). OpenWLM uses inactivity in its own window.",
     "systemIdleInsecure": "Requires a secure (HTTPS) connection.",

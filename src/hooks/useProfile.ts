@@ -73,6 +73,8 @@ export interface ProfileApi {
   systemIdleEnabled: boolean;
   /** true quand la détection système tourne réellement (permission accordée, API disponible). */
   systemIdleRunning: boolean;
+  /** true quand la permission est accordée mais que le navigateur a refusé de démarrer la détection (nouvel essai en cours). */
+  systemIdleStartFailed: boolean;
   systemIdleSupport: SystemIdleSupport;
   /** Active l'option : demande la permission (à appeler depuis un clic). */
   enableSystemIdle: () => Promise<SystemIdlePermission>;
@@ -81,6 +83,9 @@ export interface ProfileApi {
   handleChangePassword: (currentPassword: string, newPassword: string, socketId?: string) => Promise<ChangePasswordResult>;
   handleForgetDevice: () => Promise<void>;
 }
+
+/** Nouveaux essais de la détection système après un échec (en plus du retour au premier plan). */
+const SYSTEM_IDLE_RETRY_DELAYS_MS = [5_000, 15_000, 60_000];
 
 export function useProfile(options: UseProfileOptions): ProfileApi {
   const {
@@ -109,6 +114,7 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
   useEffect(() => { isAutoAwayRef.current = isAutoAway; }, [isAutoAway]);
   const [systemIdleEnabled, setSystemIdleEnabled] = useState(() => loadSystemIdleEnabled());
   const [systemIdleRunning, setSystemIdleRunning] = useState(false);
+  const [systemIdleStartFailed, setSystemIdleStartFailed] = useState(false);
   const systemIdleRunningRef = useRef(false);
   const systemIdleSupport = getSystemIdleSupport();
   const myStatusRef = useRef(myStatus);
@@ -216,27 +222,57 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
     return watchSystemIdlePermission(() => setSystemIdlePermissionEpoch((n) => n + 1));
   }, [enableAutoAway, systemIdleEnabled, systemIdleSupport]);
 
+  // Un démarrage refusé (ex. PWA ouverte au démarrage de Windows ou à la sortie de veille) n'est
+  // pas définitif : nouvel essai quand la fenêtre revient au premier plan, et après un délai.
   useEffect(() => {
     if (!enableAutoAway || !systemIdleEnabled || systemIdleSupport !== 'available') return;
     let stop: (() => void) | null = null;
     let cancelled = false;
-    (async () => {
-      const permission = await querySystemIdlePermission();
-      if (cancelled || permission !== 'granted') return;
-      stop = await startSystemIdleDetection(awayTimeout * 60 * 1000, (idle) => {
-        if (idle) goAutoAwayRef.current(); else leaveAutoAwayRef.current();
-      });
-      if (cancelled) { stop?.(); return; }
-      if (stop) {
-        systemIdleRunningRef.current = true;
-        setSystemIdleRunning(true);
+    let attempting = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let timedRetries = 0;
+    const tryStart = async () => {
+      if (cancelled || stop || attempting) return;
+      attempting = true;
+      clearTimeout(retryTimer);
+      try {
+        const permission = await querySystemIdlePermission();
+        if (cancelled) return;
+        if (permission === 'granted') {
+          stop = await startSystemIdleDetection(awayTimeout * 60 * 1000, (idle) => {
+            if (idle) goAutoAwayRef.current(); else leaveAutoAwayRef.current();
+          });
+          if (cancelled) { stop?.(); stop = null; return; }
+        }
+        if (stop) {
+          systemIdleRunningRef.current = true;
+          setSystemIdleRunning(true);
+          setSystemIdleStartFailed(false);
+          return;
+        }
+        // Permission absente : le message « retirée » s'affiche, mais l'état renvoyé par le
+        // navigateur peut être provisoire à l'ouverture de la fenêtre, d'où les nouveaux essais.
+        setSystemIdleStartFailed(permission === 'granted');
+        if (timedRetries < SYSTEM_IDLE_RETRY_DELAYS_MS.length) {
+          retryTimer = setTimeout(() => { void tryStart(); }, SYSTEM_IDLE_RETRY_DELAYS_MS[timedRetries++]);
+        }
+      } finally {
+        attempting = false;
       }
-    })();
+    };
+    const onForeground = () => { if (document.visibilityState === 'visible') void tryStart(); };
+    window.addEventListener('focus', onForeground);
+    document.addEventListener('visibilitychange', onForeground);
+    void tryStart();
     return () => {
       cancelled = true;
+      clearTimeout(retryTimer);
+      window.removeEventListener('focus', onForeground);
+      document.removeEventListener('visibilitychange', onForeground);
       stop?.();
       systemIdleRunningRef.current = false;
       setSystemIdleRunning(false);
+      setSystemIdleStartFailed(false);
       lastActivityRef.current = Date.now();
     };
   }, [enableAutoAway, systemIdleEnabled, systemIdleSupport, awayTimeout, systemIdlePermissionEpoch]);
@@ -355,6 +391,7 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
     setEnableAutoAway,
     systemIdleEnabled,
     systemIdleRunning,
+    systemIdleStartFailed,
     systemIdleSupport,
     enableSystemIdle,
     disableSystemIdle,

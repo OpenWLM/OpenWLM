@@ -834,6 +834,7 @@ const App: React.FC = () => {
     setEnableAutoAway,
     systemIdleEnabled,
     systemIdleRunning,
+    systemIdleStartFailed,
     systemIdleSupport,
     enableSystemIdle,
     disableSystemIdle,
@@ -5012,6 +5013,7 @@ const App: React.FC = () => {
           setAwayTimeout={setAwayTimeout}
           systemIdleEnabled={systemIdleEnabled}
           systemIdleRunning={systemIdleRunning}
+          systemIdleStartFailed={systemIdleStartFailed}
           systemIdleSupport={systemIdleSupport}
           enableSystemIdle={enableSystemIdle}
           disableSystemIdle={disableSystemIdle}

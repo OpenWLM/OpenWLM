@@ -9,6 +9,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Whole-computer inactivity** (Chrome / Edge): when the browser refused to start the detection although the permission was granted (e.g. a PWA opened at Windows startup or on resume from sleep), the option stayed off until the permission was toggled in the browser, and claimed the permission had been withdrawn. The detection now retries when the window comes back to the foreground (and after 5 s, 15 s and 60 s), Options shows a dedicated message, and the browser's error is logged to the console.
+- `scripts/openwlm-service.sh install` refuses a folder without `.env`: run from a development checkout, it pointed the service at that folder (no production secrets or database).
+
+---
+
 ## [1.7.0] - 2026-10-19
 
 ### Upgrading from 1.6.x

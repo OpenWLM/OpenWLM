@@ -502,6 +502,7 @@
     "systemIdleHint": "Vous ne passez « Absent » que si vous n'utilisez plus l'ordinateur ou verrouillez l'écran. Demande l'autorisation du navigateur. Chrome et Edge sur ordinateur uniquement.",
     "systemIdleActive": "Actif : OpenWLM suit l'inactivité de l'ordinateur et le verrouillage de l'écran. Il sait seulement « actif » ou « inactif », jamais ce que vous faites dans les autres applications.",
     "systemIdleBlocked": "Activé mais inopérant : l'autorisation a été retirée dans les réglages du navigateur. OpenWLM utilise à la place l'inactivité dans sa propre fenêtre.",
+    "systemIdleRetrying": "Activé, mais le navigateur a refusé de démarrer la détection. Nouvel essai dès que la fenêtre revient au premier plan ; en attendant, OpenWLM utilise l'inactivité dans sa propre fenêtre.",
     "systemIdleDenied": "Autorisation refusée : OpenWLM continue d'utiliser l'inactivité dans sa propre fenêtre. Vous pouvez l'autoriser dans les paramètres du site de votre navigateur.",
     "systemIdleUnsupported": "Indisponible dans ce navigateur (Chrome ou Edge sur ordinateur uniquement). OpenWLM utilise l'inactivité dans sa propre fenêtre.",
     "systemIdleInsecure": "Nécessite une connexion sécurisée (HTTPS).",

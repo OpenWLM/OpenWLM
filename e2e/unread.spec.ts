@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from './test';
 
 /**
  * E2E — message reçu alors qu'aucune conversation n'est ouverte : l'onglet apparaît et

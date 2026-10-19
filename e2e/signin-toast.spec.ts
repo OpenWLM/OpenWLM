@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from './test';
 
 /**
  * E2E — notification de connexion : quand un contact se connecte, un toast Aero

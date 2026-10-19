@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from './test';
 
 /**
  * E2E — interface en anglais : alertes, lignes système, contact de test et erreurs du serveur

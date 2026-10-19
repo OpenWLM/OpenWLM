@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from './test';
 
 /**
  * E2E — statut restauré au redémarrage de l'app : un statut choisi à la main (Absent,

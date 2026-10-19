@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test';
 
 /**
  * E2E — nouveautés de mise en forme et aide sur un téléphone (390×844, tactile) :

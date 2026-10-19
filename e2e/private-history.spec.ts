@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from './test';
 
 /**
  * E2E — messages en mode privé : jamais perdus à l'ouverture d'un onglet (le message reçu

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test';
 
 /**
  * Vérifie que les winks pré-rendus (WebP animés depuis les .swf d'origine) sont bien servis.

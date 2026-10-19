@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from './test';
 
 /**
  * E2E — Démineur à deux (Minesweeper Flags) entre deux navigateurs : invitation depuis le

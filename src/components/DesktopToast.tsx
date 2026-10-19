@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useI18n } from '../i18n';
+import { stripPlusTags } from '../utils/plusFormat';
+import { formatNickname } from '../utils/NicknameFormatter';
 
 export interface ToastItem {
   id: string;
@@ -103,14 +105,14 @@ export const DesktopToastCard: React.FC<DesktopToastCardProps> = ({
         <div className="wlm-desktop-toast-avatar-box">
           <img
             src={avatarSrc}
-            alt={toast.senderName}
+            alt={stripPlusTags(toast.senderName)}
             onError={(e) => {
               (e.target as HTMLImageElement).src = '/assets/usertiles/chess.png';
             }}
           />
         </div>
         <div className="wlm-desktop-toast-content">
-          <div className="wlm-desktop-toast-sender">{toast.senderName}</div>
+          <div className="wlm-desktop-toast-sender">{formatNickname(toast.senderName)}</div>
           <div className="wlm-desktop-toast-action">{toast.actionText || t.settings.toastAction}</div>
           {toast.text && <div className="wlm-desktop-toast-message">{toast.text}</div>}
         </div>

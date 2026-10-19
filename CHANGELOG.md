@@ -11,6 +11,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### New
+- **Formatting** of nicknames, personal messages and messages: bold, italic, underline, strikethrough, 16 classic colors or any `#RRGGBB`, background colors, text and background gradients (`[c=4]red[/c]`, `[c=4]gradient[/c=12]`, `·$4` short codes). 🎨 button next to the conversation input and the nickname / personal message fields (with preview). Rendered by React without any injected HTML; tags are removed wherever they cannot be shown (notifications, titles, tooltips). Option to show everything as plain text (Options → Messages). Nicknames and personal messages keep their limits of 50 and 150 **visible** characters (checked by the server too).
+- **`/` commands** in conversations: `/me`, `/clear`, `/online`, `/busy`, `/away`, `/offline`, `/nick`, `/psm`, `/all`, `/signout`, `/help`, with a suggestion list (Tab to complete); `//` sends a message starting with `/`.
+- **Quick texts** (Options → Messages): `/shortcut` sends a ready-made message, `(!N)` is replaced by the contact's name. Saved on the device.
+- **Recall your messages** with Ctrl+↑ / Ctrl+↓.
+- **Search a conversation** with Ctrl+F (highlighted matches, counter, previous / next).
+- **Help window**: main menu → Help, **Help** link on the sign-in screen, `/help`. Documentation: [docs/FORMATTING_AND_COMMANDS.md](docs/FORMATTING_AND_COMMANDS.md).
+
+### Fixes
+- An input field emptied with Ctrl+A then Delete kept an invisible line break, which was added at the start of the next message.
+
 ### Cleanup
 - Removed unused resources.
 - **Fix**: the test contact's scene pointed to a file that never existed (`0002.png` instead of `0002.jpg`).

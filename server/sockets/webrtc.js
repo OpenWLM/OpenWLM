@@ -1,3 +1,4 @@
+import { stripPlusTags } from '../utils/plusText.js';
 import { db } from '../db.js';
 import { getUserRoom, isUserOnline } from '../sessionStore.js';
 import { canInteract } from '../middleware/auth.js';
@@ -220,7 +221,7 @@ export const registerWebRtcHandlers = (io, socket) => {
     const callerUser = db.prepare('SELECT id, nickname, username FROM users WHERE id = ?').get(self);
     if (!callerUser) return;
 
-    setPending(self, targetId, { callerName: callerUser.nickname || callerUser.username, signal, audioOnly: !!audioOnly });
+    setPending(self, targetId, { callerName: stripPlusTags(callerUser.nickname) || callerUser.username, signal, audioOnly: !!audioOnly });
     const entry = getPending(self, targetId);
 
     (async () => {

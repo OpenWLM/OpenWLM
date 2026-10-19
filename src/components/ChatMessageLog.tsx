@@ -79,7 +79,7 @@ export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
              ) : (
                <>
                  <div className={`msg-name ${isSender ? 'me' : ''}`}>
-                   <span>{m.fileData ? formatNickname(fileHeaderLabel) : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}</span>
+                   <span>{m.fileData ? formatNickname(fileHeaderLabel) : m.action ? null : <>{formatNickname(senderDisplayName)} {t.chat.says}</>}</span>
                    {m.time && showTimestamps && <span className="msg-time">{m.time}</span>}
                    {isSender && activeChatId !== SYSTEM_BOT_ID && m._failed && (
                      <span className="msg-send-failed" role="alert">
@@ -136,6 +136,9 @@ export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
                    />
                  ) : m.audio ? (
                    <VoiceClipPlayer src={m.audio} />
+                 ) : m.action ? (
+                   // /me : « * Pseudo texte »
+                   <div className="msg-action" data-testid="msg-action">* {formatNickname(senderDisplayName)} {renderMessageContent(m.text, m.style)}</div>
                  ) : (
                    renderMessageContent(m.text, m.style)
                  )}

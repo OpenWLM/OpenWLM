@@ -102,3 +102,32 @@ test('update : surnom > 50 ou PSM > 150 rejetés (400), bornes exactes acceptée
     cleanup();
   }
 });
+
+test('mise en forme : seule la longueur visible compte, longueur brute bornée', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
+  seedUser();
+  try {
+    const token = tok(UID, 'plim_user');
+
+    // 50 caractères visibles + balises (59 caractères bruts) : accepté
+    const okNick = await makeHttp('/api/user/update', 'POST', token, { nickname: `[c=4]${'x'.repeat(50)}[/c]` });
+    assert.equal(okNick.status, 200, 'les balises ne comptent pas dans les 50 caractères');
+    const okPsm = await makeHttp('/api/user/update', 'POST', token, { psm: `[c=4]${'y'.repeat(150)}[/c=12]` });
+    assert.equal(okPsm.status, 200, 'les balises ne comptent pas dans les 150 caractères');
+
+    // 51 caractères visibles : refusé, même entourés de balises
+    const longNick = await makeHttp('/api/user/update', 'POST', token, { nickname: `[b]${'x'.repeat(51)}[/b]` });
+    assert.equal(longNick.status, 400, '51 caractères visibles doivent être refusés');
+
+    // Balises à rallonge : la longueur brute reste bornée (300 / 600)
+    const rawNick = await makeHttp('/api/user/update', 'POST', token, { nickname: 'a' + '[b][/b]'.repeat(50) });
+    assert.equal(rawNick.status, 400, 'surnom > 300 caractères bruts refusé');
+    const rawPsm = await makeHttp('/api/user/update', 'POST', token, { psm: 'a' + '[i][/i]'.repeat(100) });
+    assert.equal(rawPsm.status, 400, 'PSM > 600 caractères bruts refusé');
+
+    const stored = db.prepare('SELECT nickname, psm FROM users WHERE id = ?').get(UID);
+    assert.equal(stored.nickname, `[c=4]${'x'.repeat(50)}[/c]`, 'le surnom est stocké avec ses balises');
+    assert.equal(stored.psm, `[c=4]${'y'.repeat(150)}[/c=12]`);
+  } finally {
+    cleanup();
+  }
+});

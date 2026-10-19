@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { db, toPublicUserDTO } from '../db.js';
 import { getUserRoom } from '../sessionStore.js';
+import { isValidFormattedField } from '../utils/plusText.js';
 import { 
   SECRET, 
   authenticateToken, 
@@ -378,8 +379,9 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     const { nickname, psm, avatar, scene, status } = req.body;
     const userId = req.user.id;
 
-    if (nickname !== undefined && (typeof nickname !== 'string' || nickname.length > 50)) return res.status(400).json({ error: "Surnom invalide (max 50 caractères).", code: 'nickname_invalid' });
-    if (psm !== undefined && (typeof psm !== 'string' || psm.length > 150)) return res.status(400).json({ error: "Message personnel invalide (max 150 caractères)." });
+    // Longueur VISIBLE (sans balises de mise en forme) : 50 / 150 ; brute bornée à 300 / 600
+    if (nickname !== undefined && !isValidFormattedField(nickname, 50, 300)) return res.status(400).json({ error: "Surnom invalide (max 50 caractères).", code: 'nickname_invalid' });
+    if (psm !== undefined && !isValidFormattedField(psm, 150, 600)) return res.status(400).json({ error: "Message personnel invalide (max 150 caractères)." });
 
     if (avatar && !isValidPath(avatar)) return res.status(400).json({ error: "Image d'avatar invalide." });
     if (scene && !isValidPath(scene)) return res.status(400).json({ error: "Scène invalide." });

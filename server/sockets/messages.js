@@ -1,3 +1,4 @@
+import { stripPlusTags } from '../utils/plusText.js';
 import { db, isConversationPrivate } from '../db.js';
 import { getUserRoom, isUserOnline } from '../sessionStore.js';
 import { canInteract } from '../middleware/auth.js';
@@ -147,7 +148,7 @@ export const registerMessageHandlers = (io, socket) => {
     io.to(getUserRoom(receiverId)).emit('receive_message', messageToDeliver);
     socket.to(getUserRoom(senderId)).emit('receive_message', messageToDeliver);
 
-    const pushSenderName = sender ? (sender.nickname || sender.username) : 'Contact';
+    const pushSenderName = sender ? (stripPlusTags(sender.nickname) || sender.username) : 'Contact';
     // `l10n` : clé traduite par le service worker dans la langue de l'app (le serveur ne la
     // connaît pas) ; `body` reste le texte de repli (ancien service worker)
     let pushBody = 'Nouveau message reçu';
@@ -321,7 +322,7 @@ export const registerMessageHandlers = (io, socket) => {
     io.to(getUserRoom(receiverId)).emit('receive_wizz', { senderId, receiverId });
 
     const sender = db.prepare('SELECT username, nickname FROM users WHERE id = ?').get(senderId);
-    const senderDisplayName = sender ? (sender.nickname || sender.username) : 'Contact';
+    const senderDisplayName = sender ? (stripPlusTags(sender.nickname) || sender.username) : 'Contact';
 
     dispatchPushNotification(receiverId, {
       title: `${senderDisplayName} - OpenWLM`,

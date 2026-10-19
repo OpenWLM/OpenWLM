@@ -1,4 +1,6 @@
 import React from 'react';
+import { hasPlusFormatting, renderPlusText, stripPlusTags } from './plusFormat';
+import { getAppPrefs } from './appPrefs';
 
 /**
  * Dictionnaire officiel des raccourcis d'émoticônes rétro Windows Live Messenger / MSN
@@ -136,6 +138,20 @@ export function formatNickname(
   if (!text || typeof text !== 'string') {
     return text || '';
   }
+  // Mise en forme ([c=4], [b]…) : rendue, ou retirée si l'option est désactivée (Options → Messages)
+  if (hasPlusFormatting(text)) {
+    if (!getAppPrefs().messages.showFormatting) return emoticonizeNickname(stripPlusTags(text), options);
+    return renderPlusText(text, (plain, key) => emoticonizeNickname(plain, { ...options, keyPrefix: key }), options?.keyPrefix || 'nick');
+  }
+  return emoticonizeNickname(text, options);
+}
+
+/** Émoticônes d'un pseudo (texte sans mise en forme). */
+function emoticonizeNickname(
+  text: string,
+  options?: FormatNicknameOptions
+): React.ReactNode {
+  if (!text) return '';
 
   // Fast-Path : pas de caractère déclencheur = chaîne primitive directe
   if (!SHORTCUT_TRIGGER_CHARS.test(text)) {

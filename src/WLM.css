@@ -4964,3 +4964,81 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
+
+/* ===== Commandes « / » : liste d'aide au-dessus de la saisie ===== */
+.chat-input-bubble { position: relative; }
+.cmd-helper {
+  position: absolute; left: 8px; right: 8px; bottom: calc(100% + 4px); z-index: 40;
+  background: linear-gradient(180deg, #f6fbff, #e4f0fa); border: 1px solid #9cc0de; border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 40, 80, 0.18); padding: 4px; font-size: 12px; max-height: 260px; overflow-y: auto;
+}
+.cmd-helper-item { display: flex; gap: 10px; align-items: baseline; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.cmd-helper-item:hover { background: #d4e8f8; }
+.cmd-helper-name { font-weight: 600; color: #1a3a5c; white-space: nowrap; }
+.cmd-helper-desc { color: #3b5c7e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-helper-hint { padding: 4px 8px 2px; font-size: 10.5px; color: #6a819a; border-top: 1px solid #d3e2ef; margin-top: 2px; }
+
+/* /me : message d'action */
+.msg-action { font-style: italic; color: #7a2a9c; }
+.msg-action .msg-content { display: inline; font-style: italic !important; }
+
+/* ===== Sélecteur de mise en forme (🎨) ===== */
+.fmt-picker { position: relative; display: inline-flex; align-items: center; }
+.fmt-picker-btn { background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 4px; }
+.fmt-picker-btn:hover { background: #e5f1fb; border-color: #b9d4ea; }
+.fmt-picker-panel {
+  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 60; width: 236px;
+  background: linear-gradient(180deg, rgba(240, 248, 255, 0.99), rgba(214, 232, 248, 0.99));
+  border: 1px solid rgba(120, 170, 210, 0.75); border-radius: 8px; padding: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3); font-size: 11.5px; color: #1a3a5c;
+}
+.fmt-picker-panel.align-right { left: auto; right: 0; }
+.fmt-picker-styles { display: flex; gap: 4px; margin-bottom: 6px; }
+.fmt-picker-styles button, .fmt-picker-modes button {
+  border: 1px solid #a9c3da; background: linear-gradient(180deg, #ffffff, #e8f1f9); border-radius: 3px; cursor: pointer; font-size: 11.5px; padding: 2px 8px; color: #1a3a5c;
+}
+.fmt-picker-modes { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+.fmt-picker-modes button.active { background: linear-gradient(180deg, #5fa8e8, #2a7fd0); color: #fff; border-color: #1f6db8; }
+.fmt-picker-hint { margin-bottom: 6px; color: #3b5c7e; }
+.fmt-picker-swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.fmt-swatch { width: 100%; aspect-ratio: 1; border: 1px solid #7f97ad; border-radius: 3px; cursor: pointer; padding: 0; }
+.fmt-swatch:hover, .fmt-swatch.selected { outline: 2px solid #2a7fd0; outline-offset: 1px; }
+.fmt-picker-preview { margin-top: 8px; padding-top: 6px; border-top: 1px solid #c8d9e8; }
+
+/* Options : champs mis en forme (🎨 + aperçu) et textes rapides */
+.opt-format-field { display: flex; align-items: center; gap: 4px; width: 90%; }
+.opt-format-field .win-input { flex: 1; min-width: 0; }
+.opt-format-preview { font-size: 12px; padding: 3px 6px; background: #f6fafd; border: 1px dashed #c8d9e8; border-radius: 3px; width: fit-content; max-width: 90%; }
+.opt-format-error { font-size: 11px; color: #c0392b; font-weight: 600; }
+.quick-text-form { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.quick-text-form #qt-shortcut { width: 90px; }
+.quick-text-form #qt-text { flex: 1; min-width: 140px; }
+
+/* ===== Recherche dans la conversation (Ctrl+F) ===== */
+.conv-search {
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px; font-size: 12px;
+  background: linear-gradient(180deg, #f4f9fe, #e1eef9); border-bottom: 1px solid #b8d4ea;
+}
+.conv-search-input { flex: 1; min-width: 0; padding: 3px 6px; border: 1px solid #a9c3da; border-radius: 3px; font-size: 12px; }
+.conv-search-count { color: #3b5c7e; min-width: 56px; text-align: right; white-space: nowrap; }
+.conv-search-btn { border: 1px solid #a9c3da; background: linear-gradient(180deg, #fff, #e8f1f9); border-radius: 3px; cursor: pointer; font-size: 10px; padding: 2px 6px; color: #1a3a5c; }
+.conv-search-btn:disabled { opacity: 0.5; cursor: default; }
+::highlight(wlm-search) { background-color: #fff2a8; color: inherit; }
+::highlight(wlm-search-current) { background-color: #ffb347; color: #000; }
+.search-current-msg { outline: 2px solid #ffb347; outline-offset: 2px; border-radius: 3px; }
+
+/* ===== Aide ===== */
+.wlm-help-modal { width: 640px; }
+.help-content p { font-size: 12px; line-height: 1.45; margin: 0; color: #22364a; }
+.help-list { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.5; color: #22364a; display: flex; flex-direction: column; gap: 4px; }
+.help-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.help-table th { text-align: left; font-weight: 600; color: #1a3a5c; border-bottom: 1px solid #c8d9e8; padding: 4px 6px; }
+.help-table td { border-bottom: 1px solid #eef2f5; padding: 4px 6px; vertical-align: top; }
+.help-table code, .help-table kbd { font-family: Consolas, 'Courier New', monospace; font-size: 11.5px; background: #f1f6fb; border: 1px solid #d3e2ef; border-radius: 3px; padding: 0 4px; white-space: nowrap; }
+.help-palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px 8px; font-size: 11px; }
+.help-palette-item { display: inline-flex; align-items: center; gap: 4px; }
+.help-swatch { width: 14px; height: 14px; border: 1px solid #7f97ad; border-radius: 2px; display: inline-block; }
+.help-docs { margin-top: 14px !important; font-size: 11.5px !important; }
+@media (max-width: 520px) { .help-palette { grid-template-columns: repeat(4, 1fr); } }
+
+.auth-help-link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }

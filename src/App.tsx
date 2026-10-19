@@ -58,6 +58,9 @@ import { formatNickname } from './utils/NicknameFormatter';
 import DesktopToastContainer from './components/DesktopToast';
 import AeroConfirmDialog from './components/AeroConfirmDialog';
 import RosterResizer from './components/RosterResizer';
+import FormatPicker from './components/FormatPicker';
+import ConversationSearch from './components/ConversationSearch';
+import HelpModal from './components/HelpModal';
 import {
   decideNotificationType,
   showSystemNotification,
@@ -94,6 +97,8 @@ import {
 import { useAppPrefs, getAppPrefs, setPresenceForSounds } from './utils/appPrefs';
 import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
 import { systemLine } from './utils/systemLine';
+import { parseChatInput, BUILTIN_COMMANDS, commandSuggestions } from './utils/chatCommands';
+import { hasPlusFormatting, renderPlusText, stripPlusTags } from './utils/plusFormat';
 import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
 import { notify } from './utils/dialogs';
 
@@ -594,6 +599,13 @@ const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
   // Brouillons non envoyés, un par conversation (le champ de saisie est partagé entre onglets)
   const draftsRef = useRef<Record<number, string>>({});
+  // Rappel des messages envoyés (Ctrl+↑ / Ctrl+↓) : liste de la session, position, brouillon en cours
+  const sentHistoryRef = useRef<string[]>([]);
+  const recallIndexRef = useRef<number | null>(null);
+  const recallDraftRef = useRef('');
+  const [showHelp, setShowHelp] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+
   // Conversation à laquelle appartient le contenu actuel du champ (null = ne pas sauvegarder)
   const draftChatIdRef = useRef<number | null>(activeChatId);
   const inputTextRef = useRef(inputText);
@@ -2046,7 +2058,7 @@ const App: React.FC = () => {
 
         if (decision === 'system') {
           showSystemNotification({
-            title: `${finalSenderName} - OpenWLM`,
+            title: `${stripPlusTags(finalSenderName)} - OpenWLM`,
             body: previewText,
             icon: contactAvatar,
             tag: `openwlm-chat-${senderId}`,
@@ -2097,7 +2109,7 @@ const App: React.FC = () => {
 
         if (decision === 'system') {
           showSystemNotification({
-            title: `${senderName} - OpenWLM`,
+            title: `${stripPlusTags(senderName)} - OpenWLM`,
             body: `💥 [Wizz !]`,
             icon: contactAvatar,
             tag: `openwlm-chat-${senderId}`,
@@ -2137,7 +2149,7 @@ const App: React.FC = () => {
 
         const tr = tRef.current.notices;
         const systemMsg = systemLine(
-          (isPrivate ? tr.privateContactOn : effective ? tr.privateContactOffStillPrivate : tr.privateContactOff).replace('{name}', senderNickname || tRef.current.chat.unknownSender),
+          (isPrivate ? tr.privateContactOn : effective ? tr.privateContactOffStillPrivate : tr.privateContactOff).replace('{name}', stripPlusTags(senderNickname) || tRef.current.chat.unknownSender),
           { senderId: 0, receiverId: senderId }
         );
         setMessages(prev => ({ ...prev, [senderId]: [...(prev[senderId] || []), systemMsg] }));
@@ -2172,7 +2184,7 @@ const App: React.FC = () => {
         try {
           if (getSystemNotificationPermission() === 'granted') {
             showSystemNotification({
-              title: `${data.callerName || 'Contact'} — OpenWLM`,
+              title: `${stripPlusTags(data.callerName) || 'Contact'} — OpenWLM`,
               body: data.audioOnly ? t.videoCall.audioIncoming : t.videoCall.videoIncoming,
               icon: '/assets/openwlm_logo.png',
               tag: `openwlm-call-${data.caller}`,
@@ -2253,7 +2265,7 @@ const App: React.FC = () => {
           if (signInDecision === 'system') {
             showSystemNotification({
               title: 'OpenWLM',
-              body: `${signInName} ${tRef.current.settings.toastSignedIn}`,
+              body: `${stripPlusTags(signInName)} ${tRef.current.settings.toastSignedIn}`,
               icon: signInAvatar,
               tag: `openwlm-signin-${contactId}`,
               onClick: () => {
@@ -2280,7 +2292,7 @@ const App: React.FC = () => {
             const on = Number(data.global_private) === 1;
             const name = known.nickname || known.username;
             const systemMsg = systemLine(
-              (on ? tRef.current.notices.privateGlobalContactOn : tRef.current.notices.privateGlobalContactOff).replace('{name}', name),
+              (on ? tRef.current.notices.privateGlobalContactOn : tRef.current.notices.privateGlobalContactOff).replace('{name}', stripPlusTags(name)),
               { senderId: 0, receiverId: contactId }
             );
             setMessages(prev => (prev[contactId] ? { ...prev, [contactId]: [...prev[contactId], systemMsg] } : prev));
@@ -2330,7 +2342,7 @@ const App: React.FC = () => {
 
       newSocket.on('game_declined', (data: { from: number; fromName: string }) => {
         setOutgoingGameInvite(null);
-        notify(tRef.current.notices.gameDeclined.replace('{name}', data.fromName));
+        notify(tRef.current.notices.gameDeclined.replace('{name}', stripPlusTags(data.fromName)));
       });
 
       newSocket.on('game_user_offline', () => {
@@ -2657,12 +2669,151 @@ const App: React.FC = () => {
   /**
    * ENVOI D'UN MESSAGE TEXTE
    */
+  // --- Rappel des messages envoyés (Ctrl+↑ / Ctrl+↓), pour toute la session ---
+  const rememberSentInput = (text: string) => {
+    const hist = sentHistoryRef.current;
+    if (hist[hist.length - 1] !== text) hist.push(text);
+    if (hist.length > 50) hist.shift();
+    recallIndexRef.current = null;
+  };
+
+  /** Remplace le contenu du champ de saisie (rappel, complétion de commande) et place le curseur à la fin. */
+  const setRichInput = (text: string) => {
+    const root = chatInputRef.current;
+    if (!root) return;
+    root.replaceChildren();
+    if (text) renderRichTokens(root, buildRichTokens(text, emoticonShortcuts));
+    setInputText(text);
+    root.focus();
+    setRichCaretOffset(root, text.length);
+  };
+
+  const recallSentInput = (direction: -1 | 1) => {
+    const hist = sentHistoryRef.current;
+    if (hist.length === 0) return;
+    let idx = recallIndexRef.current;
+    if (idx === null) {
+      if (direction === 1) return;
+      recallDraftRef.current = inputText;
+      idx = hist.length - 1;
+    } else {
+      idx += direction;
+    }
+    if (idx < 0) idx = 0;
+    if (idx >= hist.length) {
+      recallIndexRef.current = null;
+      setRichInput(recallDraftRef.current);
+      return;
+    }
+    recallIndexRef.current = idx;
+    setRichInput(hist[idx]);
+  };
+
+  /** Nom simple (sans balises) d'une conversation, pour (!N) des textes rapides. */
+  const plainContactName = (chatId: number) => {
+    if (chatId === SYSTEM_BOT_ID) return 'OpenWLM';
+    const c = contacts.find(x => x.id === chatId);
+    return (c && (stripPlusTags(c.nickname) || c.username)) || '';
+  };
+
+  const changeMyStatus = (status: string) => {
+    setMyStatus(status);
+    savePreferredStatus(user?.id, status);
+    syncProfile({ status });
+  };
+
+  /**
+   * Exécute une commande « / ». Renvoie le texte à envoyer (texte rapide, /me) ou null si la
+   * commande a été traitée sur place (ou refusée, avec un message).
+   */
+  const runChatCommand = async (raw: string): Promise<{ text: string; action?: boolean } | null> => {
+    const parsed = parseChatInput(raw, appPrefs.messages.quickTexts, plainContactName(activeChatId));
+    if (parsed.kind === 'text') return { text: parsed.text };
+    if (parsed.kind === 'quickText') return { text: parsed.text };
+    if (parsed.kind === 'unknown') {
+      notify(t.extras.unknownCommand.replace('{name}', parsed.name), { icon: '⚠️' });
+      return null;
+    }
+    const { name, arg } = parsed;
+    const info = BUILTIN_COMMANDS.find(c => c.name === name);
+    if (info?.needsArg && !arg) {
+      notify(t.extras.missingParameter.split('{name}').join(name).replace('{usage}', `<${t.extras.argText}>`), { icon: '⚠️' });
+      return null;
+    }
+    const done = () => { setInputText(''); return null; };
+    switch (name) {
+      case 'me': return { text: arg, action: true };
+      case 'clear':
+        setMessages(prev => ({ ...prev, [activeChatId]: [] }));
+        return done();
+      case 'online': case 'busy': case 'away': case 'offline':
+        changeMyStatus(name);
+        return done();
+      case 'nick':
+        if (arg.length > 300 || stripPlusTags(arg).length > 50) { notify(t.extras.nickTooLong, { icon: '⚠️' }); return null; }
+        setMyNickname(arg);
+        syncProfile({ nickname: arg });
+        return done();
+      case 'psm':
+        if (arg.length > 600 || stripPlusTags(arg).length > 150) { notify(t.extras.psmTooLong, { icon: '⚠️' }); return null; }
+        setMyPSM(arg);
+        syncProfile({ psm: arg });
+        return done();
+      case 'all': {
+        const targets = openChatIds.filter(id => id !== SYSTEM_BOT_ID);
+        if (targets.length === 0) { notify(t.extras.allNone); return null; }
+        let sent = 0;
+        for (const id of targets) if (await sendTextToChat(id, arg)) sent++;
+        notify(t.extras.allSent.replace('{count}', String(sent)), { icon: '✅' });
+        return done();
+      }
+      case 'signout':
+        setInputText('');
+        handleLogout();
+        return null;
+      case 'help':
+        setShowHelp(true);
+        return done();
+    }
+    return null;
+  };
+
+  // Commandes propres au contact de test (gérées par lui, pas par les commandes générales)
+  const BOT_COMMANDS = new Set(['/help', '/?', 'aide', '/wizz', '/sons', '/sound', '/audio', '/emo', '/emoticones', '/emojis', '/morpion', '/game', '/jeu', '/p4', '/puissance4', '/connect4']);
+
+  // Ctrl+F (Cmd+F) : recherche dans la conversation affichée plutôt que dans la page
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f' && activeChatIdRef.current !== 0) {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  useEffect(() => { setShowSearch(false); }, [activeChatId]);
+
+  // Liste d'aide des commandes, affichée pendant la saisie de « /… »
+  const commandHelper = activeChatId !== 0 ? commandSuggestions(inputText, appPrefs.messages.quickTexts) : null;
+
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    const raw = inputText;
+    if (!raw.trim()) return;
+    rememberSentInput(raw);
+    const isBotCommand = activeChatId === SYSTEM_BOT_ID && BOT_COMMANDS.has(raw.trim().toLowerCase());
+    let outgoing = raw;
+    let action = false;
+    if (!isBotCommand && raw.startsWith('/')) {
+      const result = await runChatCommand(raw);
+      if (!result) return; // commande exécutée, ou erreur affichée
+      outgoing = result.text;
+      action = !!result.action;
+    }
 
     // --- INTERCEPTION DE L'ASSISTANT OPENWLM (TESTS LOCAUX 100% CLIENT) ---
     if (activeChatId === SYSTEM_BOT_ID) {
-      const userText = sanitize(inputText);
+      const userText = sanitize(outgoing);
       const nowIso = new Date().toISOString();
       const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -2772,21 +2923,26 @@ const App: React.FC = () => {
       return;
     }
 
-    if (!socket) { console.error("Socket non prêt"); return; }
-    if (!myKeys) { console.error("Clés E2E non prêtes"); return; }
+    if (await sendTextToChat(activeChatId, outgoing, action)) setInputText('');
+  };
+
+  /** Envoi chiffré d'un message texte à un contact (saisie normale, /me, /all, textes rapides). */
+  const sendTextToChat = async (chatId: number, text: string, action = false): Promise<boolean> => {
+    if (!socket) { console.error("Socket non prêt"); return false; }
+    if (!myKeys) { console.error("Clés E2E non prêtes"); return false; }
     
     // On récupère la clé publique du destinataire pour le chiffrement E2E
-    const contactPubKey = await getPublicKey(activeChatId);
+    const contactPubKey = await getPublicKey(chatId);
     if (!contactPubKey) {
       notify(t.notices.contactNeverConnected, { icon: '⚠️' });
-      return;
+      return false;
     }
 
     try {
       // Détecter les émoticônes personnalisées utilisées dans le message (Moindre privilège V1)
       const customEmoticonsToSend: Record<string, CustomEmoticonPayload> = {};
       for (const emo of myCustomEmoticons) {
-        if (emo.keyBase64 && inputText.includes(emo.shortcut)) {
+        if (emo.keyBase64 && text.includes(emo.shortcut)) {
           customEmoticonsToSend[emo.shortcut] = {
             assetId: emo.id,
             key: emo.keyBase64,
@@ -2799,27 +2955,29 @@ const App: React.FC = () => {
       }
 
       const unencryptedPayload: any = { 
-        text: sanitize(inputText), 
+        text: sanitize(text), 
         sender: myNickname, 
         style: { ...fontSettings }, 
         type: 'text' 
       };
+      // /me : message d'action (« * Pseudo texte »)
+      if (action) unencryptedPayload.action = true;
 
       if (Object.keys(customEmoticonsToSend).length > 0) {
         unencryptedPayload.customEmoticons = customEmoticonsToSend;
       }
       
       // Chiffrement du message
-      const e2eData = await sealForContact(unencryptedPayload, activeChatId, contactPubKey);
+      const e2eData = await sealForContact(unencryptedPayload, chatId, contactPubKey);
 
       const msgData = { 
         senderId: user?.id, 
-        receiverId: activeChatId, 
+        receiverId: chatId, 
         text: JSON.stringify(e2eData), 
         style: null, 
         audio: null, 
         type: 'text',
-        isPrivate: !!effectivePrivateModes[activeChatId]
+        isPrivate: !!effectivePrivateModes[chatId]
       };
       
       const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -2836,8 +2994,8 @@ const App: React.FC = () => {
         clientMsgId,
         senderId: user?.id,
         sender_id: user?.id,
-        receiverId: activeChatId,
-        receiver_id: activeChatId,
+        receiverId: chatId,
+        receiver_id: chatId,
         sender: myNickname || user?.nickname || 'Moi', 
         time: formattedTime,
         timestamp: nowIso,
@@ -2847,16 +3005,16 @@ const App: React.FC = () => {
 
       setMessages(prev => ({ 
         ...prev, 
-        [activeChatId]: [...(prev[activeChatId] || []), myLocalMsg] 
+        [chatId]: [...(prev[chatId] || []), myLocalMsg] 
       }));
 
-      setInputText('');
-
-      deliverSealedMessage(activeChatId, clientMsgId, msgData, myLocalMsg, unencryptedPayload, 'text');
+      deliverSealedMessage(chatId, clientMsgId, msgData, myLocalMsg, unencryptedPayload, 'text');
+      return true;
 
     } catch (e) {
       console.error("Échec du chiffrement:", e);
       notify(e instanceof Error && e.message === t.chat.signingKeyMissing ? e.message : t.notices.encryptFailed, { icon: '⚠️' });
+      return false;
     }
   };
 
@@ -3662,9 +3820,8 @@ const App: React.FC = () => {
   /**
    * RENDU DU CONTENU DES MESSAGES (Gestion des émoticônes)
    */
-  const renderMessageContent = (text: string, style: any) => {
-    if (!text) return null;
-    
+  // Émoticônes (personnalisées puis standard) d'un texte sans mise en forme
+  const emoticonizeMessage = (text: string, keyPrefix: string): (string | React.ReactNode)[] => {
     let parts: (string | React.ReactNode)[] = [text];
     
     // 1. Émoticônes personnalisées (E2EE) - Triées par longueur décroissante
@@ -3684,7 +3841,7 @@ const App: React.FC = () => {
             if (i < split.length - 1) {
               newParts.push(
                 <img 
-                  key={`custom-${shortcut}-${i}`} 
+                  key={`${keyPrefix}-custom-${shortcut}-${i}`} 
                   src={emoInfo.url} 
                   className="custom-emoticon" 
                   alt={shortcut} 
@@ -3713,7 +3870,7 @@ const App: React.FC = () => {
             if (i < split.length - 1) {
               newParts.push(
                 <img 
-                  key={`std-${shortcut}-${i}`} 
+                  key={`${keyPrefix}-std-${shortcut}-${i}`} 
                   src={`/assets/emoticons/${EMOTICON_MAP[shortcut]}`} 
                   className="inline-emoticon" 
                   alt={shortcut} 
@@ -3730,6 +3887,20 @@ const App: React.FC = () => {
       });
       parts = newParts;
     });
+    return parts;
+  };
+
+  const renderMessageContent = (text: string, style: any) => {
+    if (!text) return null;
+    // Mise en forme ([c=4], [b]…) rendue segment par segment, ou retirée si l'option est désactivée
+    let parts: React.ReactNode;
+    if (hasPlusFormatting(text)) {
+      parts = appPrefs.messages.showFormatting
+        ? renderPlusText(text, (plain, key) => emoticonizeMessage(plain, key), 'msg')
+        : emoticonizeMessage(stripPlusTags(text), 'msg');
+    } else {
+      parts = emoticonizeMessage(text, 'msg');
+    }
 
     const s = style || { family: 'Segoe UI', weight: 'normal', style: 'normal', color: '#333', size: '10' };
     
@@ -3775,6 +3946,13 @@ const App: React.FC = () => {
   const syncRichInput = (force = false) => {
     const root = chatInputRef.current;
     if (!root) return;
+    // Champ vidé (Ctrl+A puis Suppr…) : le navigateur y laisse un <br> de remplissage (parfois
+    // dans un <div>), qui deviendrait un saut de ligne invisible en tête de message (et
+    // masquerait une commande « / »). Nos propres sauts de ligne sont des nœuds texte, jamais
+    // des <br> : un <br> sans aucun autre contenu signifie donc « champ vide ».
+    if (root.querySelector('br') && !root.querySelector('img') && /^[\n​]*$/.test(root.textContent || '')) {
+      root.replaceChildren();
+    }
     const text = serializeRich(root);
     const tokens = buildRichTokens(text, emoticonShortcuts);
     const shortcutCount = tokens.reduce((n, t) => n + (hasShortcutKey(t) ? 1 : 0), 0);
@@ -3814,7 +3992,30 @@ const App: React.FC = () => {
     syncRichInput();
   };
 
+  // 🎨 : entoure la sélection du champ de saisie (ou insère au curseur) avec des balises
+  const wrapChatSelection = (open: string, close: string) => {
+    const root = chatInputRef.current;
+    if (!root) return;
+    const sel = window.getSelection();
+    const selected = sel && sel.rangeCount > 0 && root.contains(sel.anchorNode) ? sel.toString() : '';
+    insertChatText(open + selected + close);
+    // Sans sélection : curseur entre les balises, prêt pour la saisie
+    if (!selected) setRichCaretOffset(root, getRichCaretOffset(root) - close.length);
+  };
+
   const handleRichKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Rappel des messages envoyés
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      recallSentInput(e.key === 'ArrowUp' ? -1 : 1);
+      return;
+    }
+    // Complétion de la commande « / » en cours
+    if (e.key === 'Tab' && commandHelper && commandHelper.length > 0) {
+      e.preventDefault();
+      setRichInput(`/${commandHelper[0].name} `);
+      return;
+    }
     if (e.key !== 'Enter') return;
     e.preventDefault();
     if (e.shiftKey) {
@@ -3990,7 +4191,7 @@ const App: React.FC = () => {
                   <input 
                     className="user-name-input" 
                     value={myNickname} 
-                    maxLength={50}
+                    maxLength={300}
                     autoFocus 
                     onChange={e => setMyNickname(e.target.value)} 
                     onBlur={() => { setIsEditingNickname(false); syncProfile({ nickname: myNickname }); }} 
@@ -4029,6 +4230,7 @@ const App: React.FC = () => {
                       {globalPrivateMode ? t.roster.globalPrivateOn : t.roster.globalPrivateOff}
                     </div>
                     <div className="dropdown-item" onClick={() => { setShowOptionsModal(true); setShowStatusMenu(false); }}>{t.roster.optionsMenu}</div>
+                    <div className="dropdown-item" onClick={() => { setShowHelp(true); setShowStatusMenu(false); }}>{t.extras.helpMenu}</div>
                     {/* La langue se choisit dans Options → Personnel */}
                     <div className="dropdown-item" onClick={() => handleLogout()}>{t.auth.logout}</div>
                     <div className="dropdown-item" onClick={() => { setShowStatusMenu(false); setConfirmSignOutOthers(true); }}>{t.roster.signOutOtherDevices}</div>
@@ -4056,7 +4258,7 @@ const App: React.FC = () => {
                 <input 
                   className="user-psm-input" 
                   value={myPSM} 
-                  maxLength={150}
+                  maxLength={600}
                   autoFocus 
                   onChange={e => setMyPSM(e.target.value)} 
                   onBlur={() => { setIsEditingPSM(false); syncProfile({ psm: myPSM }); }} 
@@ -4321,6 +4523,10 @@ const App: React.FC = () => {
                 )}
 
                {/* Historique des messages + actions rapides de l'assistant */}
+               {/* Recherche dans la conversation (Ctrl+F) */}
+               {showSearch && activeChatId !== 0 && (
+                 <ConversationSearch contentKey={messages[activeChatId]} onClose={() => setShowSearch(false)} />
+               )}
                <ChatMessageLog
                  messages={messages[activeChatId] || []}
                  activeChatId={activeChatId}
@@ -4338,6 +4544,24 @@ const App: React.FC = () => {
                {/* Pied de page (Saisie du message) */}
                <div className="chat-footer">
                   <div className="chat-input-bubble">
+                     {/* Liste des commandes « / » et textes rapides correspondant à la saisie */}
+                     {commandHelper && commandHelper.length > 0 && (
+                       <div className="cmd-helper" role="listbox" aria-label={t.extras.helperHint} data-testid="command-helper">
+                         {commandHelper.slice(0, 8).map(c => (
+                           <div
+                             key={`${c.kind}-${c.name}`}
+                             className="cmd-helper-item"
+                             role="option"
+                             aria-selected={false}
+                             onMouseDown={e => { e.preventDefault(); setRichInput(`/${c.name} `); }}
+                           >
+                             <span className="cmd-helper-name">/{c.name}{c.kind === 'command' && c.needsArg ? ` <${t.extras.argText}>` : ''}</span>
+                             <span className="cmd-helper-desc">{c.kind === 'command' ? t.extras[c.descKey] : `${t.extras.quickTextTag} : ${stripPlusTags(c.text)}`}</span>
+                           </div>
+                         ))}
+                         <div className="cmd-helper-hint">{t.extras.helperHint}</div>
+                       </div>
+                     )}
                      {/* Champ riche : rend les émoticônes en image pendant la frappe */}
                      <div
                         ref={chatInputRef}
@@ -4463,6 +4687,7 @@ const App: React.FC = () => {
                         />
                         
                         <span className="tool-icon" title={t.chat.fontTooltip} style={{ fontSize: '14px', fontWeight: 'bold', color: '#004b8d', cursor:'pointer' }} onClick={() => setShowFontModal(true)}>A/B</span>
+                        <FormatPicker onWrap={wrapChatSelection} testId="chat-format-picker" align="right" />
                      </div>
                   </div>
                </div>
@@ -4935,6 +5160,8 @@ const App: React.FC = () => {
           onClose={() => setShowOptionsModal(false)}
         />
       )}
+
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
       {/* Menu principal → « Se déconnecter des autres appareils » */}
       {confirmSignOutOthers && (

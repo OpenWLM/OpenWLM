@@ -305,6 +305,8 @@ export const sanitizeDecryptedPayload = (raw: unknown): Record<string, unknown> 
   for (const f of STRING_FIELDS) if (typeof p[f] === 'string') out[f] = p[f];
   if (typeof p.fileSize === 'number' && Number.isFinite(p.fileSize)) out.fileSize = p.fileSize;
   if (typeof p.expiresAt === 'number' && Number.isFinite(p.expiresAt)) out.expiresAt = p.expiresAt;
+  // /me : message d'action (« * Pseudo texte »)
+  if (p.action === true) out.action = true;
   for (const f of ['style', 'fileKeys', 'customEmoticons'] as const) {
     if (p[f] && typeof p[f] === 'object' && !Array.isArray(p[f])) out[f] = p[f];
   }

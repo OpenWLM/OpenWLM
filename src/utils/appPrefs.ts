@@ -10,6 +10,33 @@ import { useSyncExternalStore } from 'react';
 
 export type SoundCategory = 'message' | 'contactOnline' | 'nudge' | 'call' | 'games' | 'winks';
 
+export interface QuickText {
+  /** Raccourci sans le « / » : lettres, chiffres, - et _ (1 à 20 caractères). */
+  shortcut: string;
+  text: string;
+}
+
+export const QUICK_TEXT_MAX = 30;
+export const QUICK_TEXT_MAX_LENGTH = 1000;
+export const QUICK_TEXT_SHORTCUT_RE = /^[a-z0-9_-]{1,20}$/;
+
+// Liste défensive : entrées valides seulement, raccourcis uniques, bornes respectées
+const normalizeQuickTexts = (raw: unknown): QuickText[] => {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: QuickText[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const shortcut = String((item as QuickText).shortcut ?? '').toLowerCase();
+    const text = String((item as QuickText).text ?? '').slice(0, QUICK_TEXT_MAX_LENGTH);
+    if (!QUICK_TEXT_SHORTCUT_RE.test(shortcut) || !text.trim() || seen.has(shortcut)) continue;
+    seen.add(shortcut);
+    out.push({ shortcut, text });
+    if (out.length >= QUICK_TEXT_MAX) break;
+  }
+  return out;
+};
+
 export interface AppPrefs {
   sounds: {
     enabled: boolean;
@@ -34,6 +61,10 @@ export interface AppPrefs {
     autoPlayWinks: boolean;
     /** Copie chiffrée des conversations sur cet appareil (affichage immédiat à l'ouverture). */
     keepLocalHistory: boolean;
+    /** Afficher la mise en forme ([c=4], [b]…) des pseudos, messages perso et messages. Sinon, texte simple. */
+    showFormatting: boolean;
+    /** Textes rapides : « /raccourci » envoie le texte associé ((!N) = nom du contact). */
+    quickTexts: QuickText[];
   };
   layout: {
     showOffline: boolean;
@@ -55,7 +86,7 @@ export const clampRosterWidth = (w: number) =>
 
 export const DEFAULT_PREFS: AppPrefs = {
   sounds: { enabled: true, volume: 1, message: true, contactOnline: true, nudge: true, call: true, games: true, winks: true, muteWhenBusy: false },
-  messages: { emoticonImages: true, showTimestamps: true, receiveNudges: true, autoPlayWinks: true, keepLocalHistory: true },
+  messages: { emoticonImages: true, showTimestamps: true, receiveNudges: true, autoPlayWinks: true, keepLocalHistory: true, showFormatting: true, quickTexts: [] },
   layout: { showOffline: true, showPsm: true, sortBy: 'status', showBot: true, rosterWidth: ROSTER_WIDTH_DEFAULT }
 };
 
@@ -82,6 +113,7 @@ const normalize = (raw: unknown): AppPrefs => {
   prefs.sounds.volume = Math.min(1, Math.max(0, Number.isFinite(prefs.sounds.volume) ? prefs.sounds.volume : 1));
   if (prefs.layout.sortBy !== 'status' && prefs.layout.sortBy !== 'name') prefs.layout.sortBy = 'status';
   prefs.layout.rosterWidth = clampRosterWidth(prefs.layout.rosterWidth);
+  prefs.messages.quickTexts = normalizeQuickTexts((r.messages as Record<string, unknown> | undefined)?.quickTexts);
   return prefs;
 };
 

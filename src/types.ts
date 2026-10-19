@@ -80,6 +80,8 @@ export interface Message {
   _failed?: 'offline_private' | 'too_large' | 'error';
   /** Détail renvoyé par le serveur, le cas échéant. */
   _failReason?: string;
+  /** Message d'action envoyé avec /me (« * Pseudo texte »). */
+  action?: boolean;
   /** Ligne système locale (mode privé, Wizz, clin d'œil…) : texte déjà traduit, jamais envoyée ni stockée sur le serveur. */
   system?: boolean;
 }

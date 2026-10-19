@@ -1,3 +1,4 @@
+import { isValidFormattedField } from '../utils/plusText.js';
 import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -140,7 +141,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
       return res.status(400).json({ error: 'Adresse de messagerie invalide (3-100 caractères, sans espaces).', code: 'username_invalid' });
     }
 
-    if (nickname !== undefined && nickname !== null && (typeof nickname !== 'string' || nickname.length > 50)) {
+    if (nickname !== undefined && nickname !== null && !isValidFormattedField(nickname, 50, 300)) {
       return res.status(400).json({ error: 'Surnom invalide (max 50 caractères).', code: 'nickname_invalid' });
     }
 

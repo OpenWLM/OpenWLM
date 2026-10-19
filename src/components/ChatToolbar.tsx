@@ -1,6 +1,7 @@
 import React from 'react';
 import { useI18n } from '../i18n';
 import { SYSTEM_BOT_ID, type Contact } from '../types';
+import { stripPlusTags } from '../utils/plusFormat';
 
 /**
  * Barre d'actions du haut de la conversation : fichiers, arrière-plan, appel vidéo/audio,
@@ -40,7 +41,8 @@ export const ChatToolbar: React.FC<ChatToolbarProps> = ({
   onOpenSafetyModal
 }) => {
   const { t } = useI18n();
-  const contactName = activeContact.nickname || activeContact.username || '';
+  // Texte brut (infobulles) : sans balises de mise en forme
+  const contactName = stripPlusTags(activeContact.nickname) || activeContact.username || '';
 
   return (
     <div className="chat-top-actions">

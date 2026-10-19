@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 import { formatNickname } from '../utils/NicknameFormatter';
 import { startCallKeepAlive, keepScreenOn } from '../utils/callKeepAlive';
+import { stripPlusTags } from '../utils/plusFormat';
 import {
   encryptMessagePayload,
   decryptMessagePayload,
@@ -580,7 +581,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const callActive = callStatus === 'connecting' || callStatus === 'connected' || callStatus === 'reconnecting';
   const keepAliveTitle = t.videoCall.conversationWith
     .replace('{type}', (audioOnly ? t.videoCall.audio : t.videoCall.video).toLowerCase())
-    .replace('{name}', contactName);
+    .replace('{name}', stripPlusTags(contactName));
   useEffect(() => {
     if (!callActive) return;
     return startCallKeepAlive({ title: keepAliveTitle, onHangUp: () => finishRef.current() });

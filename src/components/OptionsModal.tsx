@@ -11,6 +11,9 @@ import LocalDB from '../utils/LocalDB';
 import SoundManager from '../utils/SoundManager';
 import type { Socket } from 'socket.io-client';
 import ConnectionDiagnostics from './ConnectionDiagnostics';
+import FormatPicker from './FormatPicker';
+import QuickTextsEditor from './QuickTextsEditor';
+import { hasPlusFormatting, visibleLength } from '../utils/plusFormat';
 
 /**
  * Modale d'options (Paramètres) : Personnel, Disposition, Messages, Alertes, Sons, Sécurité, Connexion.
@@ -131,9 +134,23 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   // Tous les réglages s'enregistrent dès qu'ils changent (plus de OK / Annuler / Appliquer).
   // Pseudo et message perso : enregistrés en quittant le champ (ou Entrée) et à la fermeture.
   const savedProfileRef = useRef({ nickname: myNickname, psm: myPSM });
+  // Longueur VISIBLE (sans balises) : 50 / 150 caractères
+  const nicknameValid = visibleLength(myNickname) <= 50;
+  const psmValid = visibleLength(myPSM) <= 150;
+  const nicknameRef = useRef<HTMLInputElement>(null);
+  const psmRef = useRef<HTMLInputElement>(null);
+  // 🎨 : entoure la sélection du champ avec les balises choisies
+  const wrapField = (ref: React.RefObject<HTMLInputElement | null>, value: string, set: (v: string) => void, open: string, close: string) => {
+    const el = ref.current;
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? value.length;
+    set(value.slice(0, start) + open + value.slice(start, end) + close + value.slice(end));
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(start + open.length, end + open.length); });
+  };
   const saveProfile = () => {
     const saved = savedProfileRef.current;
     if (saved.nickname === myNickname && saved.psm === myPSM) return;
+    if (!nicknameValid || !psmValid) return;
     savedProfileRef.current = { nickname: myNickname, psm: myPSM };
     syncProfile({ nickname: myNickname, psm: myPSM });
   };
@@ -175,30 +192,40 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                 <div className="options-subsection">
                   <label className="options-label">{t.auth.nicknameLabel.replace(':', '')}</label>
                   <div className="options-hint">{t.settings.nicknameSub}</div>
-                  <input
-                    className="win-input"
-                    id="opt-nickname"
-                    value={myNickname}
-                    maxLength={50}
-                    onChange={e => setMyNickname(e.target.value)}
-                    onBlur={saveProfile}
-                    onKeyDown={blurOnEnter}
-                    style={{ width: '90%' }}
-                  />
+                  <div className="opt-format-field">
+                    <input
+                      className="win-input"
+                      id="opt-nickname"
+                      ref={nicknameRef}
+                      value={myNickname}
+                      maxLength={300}
+                      onChange={e => setMyNickname(e.target.value)}
+                      onBlur={saveProfile}
+                      onKeyDown={blurOnEnter}
+                    />
+                    <FormatPicker onWrap={(o, c) => wrapField(nicknameRef, myNickname, setMyNickname, o, c)} testId="nickname-format-picker" align="right" />
+                  </div>
+                  {hasPlusFormatting(myNickname) && <div className="opt-format-preview" data-testid="nickname-preview">{formatNickname(myNickname)}</div>}
+                  {!nicknameValid && <div className="opt-format-error" role="alert">{t.extras.nickTooLong}</div>}
                 </div>
 
                 <div className="options-subsection">
                   <div className="options-hint">{t.settings.psmSub}</div>
-                  <input
-                    className="win-input"
-                    id="opt-psm"
-                    value={myPSM}
-                    maxLength={150}
-                    onChange={e => setMyPSM(e.target.value)}
-                    onBlur={saveProfile}
-                    onKeyDown={blurOnEnter}
-                    style={{ width: '90%' }}
-                  />
+                  <div className="opt-format-field">
+                    <input
+                      className="win-input"
+                      id="opt-psm"
+                      ref={psmRef}
+                      value={myPSM}
+                      maxLength={600}
+                      onChange={e => setMyPSM(e.target.value)}
+                      onBlur={saveProfile}
+                      onKeyDown={blurOnEnter}
+                    />
+                    <FormatPicker onWrap={(o, c) => wrapField(psmRef, myPSM, setMyPSM, o, c)} testId="psm-format-picker" align="right" />
+                  </div>
+                  {hasPlusFormatting(myPSM) && <div className="opt-format-preview">{formatNickname(myPSM)}</div>}
+                  {!psmValid && <div className="opt-format-error" role="alert">{t.extras.psmTooLong}</div>}
                 </div>
 
                 <div className="options-subsection">
@@ -321,7 +348,9 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   <label className="options-label">{t.settings.messagesDisplay}</label>
                   <PrefCheckbox id="pref-emoticons" checked={prefs.messages.emoticonImages} onChange={v => updateAppPrefs('messages', { emoticonImages: v })} label={t.settings.messagesEmoticons} />
                   <PrefCheckbox id="pref-timestamps" checked={prefs.messages.showTimestamps} onChange={v => updateAppPrefs('messages', { showTimestamps: v })} label={t.settings.messagesTimestamps} />
+                  <PrefCheckbox id="pref-formatting" checked={prefs.messages.showFormatting} onChange={v => updateAppPrefs('messages', { showFormatting: v })} label={t.extras.optFormatting} />
                 </div>
+                <QuickTextsEditor />
                 <div className="options-subsection">
                   <label className="options-label">{t.settings.messagesFun}</label>
                   <PrefCheckbox id="pref-nudges" checked={prefs.messages.receiveNudges} onChange={v => updateAppPrefs('messages', { receiveNudges: v })} label={t.settings.messagesNudges} />

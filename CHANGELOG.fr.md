@@ -11,6 +11,17 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Nouveautés
+- **Mise en forme** des pseudos, messages perso et messages : gras, italique, souligné, barré, 16 couleurs classiques ou n'importe quel `#RRGGBB`, couleurs de fond, dégradés de texte et de fond (`[c=4]rouge[/c]`, `[c=4]dégradé[/c=12]`, codes courts `·$4`). Bouton 🎨 à côté du champ de saisie et des champs pseudo / message perso (avec aperçu). Rendu par React sans aucun HTML injecté ; les balises sont retirées là où elles ne peuvent pas s'afficher (notifications, titres, infobulles). Option pour tout afficher en texte simple (Options → Messages). Le pseudo et le message perso gardent leurs limites de 50 et 150 caractères **visibles** (vérifiées aussi par le serveur).
+- **Commandes `/`** dans les conversations : `/me`, `/clear`, `/online`, `/busy`, `/away`, `/offline`, `/nick`, `/psm`, `/all`, `/signout`, `/help`, avec liste de suggestions (Tab pour compléter) ; `//` envoie un message qui commence par `/`.
+- **Textes rapides** (Options → Messages) : `/raccourci` envoie un message tout prêt, `(!N)` est remplacé par le nom du contact. Enregistrés sur l'appareil.
+- **Rappel des messages** avec Ctrl+↑ / Ctrl+↓.
+- **Recherche dans une conversation** avec Ctrl+F (résultats surlignés, compteur, précédent / suivant).
+- **Fenêtre d'aide** : menu principal → Aide, lien **Aide** sur l'écran de connexion, `/help`. Documentation : [docs/FORMATTING_AND_COMMANDS.fr.md](docs/FORMATTING_AND_COMMANDS.fr.md).
+
+### Correctifs
+- Un champ de saisie vidé avec Ctrl+A puis Suppr gardait un saut de ligne invisible, ajouté au début du message suivant.
+
 ### Ménage
 - Ménage des ressources non utilisées.
 - **Correctif** : la scène du contact de test pointait vers un fichier qui n'a jamais existé (`0002.png` au lieu de `0002.jpg`).

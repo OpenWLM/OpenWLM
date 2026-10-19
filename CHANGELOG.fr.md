@@ -21,6 +21,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ### Correctifs
 - Un champ de saisie vidé avec Ctrl+A puis Suppr gardait un saut de ligne invisible, ajouté au début du message suivant.
+- **Clic droit sur le contact de test « OpenWLM »** : il ouvre maintenant son menu — envoyer un message, effacer l'historique (sur l'appareil seulement), masquer le contact de test (à réafficher dans Options → Disposition). Supprimer et Bloquer, sans objet pour ce contact virtuel, ne sont pas proposés.
 
 ### Ménage
 - Ménage des ressources non utilisées.

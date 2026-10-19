@@ -94,7 +94,7 @@ import {
   savePreferredStatus,
   isPresenceStatus
 } from './utils/profileStorage';
-import { useAppPrefs, getAppPrefs, setPresenceForSounds } from './utils/appPrefs';
+import { useAppPrefs, getAppPrefs, updateAppPrefs, setPresenceForSounds } from './utils/appPrefs';
 import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
 import { systemLine } from './utils/systemLine';
 import { parseChatInput, BUILTIN_COMMANDS, commandSuggestions } from './utils/chatCommands';
@@ -604,7 +604,8 @@ const App: React.FC = () => {
   const recallIndexRef = useRef<number | null>(null);
   const recallDraftRef = useRef('');
   const [showHelp, setShowHelp] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
+  // Conversation dans laquelle la recherche (Ctrl+F) est ouverte : changer d'onglet la ferme
+  const [searchChatId, setSearchChatId] = useState<number | null>(null);
 
   // Conversation à laquelle appartient le contenu actuel du champ (null = ne pas sauvegarder)
   const draftChatIdRef = useRef<number | null>(activeChatId);
@@ -2677,17 +2678,6 @@ const App: React.FC = () => {
     recallIndexRef.current = null;
   };
 
-  /** Remplace le contenu du champ de saisie (rappel, complétion de commande) et place le curseur à la fin. */
-  const setRichInput = (text: string) => {
-    const root = chatInputRef.current;
-    if (!root) return;
-    root.replaceChildren();
-    if (text) renderRichTokens(root, buildRichTokens(text, emoticonShortcuts));
-    setInputText(text);
-    root.focus();
-    setRichCaretOffset(root, text.length);
-  };
-
   const recallSentInput = (direction: -1 | 1) => {
     const hist = sentHistoryRef.current;
     if (hist.length === 0) return;
@@ -2786,13 +2776,12 @@ const App: React.FC = () => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f' && activeChatIdRef.current !== 0) {
         e.preventDefault();
-        setShowSearch(true);
+        setSearchChatId(activeChatIdRef.current);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  useEffect(() => { setShowSearch(false); }, [activeChatId]);
 
   // Liste d'aide des commandes, affichée pendant la saisie de « /… »
   const commandHelper = activeChatId !== 0 ? commandSuggestions(inputText, appPrefs.messages.quickTexts) : null;
@@ -3943,6 +3932,17 @@ const App: React.FC = () => {
     return list.sort((a, b) => b.shortcut.length - a.shortcut.length);
   }, [customEmoticonsMap]);
 
+  /** Remplace le contenu du champ de saisie (rappel, complétion de commande) et place le curseur à la fin. */
+  const setRichInput = (text: string) => {
+    const root = chatInputRef.current;
+    if (!root) return;
+    root.replaceChildren();
+    if (text) renderRichTokens(root, buildRichTokens(text, emoticonShortcuts));
+    setInputText(text);
+    root.focus();
+    setRichCaretOffset(root, text.length);
+  };
+
   const syncRichInput = (force = false) => {
     const root = chatInputRef.current;
     if (!root) return;
@@ -3950,7 +3950,7 @@ const App: React.FC = () => {
     // dans un <div>), qui deviendrait un saut de ligne invisible en tête de message (et
     // masquerait une commande « / »). Nos propres sauts de ligne sont des nœuds texte, jamais
     // des <br> : un <br> sans aucun autre contenu signifie donc « champ vide ».
-    if (root.querySelector('br') && !root.querySelector('img') && /^[\n​]*$/.test(root.textContent || '')) {
+    if (root.querySelector('br') && !root.querySelector('img') && /^[\n\u200B]*$/.test(root.textContent || '')) {
       root.replaceChildren();
     }
     const text = serializeRich(root);
@@ -4524,8 +4524,8 @@ const App: React.FC = () => {
 
                {/* Historique des messages + actions rapides de l'assistant */}
                {/* Recherche dans la conversation (Ctrl+F) */}
-               {showSearch && activeChatId !== 0 && (
-                 <ConversationSearch contentKey={messages[activeChatId]} onClose={() => setShowSearch(false)} />
+               {searchChatId === activeChatId && activeChatId !== 0 && (
+                 <ConversationSearch contentKey={messages[activeChatId]} onClose={() => setSearchChatId(null)} />
                )}
                <ChatMessageLog
                  messages={messages[activeChatId] || []}
@@ -5212,11 +5212,18 @@ const App: React.FC = () => {
           )}
           <div className="dropdown-item" onClick={() => handleClearHistory(contextMenu.contactId)}>{t.roster.contextClearHistory}</div>
           <div className="dropdown-item separator"></div>
-          <div className="dropdown-item" onClick={() => handleDeleteContact(contextMenu.contactId)}>{t.roster.contextDelete}</div>
-          {contacts.find(c => c.id === contextMenu.contactId)?.blocked ? (
-            <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, false)}>{t.roster.contextUnblock}</div>
+          {contextMenu.contactId === SYSTEM_BOT_ID ? (
+            // Contact de test virtuel : ni suppression ni blocage, on le masque (Options → Disposition)
+            <div className="dropdown-item" onClick={() => { updateAppPrefs('layout', { showBot: false }); setContextMenu(null); }}>{t.roster.contextHideBot}</div>
           ) : (
-            <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, true)}>{t.roster.contextBlock}</div>
+            <>
+              <div className="dropdown-item" onClick={() => handleDeleteContact(contextMenu.contactId)}>{t.roster.contextDelete}</div>
+              {contacts.find(c => c.id === contextMenu.contactId)?.blocked ? (
+                <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, false)}>{t.roster.contextUnblock}</div>
+              ) : (
+                <div className="dropdown-item" onClick={() => handleBlockContact(contextMenu.contactId, true)}>{t.roster.contextBlock}</div>
+              )}
+            </>
           )}
         </div>
       )}

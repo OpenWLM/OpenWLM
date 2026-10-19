@@ -118,6 +118,7 @@
     "emptyStateBotHint": "Test echo, sounds, Nudge, emoticons and Tic-Tac-Toe with OpenWLM.",
     "contextSendIM": "Send instant message",
     "contextClearHistory": "Clear conversation history",
+    "contextHideBot": "Hide the test contact",
     "contextDelete": "Delete",
     "contextBlock": "Block",
     "contextUnblock": "Unblock",

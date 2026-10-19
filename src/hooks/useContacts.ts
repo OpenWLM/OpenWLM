@@ -4,7 +4,7 @@ import axios from 'axios';
 import SoundManager from '../utils/SoundManager';
 import LocalDB from '../utils/LocalDB';
 import { removeConversationBackground } from '../utils/ConversationBackgrounds';
-import type { Contact, Message, User } from '../types';
+import { SYSTEM_BOT_ID, type Contact, type Message, type User } from '../types';
 import { useI18n } from '../i18n';
 import { serverErrorText } from '../utils/serverError';
 import { notify, askConfirm } from '../utils/dialogs';
@@ -186,8 +186,9 @@ export function useContacts(options: UseContactsOptions): ContactsApi {
   const performClearHistory = useCallback(async (contactId: number) => {
     if (!user) return;
     try {
-      // 1. Supprimer sur le serveur (efface l'historique des DEUX côtés)
-      await axios.post('/api/messages/clear', { userId: user.id, contactId });
+      // 1. Supprimer sur le serveur (efface l'historique des DEUX côtés) — sauf contact de
+      //    test : sa conversation n'existe que sur l'appareil
+      if (contactId !== SYSTEM_BOT_ID) await axios.post('/api/messages/clear', { userId: user.id, contactId });
 
       // 2. Supprimer en local (IndexedDB)
       await LocalDB.clearHistory(`${user.id}_${contactId}`);

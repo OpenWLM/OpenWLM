@@ -130,6 +130,7 @@ export const ContactRoster: React.FC<ContactRosterProps> = ({
         <div
           className={`contact-row ${activeChatId === SYSTEM_BOT_ID ? 'active' : ''}`}
           onClick={() => onOpenChat(SYSTEM_BOT_ID)}
+          onContextMenu={(e) => onContextMenu(e, SYSTEM_BOT_ID)}
           title={t.bot.tooltip}
         >
           <div className="status-square online"></div>

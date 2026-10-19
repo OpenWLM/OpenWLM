@@ -118,6 +118,7 @@
     "emptyStateBotHint": "Testez l'écho, les sons, le Wizz, les émoticônes et le Morpion avec OpenWLM.",
     "contextSendIM": "Envoyer un message instantané",
     "contextClearHistory": "Effacer l'historique de conversation",
+    "contextHideBot": "Masquer le contact de test",
     "contextDelete": "Supprimer",
     "contextBlock": "Bloquer",
     "contextUnblock": "Débloquer",

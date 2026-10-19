@@ -190,6 +190,22 @@ test('mise en forme, commandes, rappel, textes rapides, recherche et aide', asyn
   await typeAndSend(a, '/clear');
   await expect(a.locator('.chat-log-scroll .msg-line')).toHaveCount(0);
 
+  // --- Clic droit sur le contact de test : menu adapté (ni Supprimer ni Bloquer), « Masquer »
+  const botRow = a.locator('.contact-row', { hasText: 'OpenWLM' });
+  await botRow.click({ button: 'right' });
+  const menu = a.locator('.wlm-status-dropdown').filter({ hasText: 'Send instant message' });
+  await expect(menu).toContainText('Clear conversation history');
+  await expect(menu.locator('.dropdown-item', { hasText: /^(Block|Delete)$/ })).toHaveCount(0);
+  await menu.locator('.dropdown-item', { hasText: 'Hide the test contact' }).click();
+  await expect(botRow).toHaveCount(0);
+  await a.locator('.status-trigger').click();
+  await a.locator('.dropdown-item', { hasText: 'Options' }).first().click();
+  await a.locator('.options-nav-item', { hasText: 'Layout' }).click();
+  await expect(a.locator('#pref-show-bot')).not.toBeChecked();
+  await a.locator('#pref-show-bot').check();
+  await a.keyboard.press('Escape');
+  await expect(botRow).toBeVisible();
+
   // --- Aide : depuis le menu, puis depuis l'écran de connexion
   await a.locator('.status-trigger').click();
   await a.locator('.dropdown-item', { hasText: 'Help' }).first().click();

@@ -21,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixes
 - An input field emptied with Ctrl+A then Delete kept an invisible line break, which was added at the start of the next message.
+- **Right-click on the "OpenWLM" test contact** now opens its menu: send a message, clear the history (on the device only), hide the test contact (shown again from Options → Layout). Delete and Block, meaningless for this virtual contact, are not offered.
 
 ### Cleanup
 - Removed unused resources.

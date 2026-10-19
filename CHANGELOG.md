@@ -9,7 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.7.0] - 2026-10-19
+
+### Upgrading from 1.6.x
+- No database migration, no new environment variable, no new HTTP route (Cloudflare WAF rules unchanged), no new service worker.
+- Users get the new version by reloading the app. Until a contact has reloaded, their old version shows formatting tags as typed (`[c=4]Hi[/c]`) and `/me` actions as normal messages; nothing is lost.
+- The server now counts only the **visible** characters of nicknames (50) and personal messages (150); tags are allowed on top, up to 300 / 600 characters in all.
 
 ### New
 - **Formatting** of nicknames, personal messages and messages: bold, italic, underline, strikethrough, 16 classic colors or any `#RRGGBB`, background colors, text and background gradients (`[c=4]red[/c]`, `[c=4]gradient[/c=12]`, `·$4` short codes). 🎨 button next to the conversation input and the nickname / personal message fields (with preview). Rendered by React without any injected HTML; tags are removed wherever they cannot be shown (notifications, titles, tooltips). Option to show everything as plain text (Options → Messages). Nicknames and personal messages keep their limits of 50 and 150 **visible** characters (checked by the server too).
@@ -29,6 +34,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Fix**: the test contact's scene pointed to a file that never existed (`0002.png` instead of `0002.jpg`).
 
 ### Tests
+- **New E2E scenarios** for this version: `e2e/extras.spec.ts` (formatting, commands, quick texts, recall, search, help, test contact menu, across two accounts) and `e2e/extras-mobile.spec.ts` (phone size: 🎨 panel, help menu). Server: nickname / personal message limits with tags (`tests/test_profile_limits.js`).
+- **E2E suite reliability**: scenarios opened one browser session per account without closing it; in the shared browser, dozens of signed-in sessions piled up until a page stopped responding (`unread.spec.ts` failed in the full run, never on its own). A shared fixture (`e2e/test.ts`) now closes them after each test: 27/27, and the full run takes 3.6 min instead of 7.8.
 - **New E2E tests for file transfer and voice messages** (`e2e/files-voice.spec.ts`), which had no end-to-end test so far (their end-to-end encryption was already in place). File: sent by A, stored encrypted on the server (the plaintext does not appear in the stored file), downloaded by B with exactly the same content. Voice message: recorded with Chromium's fake microphone, received by B, encrypted in the server history (no audio in clear), and actually played (timer moving).
 
 ## [1.6.2] - 2026-10-19

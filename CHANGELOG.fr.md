@@ -9,7 +9,12 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
-## [Non publié]
+## [1.7.0] - 2026-10-19
+
+### Mise à jour depuis la 1.6.x
+- Aucune migration de base, aucune nouvelle variable d'environnement, aucune nouvelle route HTTP (règles WAF Cloudflare inchangées), pas de nouveau service worker.
+- Les utilisateurs obtiennent la nouvelle version en rechargeant l'application. Tant qu'un contact n'a pas rechargé, son ancienne version affiche les balises de mise en forme telles quelles (`[c=4]Salut[/c]`) et les actions `/me` comme des messages normaux ; rien n'est perdu.
+- Le serveur ne compte plus que les caractères **visibles** des pseudos (50) et des messages perso (150) ; les balises sont permises en plus, dans la limite de 300 / 600 caractères au total.
 
 ### Nouveautés
 - **Mise en forme** des pseudos, messages perso et messages : gras, italique, souligné, barré, 16 couleurs classiques ou n'importe quel `#RRGGBB`, couleurs de fond, dégradés de texte et de fond (`[c=4]rouge[/c]`, `[c=4]dégradé[/c=12]`, codes courts `·$4`). Bouton 🎨 à côté du champ de saisie et des champs pseudo / message perso (avec aperçu). Rendu par React sans aucun HTML injecté ; les balises sont retirées là où elles ne peuvent pas s'afficher (notifications, titres, infobulles). Option pour tout afficher en texte simple (Options → Messages). Le pseudo et le message perso gardent leurs limites de 50 et 150 caractères **visibles** (vérifiées aussi par le serveur).
@@ -29,6 +34,8 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Correctif** : la scène du contact de test pointait vers un fichier qui n'a jamais existé (`0002.png` au lieu de `0002.jpg`).
 
 ### Tests
+- **Nouveaux scénarios E2E** pour cette version : `e2e/extras.spec.ts` (mise en forme, commandes, textes rapides, rappel, recherche, aide, menu du contact de test, sur deux comptes) et `e2e/extras-mobile.spec.ts` (format téléphone : panneau 🎨, menu de l'aide). Serveur : limites du pseudo et du message perso avec balises (`tests/test_profile_limits.js`).
+- **Fiabilité de la suite E2E** : les scénarios ouvraient une session de navigateur par compte sans la fermer ; dans le navigateur partagé, des dizaines de sessions connectées s'accumulaient jusqu'à ce qu'une page ne réponde plus (`unread.spec.ts` échouait dans la suite complète, jamais seul). Une fixture commune (`e2e/test.ts`) les ferme désormais après chaque test : 27/27, et la suite complète prend 3,6 min au lieu de 7,8.
 - **Nouveaux tests E2E du transfert de fichier et des messages vocaux** (`e2e/files-voice.spec.ts`), qui n'avaient jusqu'ici aucun test de bout en bout (leur chiffrement de bout en bout existait déjà). Fichier : envoyé par A, stocké chiffré sur le serveur (le texte n'apparaît pas dans le fichier stocké), téléchargé par B avec exactement le même contenu. Message vocal : enregistré avec le faux micro de Chromium, reçu par B, chiffré dans l'historique du serveur (aucun son en clair), et réellement lu (minuteur qui avance).
 
 ## [1.6.2] - 2026-10-19

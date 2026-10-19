@@ -9,7 +9,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
-## [Non publié]
+## [1.6.2] - 2026-10-19
 
 ### Correctifs
 - **Les comptes de démonstration (`npm run db:seed`) ne pouvaient pas se connecter** : le script enregistrait une empreinte de SHA-256(mot de passe), alors que l'app envoie une clé dérivée par PBKDF2-SHA256 (600 000 itérations) puis HKDF. Il reproduit désormais la dérivation de l'app et le stockage du serveur, utilise le vrai schéma du serveur (`server/db.js`) et n'insère plus de message de bienvenue en clair (l'app n'affiche que des messages signés et chiffrés). Le serveur E2E lance désormais le script et `e2e/auth.spec.ts` se connecte au compte de démo par l'interface.

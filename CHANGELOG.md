@@ -9,7 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.6.2] - 2026-10-19
 
 ### Fixes
 - **Demo accounts (`npm run db:seed`) could not sign in**: the script stored a hash of SHA-256(password), while the app sends a key derived with PBKDF2-SHA256 (600,000 iterations) then HKDF. It now reproduces the app's derivation and the server's storage, uses the server's real schema (`server/db.js`) and no longer inserts a plaintext welcome message (the app only displays signed, encrypted messages). The E2E server now runs the script and `e2e/auth.spec.ts` signs in with the demo account through the interface.

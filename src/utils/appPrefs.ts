@@ -41,13 +41,22 @@ export interface AppPrefs {
     sortBy: 'status' | 'name';
     /** Contact de test « OpenWLM » dans la liste. */
     showBot: boolean;
+    /** Largeur de la liste de contacts sur ordinateur (px), réglée en faisant glisser son bord. */
+    rosterWidth: number;
   };
 }
+
+/** Liste de contacts : largeur d'origine et bornes du redimensionnement (ordinateur). */
+export const ROSTER_WIDTH_DEFAULT = 310;
+export const ROSTER_WIDTH_MIN = 260;
+export const ROSTER_WIDTH_MAX = 640;
+export const clampRosterWidth = (w: number) =>
+  Math.round(Math.min(ROSTER_WIDTH_MAX, Math.max(ROSTER_WIDTH_MIN, Number.isFinite(w) ? w : ROSTER_WIDTH_DEFAULT)));
 
 export const DEFAULT_PREFS: AppPrefs = {
   sounds: { enabled: true, volume: 1, message: true, contactOnline: true, nudge: true, call: true, games: true, winks: true, muteWhenBusy: false },
   messages: { emoticonImages: true, showTimestamps: true, receiveNudges: true, autoPlayWinks: true, keepLocalHistory: true },
-  layout: { showOffline: true, showPsm: true, sortBy: 'status', showBot: true }
+  layout: { showOffline: true, showPsm: true, sortBy: 'status', showBot: true, rosterWidth: ROSTER_WIDTH_DEFAULT }
 };
 
 const STORAGE_KEY = 'wlm_prefs';
@@ -72,6 +81,7 @@ const normalize = (raw: unknown): AppPrefs => {
   };
   prefs.sounds.volume = Math.min(1, Math.max(0, Number.isFinite(prefs.sounds.volume) ? prefs.sounds.volume : 1));
   if (prefs.layout.sortBy !== 'status' && prefs.layout.sortBy !== 'name') prefs.layout.sortBy = 'status';
+  prefs.layout.rosterWidth = clampRosterWidth(prefs.layout.rosterWidth);
   return prefs;
 };
 

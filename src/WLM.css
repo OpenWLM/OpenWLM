@@ -38,8 +38,10 @@ body, html {
 
 /* --- CONTACT LIST WINDOW --- */
 .contact-list-window {
-  width: 310px;
-  min-width: 310px;
+  /* Largeur réglable sur ordinateur (poignée du bord droit), cf. RosterResizer */
+  /* bornée pour laisser au moins 420 px à la conversation si la fenêtre rétrécit */
+  width: clamp(260px, var(--roster-width, 310px), max(260px, calc(100vw - 420px)));
+  min-width: clamp(260px, var(--roster-width, 310px), max(260px, calc(100vw - 420px)));
   border-right: 1px solid #99b4d1;
   position: relative;
   display: flex;
@@ -48,6 +50,32 @@ body, html {
   z-index: 20;
   box-shadow: 1px 0 3px rgba(0,0,0,0.05);
 }
+
+/* Poignée de redimensionnement (bord droit de la liste) */
+.wlm-roster-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 30;
+  touch-action: none;
+}
+.wlm-roster-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.wlm-roster-resizer:hover::after,
+.wlm-roster-resizer:focus-visible::after,
+body.wlm-resizing .wlm-roster-resizer::after { background: #5fa8e8; }
+.wlm-roster-resizer:focus-visible { outline: none; }
+/* Pendant le glissement : curseur partout, pas de sélection de texte */
+body.wlm-resizing, body.wlm-resizing * { cursor: col-resize !important; user-select: none !important; }
 
 /* Glassy separator effect */
 .contact-list-window::after {
@@ -1487,6 +1515,9 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
     border-right: none;
     height: 100vh;
   }
+
+  /* Mobile : la liste occupe tout l'écran, pas de redimensionnement */
+  .wlm-roster-resizer { display: none; }
 
   /* Bloc profil en haut - netteté et contraste mobile */
   .user-info-text {

@@ -57,7 +57,7 @@ Le mode « tout l'ordinateur » repose sur l'[API Idle Detection](https://develo
 
 Options → **Disposition**, **Messages** et **Sons** sont enregistrées dans le navigateur (`wlm_prefs`), par appareil, jamais sur le serveur :
 
-- **Disposition** : afficher les contacts hors ligne (les contacts bloqués restent toujours visibles, pour pouvoir les débloquer), afficher les messages personnels, afficher le contact de test « OpenWLM », trier par statut puis par nom, ou par nom.
+- **Disposition** : largeur de la liste de contacts sur ordinateur (faire glisser son bord droit ; double-clic pour revenir à la taille d'origine), afficher les contacts hors ligne (les contacts bloqués restent toujours visibles, pour pouvoir les débloquer), afficher les messages personnels, afficher le contact de test « OpenWLM », trier par statut puis par nom, ou par nom.
 - **Messages** : émoticônes en images ou en texte, heure des messages, secousse de la fenêtre à la réception d'un Wizz (sinon une simple ligne), lecture automatique des clins d'œil reçus (sinon un bouton « Voir »), copie chiffrée des conversations sur cet appareil, messages en mode privé compris (ils ne sont jamais sur le serveur : sans cette copie, ils sont perdus au rechargement de l'app ; la désactiver efface la copie).
 - **Sons** : activation, volume, un interrupteur par événement (message, connexion d'un contact, Wizz, clin d'œil, sonnerie d'appel, jeux), sons coupés en « Occupé » (la sonnerie des appels reste active).
 

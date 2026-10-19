@@ -531,3 +531,44 @@ test('Menu principal et Options : langue dans Options seulement, enregistrement 
   await expect.poll(async () => (await (await a.request.get('/api/user/me')).json()).user.psm, { timeout: 10000 }).toBe('Enregistré tout seul');
   await closeOptions(a);
 });
+
+test('Liste de contacts redimensionnable sur ordinateur (glisser, mémorisé, double-clic = taille d\'origine)', async ({ browser }) => {
+  test.setTimeout(90000);
+  const a = await newUserPage(browser, `resize_${Date.now()}`);
+  await a.setViewportSize({ width: 1400, height: 800 });
+  const list = a.locator('.contact-list-window');
+  const handle = a.locator('.wlm-roster-resizer');
+  // Largeur calculée (sans la bordure de 1 px)
+  const width = async () => Math.round(await list.evaluate((el) => parseFloat(getComputedStyle(el).width)));
+  expect(await width()).toBe(310);
+
+  // Glisser le bord droit de 150 px vers la droite
+  const box = (await handle.boundingBox())!;
+  await a.mouse.move(box.x + box.width / 2, box.y + 200);
+  await a.mouse.down();
+  await a.mouse.move(box.x + box.width / 2 + 150, box.y + 200, { steps: 8 });
+  await a.mouse.up();
+  await expect.poll(width).toBe(460);
+
+  // Mémorisé dans les préférences de l'appareil (wlm_prefs, relues au démarrage)
+  expect(await a.evaluate(() => JSON.parse(localStorage.getItem('wlm_prefs') || '{}').layout.rosterWidth)).toBe(460);
+
+  // Bornes : jamais plus de 640 px
+  const box2 = (await handle.boundingBox())!;
+  await a.mouse.move(box2.x + 4, box2.y + 200);
+  await a.mouse.down();
+  await a.mouse.move(box2.x + 900, box2.y + 200, { steps: 8 });
+  await a.mouse.up();
+  await expect.poll(width).toBe(640);
+
+  // Double-clic : taille d'origine ; clavier : ← réduit
+  await handle.dblclick();
+  await expect.poll(width).toBe(310);
+  await handle.focus();
+  await a.keyboard.press('ArrowLeft');
+  await expect.poll(width).toBe(294);
+
+  // Mobile : pas de poignée, liste pleine largeur
+  await a.setViewportSize({ width: 390, height: 780 });
+  await expect(handle).toBeHidden();
+});

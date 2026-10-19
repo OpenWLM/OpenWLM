@@ -57,6 +57,7 @@ import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
 import DesktopToastContainer from './components/DesktopToast';
 import AeroConfirmDialog from './components/AeroConfirmDialog';
+import RosterResizer from './components/RosterResizer';
 import {
   decideNotificationType,
   showSystemNotification,
@@ -3942,12 +3943,17 @@ const App: React.FC = () => {
   )) : [];
 
   return (
-    <div className={`wlm-desktop ${activeChatId !== 0 ? 'chat-open' : ''} ${isNudging ? 'wlm-nudge' : ''}`}>
+    <div
+      className={`wlm-desktop ${activeChatId !== 0 ? 'chat-open' : ''} ${isNudging ? 'wlm-nudge' : ''}`}
+      style={{ '--roster-width': `${appPrefs.layout.rosterWidth}px` } as React.CSSProperties}
+    >
       {/* Affichage d'un Wink (Clin d'œil) si actif */}
       {activeWink && <WinkPlayer key={`${activeWink}-${winkCounter}`} winkId={activeWink} onFinish={handleWinkFinish} />}
       
       {/* --- BARRE LATÉRALE (LISTE DE CONTACTS) --- */}
       <div className="wlm-side contact-list-window" onClick={() => setShowStatusMenu(false)}>
+        {/* Bord droit : élargir / réduire la liste (ordinateur) */}
+        <RosterResizer width={appPrefs.layout.rosterWidth} />
         
         {/* Logo et Branding */}
         <div className="wlm-branding">

@@ -543,7 +543,9 @@
     "pushTestButton": "Tester la notification Push",
     "pushTestSuccess": "Notification Push de test envoyée avec succès !",
     "pushTestError": "Échec du test Web Push",
-    "autoSavedNote": "Les modifications sont enregistrées automatiquement."
+    "autoSavedNote": "Les modifications sont enregistrées automatiquement.",
+    "rosterResizeLabel": "Largeur de la liste de contacts",
+    "rosterResizeHint": "Glisser pour élargir ou réduire la liste · double-clic : taille d'origine"
   },
   "modals": {
     "addContactTitle": "Ajouter un contact",

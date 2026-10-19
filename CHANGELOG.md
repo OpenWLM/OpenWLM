@@ -28,6 +28,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Sessions in the menu**: "Sign out" becomes **Sign out everywhere**, followed by **Sign out my other devices** (with a confirmation; same action as in Options → Security, renamed there too). "Forget this device" becomes **Remove my keys from this device**, which says what it does.
 - **Options window**: no more OK / Cancel / Apply, since every setting is saved as soon as it changes; the nickname and personal message are saved when leaving the field (or Enter) and when closing. Closes with ✕, Escape or a click outside. Aero look (gradient title bar, rounded corners, blue tab column) like the other dialogs, with a "Changes are saved automatically" note.
 - E2E test: no language in the menu, sign out my other devices from the menu, nickname saved on close, personal message saved when leaving the field.
+- **Resizable contact list (computer)**: drag the right edge of the contact list to widen it (260 to 640 px, always leaving at least 420 px to the conversation); the width is remembered on the device (`wlm_prefs`), double-click goes back to the original size, ←/→ keys also work on the focused handle. Not on mobile, where the list takes the whole screen. E2E test.
 
 ## [1.6.1] - 2026-10-19
 

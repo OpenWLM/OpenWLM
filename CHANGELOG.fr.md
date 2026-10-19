@@ -28,6 +28,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Sessions dans le menu** : « Se déconnecter » devient **Se déconnecter de partout**, suivi de **Se déconnecter des autres appareils** (avec confirmation ; même action que dans Options → Sécurité, renommée là aussi). « Oublier cet appareil » devient **Supprimer mes clés de cet appareil**, qui dit ce que fait l'action.
 - **Fenêtre Options** : plus de OK / Annuler / Appliquer, puisque chaque réglage est enregistré dès qu'il change ; le pseudo et le message perso sont enregistrés en quittant le champ (ou Entrée) et à la fermeture. Fermeture par ✕, Échap ou un clic à côté. Habillage Aero (barre de titre en dégradé, coins arrondis, colonne d'onglets bleue) comme les autres boîtes de dialogue, avec la mention « Les modifications sont enregistrées automatiquement ».
 - Test E2E : plus de langue dans le menu, déconnexion des autres appareils depuis le menu, pseudo enregistré à la fermeture, message perso enregistré en quittant le champ.
+- **Liste de contacts redimensionnable (ordinateur)** : faire glisser le bord droit de la liste pour l'élargir (de 260 à 640 px, en laissant toujours au moins 420 px à la conversation) ; la largeur est mémorisée sur l'appareil (`wlm_prefs`), un double-clic revient à la taille d'origine, les flèches ←/→ fonctionnent aussi sur la poignée sélectionnée. Pas sur mobile, où la liste occupe tout l'écran. Test E2E.
 
 ## [1.6.1] - 2026-10-19
 

@@ -141,8 +141,10 @@ le plus récent, comme les boutons ▲ / ▼ ; **Échap** ferme la recherche. Se
 - **Serveur** (`server/utils/plusText.js`) : même grammaire, utilisée seulement pour retirer les
   balises — vérifier la longueur visible des pseudos et messages perso (`server/routes/users.js`,
   `server/routes/auth.js`) et construire les titres des notifications Push.
-- **Commandes** (`src/utils/chatCommands.ts`) : analyse seulement ; les actions sont exécutées par
-  `src/App.tsx`.
+- **Commandes** : analyse dans `src/utils/chatCommands.ts`, exécution dans
+  `src/utils/runChatCommand.ts` (l'état de l'app dont elle a besoin lui est passé dans un
+  contexte), liste de suggestions dans `src/components/CommandHelper.tsx`, rappel dans
+  `src/hooks/useSentHistory.ts`, Ctrl+F dans `src/hooks/useConversationSearchShortcut.ts`.
 - **Recherche** (`src/components/ConversationSearch.tsx`) : API CSS Custom Highlight
   (`::highlight(wlm-search)`), sans toucher au DOM des messages.
 - **Tests** : `e2e/extras.spec.ts` (scénario de bout en bout sur deux comptes),

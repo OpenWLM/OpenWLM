@@ -137,7 +137,10 @@ searched (after `/clear`, nothing is left to search).
 - **Server** (`server/utils/plusText.js`): same grammar, used only to strip tags — to check the
   visible length of nicknames and personal messages (`server/routes/users.js`,
   `server/routes/auth.js`) and to build push notification titles.
-- **Commands** (`src/utils/chatCommands.ts`): parsing only; actions are run by `src/App.tsx`.
+- **Commands**: parsing in `src/utils/chatCommands.ts`, execution in `src/utils/runChatCommand.ts`
+  (the app state it needs is passed in a context), suggestion list in
+  `src/components/CommandHelper.tsx`, recall in `src/hooks/useSentHistory.ts`, Ctrl+F in
+  `src/hooks/useConversationSearchShortcut.ts`.
 - **Search** (`src/components/ConversationSearch.tsx`): CSS Custom Highlight API
   (`::highlight(wlm-search)`), no change to the messages' DOM.
 - **Tests**: `e2e/extras.spec.ts` (end-to-end scenario across two accounts),

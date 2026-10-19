@@ -56,6 +56,18 @@ NODE_ENV=production pm2 start server/index.js --name openwlm --restart-delay 200
 pm2 save && pm2 startup
 ```
 
+Ou, plus simple, `scripts/start-openwlm.sh` : démarre (ou relance) le processus pm2
+`openwlm` en production, reconstruit l'interface si `dist/` manque (`--build` pour forcer),
+attend que le serveur réponde et affiche les journaux sinon (`--status` : état seulement).
+Il **refuse de tourner en root** (sudo compris) et sous un autre compte que le propriétaire du
+dossier (celui qui possède la base, les secrets et `~/.pm2`).
+
+Relance automatique au démarrage de la machine, sans root (`crontab -e`) :
+
+```
+@reboot /chemin/vers/OpenWLM/scripts/start-openwlm.sh >> /chemin/vers/OpenWLM/logs/boot.log 2>&1
+```
+
 ## Option 3 — Docker
 
 Utiliser une politique de redémarrage : `--restart unless-stopped` (ou

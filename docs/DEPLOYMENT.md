@@ -56,16 +56,24 @@ NODE_ENV=production pm2 start server/index.js --name openwlm --restart-delay 200
 pm2 save && pm2 startup
 ```
 
-Ou, plus simple, `scripts/start-openwlm.sh` : démarre (ou relance) le processus pm2
-`openwlm` en production, reconstruit l'interface si `dist/` manque (`--build` pour forcer),
-attend que le serveur réponde et affiche les journaux sinon (`--status` : état seulement).
-Il **refuse de tourner en root** (sudo compris) et sous un autre compte que le propriétaire du
-dossier (celui qui possède la base, les secrets et `~/.pm2`).
+## Option 2 bis — service systemd (recommandé sur un serveur Linux)
 
-Relance automatique au démarrage de la machine, sans root (`crontab -e`) :
+`scripts/openwlm-service.sh install` installe OpenWLM comme **service systemd utilisateur** :
+démarrage au boot, relance automatique en cas d'arrêt (2 s), journaux dans journald. Il
+remplace pm2 (le processus pm2 `openwlm` est arrêté et retiré à l'installation).
 
-```
-@reboot /chemin/vers/OpenWLM/scripts/start-openwlm.sh >> $HOME/openwlm-boot.log 2>&1
+- Le service tourne sous le compte propriétaire du dossier, **jamais en root** : le script
+  refuse root (sudo compris) et tout autre compte.
+- Service *utilisateur* : le relancer ne demande pas sudo. Seule l'installation demande sudo,
+  une fois, pour `loginctl enable-linger` (démarrage au boot sans ouvrir de session).
+
+```bash
+./scripts/openwlm-service.sh install     # installe et démarre
+./scripts/openwlm-service.sh restart     # après un déploiement
+./scripts/openwlm-service.sh status      # état + réponse HTTP
+./scripts/openwlm-service.sh logs [-f]   # journaux
+./scripts/openwlm-service.sh uninstall   # arrête et supprime
+./scripts/openwlm-service.sh unit        # affiche le fichier de service sans rien installer
 ```
 
 ## Option 3 — Docker

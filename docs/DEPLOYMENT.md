@@ -65,7 +65,7 @@ dossier (celui qui possède la base, les secrets et `~/.pm2`).
 Relance automatique au démarrage de la machine, sans root (`crontab -e`) :
 
 ```
-@reboot /chemin/vers/OpenWLM/scripts/start-openwlm.sh >> /chemin/vers/OpenWLM/logs/boot.log 2>&1
+@reboot /chemin/vers/OpenWLM/scripts/start-openwlm.sh >> $HOME/openwlm-boot.log 2>&1
 ```
 
 ## Option 3 — Docker

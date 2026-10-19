@@ -12,7 +12,7 @@
 # .jwt_secret, .vapid_keys.json) et la liste des processus pm2 (~/.pm2).
 #
 # Lancement automatique au démarrage (sans root) : ajouter cette ligne avec `crontab -e`
-#   @reboot /chemin/vers/OpenWLM/scripts/start-openwlm.sh >> /chemin/vers/OpenWLM/logs/boot.log 2>&1
+#   @reboot /chemin/vers/OpenWLM/scripts/start-openwlm.sh >> $HOME/openwlm-boot.log 2>&1
 # =============================================================================
 set -euo pipefail
 

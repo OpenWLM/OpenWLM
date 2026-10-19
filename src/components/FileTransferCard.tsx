@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { type EncryptedFileKeys, decryptFileBinary } from '../utils/Security';
 import { useI18n } from '../i18n';
+import { notify } from '../utils/dialogs';
 
 export interface FileDataPayload {
   type: 'file';
@@ -172,7 +173,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
 
   const handleDownload = async () => {
     if (remaining.expired) {
-      alert(t.fileTransfer.expiredAlert);
+      notify(t.fileTransfer.expiredAlert, { icon: '⚠️' });
       return;
     }
 
@@ -189,7 +190,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
     }
 
     if (!myPrivateKey) {
-      alert(t.fileTransfer.missingKeyAlert);
+      notify(t.fileTransfer.missingKeyAlert, { icon: '⚠️' });
       return;
     }
 

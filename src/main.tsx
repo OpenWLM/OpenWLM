@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { initPWA } from './pwa'
 import { I18nProvider } from './i18n'
+import DialogHost from './components/DialogHost'
 
 // Initialiser le Service Worker PWA et les gestionnaires d'installation
 initPWA()
@@ -18,6 +19,8 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <I18nProvider>
       <App />
+      {/* Boîtes de dialogue Aero (notify / askConfirm), au-dessus de tout */}
+      <DialogHost />
     </I18nProvider>
   </StrictMode>,
 )

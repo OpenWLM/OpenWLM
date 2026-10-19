@@ -30,6 +30,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - E2E test: no language in the menu, sign out my other devices from the menu, nickname saved on close, personal message saved when leaving the field.
 - **Resizable contact list (computer)**: drag the right edge of the contact list to widen it (260 to 640 px, always leaving at least 420 px to the conversation); the width is remembered on the device (`wlm_prefs`), double-click goes back to the original size, ←/→ keys also work on the focused handle. Not on mobile, where the list takes the whole screen. E2E test.
 
+### Aero dialogs instead of browser pop-ups
+- **No more browser pop-ups**: the 41 `alert()` and 2 `window.confirm()` (remove a contact, delete a custom emoticon) are replaced with small Aero windows like the rest of the app (`notify()` / `askConfirm()` in `src/utils/dialogs.ts`, shown by `<DialogHost />` mounted once at the root, so they also work on the sign-in screen). Messages are queued and shown one at a time; Enter confirms, Escape closes or cancels; errors use a ⚠️ icon, destructive confirmations a red button.
+- **Sign-up success** is now shown in the form (green message) instead of a pop-up, since you go straight on to signing in.
+- E2E: the English-interface test reads the Aero windows, checks the confirmation (Cancel, Escape, Delete) and fails if any native browser pop-up opens.
+
 ## [1.6.1] - 2026-10-19
 
 ### Fixes (review of 1.6.0)

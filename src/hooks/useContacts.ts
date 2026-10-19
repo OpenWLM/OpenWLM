@@ -7,6 +7,7 @@ import { removeConversationBackground } from '../utils/ConversationBackgrounds';
 import type { Contact, Message, User } from '../types';
 import { useI18n } from '../i18n';
 import { serverErrorText } from '../utils/serverError';
+import { notify, askConfirm } from '../utils/dialogs';
 
 /**
  * DOMAINE CONTACTS (roster, invitations, menu contextuel)
@@ -163,7 +164,7 @@ export function useContacts(options: UseContactsOptions): ContactsApi {
 
   const handleDeleteContact = useCallback(async (contactId: number) => {
     if (!user) return;
-    if (!window.confirm(t.notices.deleteContactConfirm)) return;
+    if (!(await askConfirm(t.notices.deleteContactConfirm, { danger: true, confirmLabel: t.common.delete, icon: '⚠️' }))) return;
     try {
       await axios.post('/api/contacts/delete', { userId: user.id, contactId });
       refreshData();
@@ -221,11 +222,11 @@ export function useContacts(options: UseContactsOptions): ContactsApi {
     if (!contactEmail.trim()) return;
     try {
       await axios.post('/api/invite', { senderId: user?.id, receiverUsername: contactEmail });
-      alert(t.notices.inviteSent);
+      notify(t.notices.inviteSent, { icon: '✅' });
       setShowAddContactModal(false);
       setContactEmail('');
     } catch (err: any) {
-      alert(serverErrorText(err, t, language, t.notices.inviteFailed));
+      notify(serverErrorText(err, t, language, t.notices.inviteFailed), { icon: '⚠️' });
     }
   };
 

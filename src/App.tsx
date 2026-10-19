@@ -95,6 +95,7 @@ import { useAppPrefs, getAppPrefs, setPresenceForSounds } from './utils/appPrefs
 import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
 import { systemLine } from './utils/systemLine';
 import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
+import { notify } from './utils/dialogs';
 
 axios.defaults.withCredentials = true;
 
@@ -537,20 +538,20 @@ const App: React.FC = () => {
    */
   const togglePrivateMode = (chatId: number) => {
     if (chatId === SYSTEM_BOT_ID) {
-      alert(t.notices.botLocalOnly);
+      notify(t.notices.botLocalOnly);
       return;
     }
     const activeContact = contacts.find(c => c.id === chatId);
     if (activeContact?.global_private === 1) {
-      alert(t.notices.privateForcedByContact);
+      notify(t.notices.privateForcedByContact);
       return;
     }
     if (globalPrivateMode) {
-      alert(t.chat.privateModeGlobalAlert);
+      notify(t.chat.privateModeGlobalAlert);
       return;
     }
     if (activeContact?.their_private === 1 && !isPrivateMode[chatId]) {
-      alert(t.notices.privateForcedForConversation);
+      notify(t.notices.privateForcedForConversation);
       return;
     }
     const newState = !isPrivateMode[chatId];
@@ -1136,7 +1137,7 @@ const App: React.FC = () => {
 
         privJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
         if (!privJwk) {
-          alert(t.notices.vaultDecryptFailed);
+          notify(t.notices.vaultDecryptFailed, { icon: '⚠️' });
           return;
         }
 
@@ -1216,7 +1217,7 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("[Zero-Knowledge] Erreur initialisation clés:", err);
-      alert(t.notices.keysInitFailed);
+      notify(t.notices.keysInitFailed, { icon: '⚠️' });
     }
   };
 
@@ -2329,12 +2330,12 @@ const App: React.FC = () => {
 
       newSocket.on('game_declined', (data: { from: number; fromName: string }) => {
         setOutgoingGameInvite(null);
-        alert(tRef.current.notices.gameDeclined.replace('{name}', data.fromName));
+        notify(tRef.current.notices.gameDeclined.replace('{name}', data.fromName));
       });
 
       newSocket.on('game_user_offline', () => {
         setOutgoingGameInvite(null);
-        alert(tRef.current.notices.gameContactOffline);
+        notify(tRef.current.notices.gameContactOffline);
       });
 
       // Réception d'une mise à jour de statut de message (remis)
@@ -2777,7 +2778,7 @@ const App: React.FC = () => {
     // On récupère la clé publique du destinataire pour le chiffrement E2E
     const contactPubKey = await getPublicKey(activeChatId);
     if (!contactPubKey) {
-      alert(t.notices.contactNeverConnected);
+      notify(t.notices.contactNeverConnected, { icon: '⚠️' });
       return;
     }
 
@@ -2855,7 +2856,7 @@ const App: React.FC = () => {
 
     } catch (e) {
       console.error("Échec du chiffrement:", e);
-      alert(e instanceof Error && e.message === t.chat.signingKeyMissing ? e.message : t.notices.encryptFailed);
+      notify(e instanceof Error && e.message === t.chat.signingKeyMissing ? e.message : t.notices.encryptFailed, { icon: '⚠️' });
     }
   };
 
@@ -2891,23 +2892,23 @@ const App: React.FC = () => {
    */
   const sendFile = useCallback(async (file: File): Promise<void> => {
     if (!file) return;
-    if (!socket) { alert(t.notices.notConnected); return; }
-    if (!myKeys) { alert(t.notices.keysNotReady); return; }
-    if (!activeChatId) { alert(t.notices.selectContact); return; }
+    if (!socket) { notify(t.notices.notConnected, { icon: '⚠️' }); return; }
+    if (!myKeys) { notify(t.notices.keysNotReady, { icon: '⚠️' }); return; }
+    if (!activeChatId) { notify(t.notices.selectContact); return; }
     if (activeChatId === SYSTEM_BOT_ID) {
-      alert(t.notices.botNoFiles);
+      notify(t.notices.botNoFiles);
       return;
     }
 
     const MAX_SIZE = 100 * 1024 * 1024; // 100 Mo max
     if (file.size > MAX_SIZE) {
-      alert(t.notices.fileTooLarge);
+      notify(t.notices.fileTooLarge, { icon: '⚠️' });
       return;
     }
 
     const contactPubKey = await getPublicKey(activeChatId);
     if (!contactPubKey) {
-      alert(t.notices.contactNeverConnectedFiles);
+      notify(t.notices.contactNeverConnectedFiles, { icon: '⚠️' });
       return;
     }
 
@@ -2997,11 +2998,11 @@ const App: React.FC = () => {
       const axiosErr = err as { response?: { status?: number; data?: { error?: string } }; message?: string };
       const serverError = axiosErr.response?.data?.error;
       if (axiosErr.response?.status === 413 || (serverError && /100\s*Mo|taille|large/i.test(serverError))) {
-        alert(t.notices.fileTooLarge);
+        notify(t.notices.fileTooLarge, { icon: '⚠️' });
       } else if (axiosErr.response) {
-        alert(t.notices.fileSendFailed.replace('{reason}', serverErrorText(err, t, language, t.notices.fileSendError)));
+        notify(t.notices.fileSendFailed.replace('{reason}', serverErrorText(err, t, language, t.notices.fileSendError)), { icon: '⚠️' });
       } else {
-        alert(t.notices.fileSendError);
+        notify(t.notices.fileSendError, { icon: '⚠️' });
       }
     }
   }, [socket, myKeys, activeChatId, user, myNickname, effectivePrivateModes]);
@@ -3192,14 +3193,14 @@ const App: React.FC = () => {
 
   const handleVoiceClip = async () => {
     if (activeChatId === SYSTEM_BOT_ID) {
-      alert(t.notices.botNoVoice);
+      notify(t.notices.botNoVoice);
       return;
     }
     if (!isRecording) {
       cancelRecordingRef.current = false;
       try {
         if (!navigator.mediaDevices || !window.isSecureContext) {
-          alert(t.notices.micInsecure);
+          notify(t.notices.micInsecure, { icon: '⚠️' });
           return;
         }
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -3228,7 +3229,7 @@ const App: React.FC = () => {
             if (!myKeys) return;
             const contactPubKey = await getPublicKey(activeChatId);
             if (!contactPubKey) {
-              alert(t.notices.contactNeverConnected);
+              notify(t.notices.contactNeverConnected, { icon: '⚠️' });
               return;
             }
 
@@ -3302,7 +3303,7 @@ const App: React.FC = () => {
         }, VOICE_CLIP_MAX_MS);
         recorder.addEventListener('stop', () => clearTimeout(autoStopTimer));
       } catch { 
-        alert(t.notices.micUnavailable);
+        notify(t.notices.micUnavailable, { icon: '⚠️' });
       }
     } else {
       if (mediaRecorder?.stream) {
@@ -3402,7 +3403,7 @@ const App: React.FC = () => {
 
         if (purgeErrors.length > 0) {
           console.error('[Reset] Échec partiel de purge locale:', purgeErrors);
-          alert(t.notices.resetPurgePartial.replace('{items}', purgeErrors.join(', ')));
+          notify(t.notices.resetPurgePartial.replace('{items}', purgeErrors.join(', ')), { icon: '⚠️' });
         }
 
         // 6. Nettoyage de l'état en mémoire
@@ -4144,7 +4145,7 @@ const App: React.FC = () => {
             onInviteGame={handleInviteGame}
             onTogglePrivateMode={() => {
               if (globalPrivateMode) {
-                alert(t.chat.privateModeGlobalAlert);
+                notify(t.chat.privateModeGlobalAlert);
               } else {
                 togglePrivateMode(activeChatId);
               }

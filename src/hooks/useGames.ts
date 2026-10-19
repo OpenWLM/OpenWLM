@@ -4,6 +4,7 @@ import type { Socket } from 'socket.io-client';
 import axios from 'axios';
 import { SYSTEM_BOT_ID, type Contact, type Message, type User } from '../types';
 import { useI18n } from '../i18n';
+import { notify } from '../utils/dialogs';
 
 /**
  * DOMAINE JEUX MULTI-JOUEURS (Morpion, Dames, Puissance 4, Démineur)
@@ -207,7 +208,7 @@ export function useGames(options: UseGamesOptions): GamesApi {
           ]
         }));
       } else {
-        alert(t.notices.botGamesOnly);
+        notify(t.notices.botGamesOnly);
         setShowGamesMenu(false);
       }
       return;
@@ -220,7 +221,7 @@ export function useGames(options: UseGamesOptions): GamesApi {
         : gameType === 'puissance4' ? t.notices.gameNamePuissance4
         : gameType === 'minesweeper' ? t.notices.gameNameMinesweeper
         : t.notices.gameNameMorpion;
-      alert(t.notices.gameNeedsOnline.replace('{game}', gameLabel));
+      notify(t.notices.gameNeedsOnline.replace('{game}', gameLabel));
       return;
     }
 

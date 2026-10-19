@@ -60,6 +60,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
     } catch { /* stockage indisponible */ }
     return '';
   });
+  const [info, setInfo] = useState('');
   const [isDeriving, setIsDeriving] = useState(false);
   const [captchaData, setCaptchaData] = useState<{ id: string; text: string; num1?: number; num2?: number; pow?: PowChallenge } | null>(null);
   const [isSolvingPow, setIsSolvingPow] = useState(false);
@@ -117,6 +118,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setInfo('');
     try { sessionStorage.removeItem('wlm_session_notice'); } catch { /* ignore */ }
 
     // Validation basique côté client
@@ -183,7 +185,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
         });
         
         setIsLogin(true);
-        alert(t.auth.signupSuccess);
+        // Réussite affichée dans le formulaire (on enchaîne directement sur la connexion)
+        setInfo(t.auth.signupSuccess);
       }
     } catch (err: unknown) {
       // Gestion des erreurs serveur
@@ -337,6 +340,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
 
           {/* Affichage des erreurs */}
           {error && <div className="auth-error">{error}</div>}
+          {info && !error && <div className="auth-info" role="status">✓ {info}</div>}
 
           {/* Actions du formulaire */}
           <div className="auth-actions">

@@ -6,6 +6,7 @@ import { getAppPrefs } from '../utils/appPrefs';
 import { SYSTEM_BOT_ID, type Message, type User } from '../types';
 import { useI18n } from '../i18n';
 import { systemLine } from '../utils/systemLine';
+import { notify } from '../utils/dialogs';
 
 /**
  * DOMAINE CLINS D'ŒIL & WIZZ (nudges)
@@ -135,7 +136,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
     if (!socket || !myKeys) return;
     const contactPubKey = await getPublicKey(activeChatId);
     if (!contactPubKey) {
-      alert(tRef.current.notices.winkContactOffline);
+      notify(tRef.current.notices.winkContactOffline);
       return;
     }
 

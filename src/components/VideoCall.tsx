@@ -13,6 +13,7 @@ import {
   verifyString,
   extractFingerprints,
 } from '../utils/Security';
+import { notify } from '../utils/dialogs';
 
 interface VideoCallProps {
   socket: Socket | null;
@@ -392,7 +393,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
 
     try {
       if (!navigator.mediaDevices || !window.isSecureContext) {
-        alert(t.videoCall.unsecureContext);
+        notify(t.videoCall.unsecureContext, { icon: '⚠️' });
         finish();
         return;
       }
@@ -409,10 +410,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         stream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (err) {
         const name = err instanceof DOMException ? err.name : '';
-        if (name === 'NotAllowedError') alert(t.videoCall.permissionDenied);
-        else if (name === 'NotFoundError') alert(t.videoCall.noDevice);
-        else if (name === 'NotReadableError') alert(t.videoCall.deviceBusy);
-        else alert(t.videoCall.mediaError);
+        if (name === 'NotAllowedError') notify(t.videoCall.permissionDenied, { icon: '⚠️' });
+        else if (name === 'NotFoundError') notify(t.videoCall.noDevice, { icon: '⚠️' });
+        else if (name === 'NotReadableError') notify(t.videoCall.deviceBusy, { icon: '⚠️' });
+        else notify(t.videoCall.mediaError, { icon: '⚠️' });
         finish();
         return;
       }
@@ -547,7 +548,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       }
     } catch (err) {
       console.error('[WebRTC] initCall:', err);
-      alert(t.videoCall.genericError);
+      notify(t.videoCall.genericError, { icon: '⚠️' });
       finish();
     }
   }, [audioOnly, activeChatId, myId, isReceivingCall, incomingSignal, socket, callerName, emitSignal, decryptSignal, verifyFingerprint, buildSignal, applySenderCaps, applyLocalDescription, fetchRtcConfig, finish, tryRestartIce, t]);
@@ -710,10 +711,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         refreshDevices();
       } catch (err) {
         const name = err instanceof DOMException ? err.name : '';
-        if (name === 'NotAllowedError') alert(t.videoCall.permissionDenied);
-        else if (name === 'NotFoundError') alert(t.videoCall.noDevice);
-        else if (name === 'NotReadableError') alert(t.videoCall.deviceBusy);
-        else alert(t.videoCall.mediaError);
+        if (name === 'NotAllowedError') notify(t.videoCall.permissionDenied, { icon: '⚠️' });
+        else if (name === 'NotFoundError') notify(t.videoCall.noDevice, { icon: '⚠️' });
+        else if (name === 'NotReadableError') notify(t.videoCall.deviceBusy, { icon: '⚠️' });
+        else notify(t.videoCall.mediaError, { icon: '⚠️' });
       }
       return;
     }

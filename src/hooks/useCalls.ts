@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { SYSTEM_BOT_ID, type User } from '../types';
 import { useI18n } from '../i18n';
+import { notify } from '../utils/dialogs';
 
 /**
  * DOMAINE APPELS (WebRTC)
@@ -47,7 +48,7 @@ export function useCalls({ user, activeChatId }: UseCallsOptions): CallsApi {
   const handleStartCall = (audioOnly: boolean) => {
     if (!activeChatId || !user) return;
     if (activeChatId === SYSTEM_BOT_ID) {
-      alert(t.notices.callsBotOnly);
+      notify(t.notices.callsBotOnly);
       return;
     }
     setIsAudioOnly(audioOnly);

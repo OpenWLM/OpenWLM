@@ -1263,6 +1263,16 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .auth-field { margin-bottom: 15px; }
 .auth-field label { display: block; font-size: 11px; color: #666; margin-bottom: 5px; }
 .auth-field input { width: 100%; padding: 6px; border: 1px solid #abadb3; font-size: 13px; box-sizing: border-box; }
+.auth-info {
+  margin-top: 8px;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  color: #1e6b2b;
+  background: #eef9f0;
+  border: 1px solid #b7e1bf;
+  border-radius: 4px;
+}
+
 .auth-error { color: #ef3100; font-size: 11px; margin-bottom: 15px; }
 .wlm-btn-auth { width: 100%; padding: 8px; background: linear-gradient(to bottom, #74c2e6, #0099d6); color: white; border: 1px solid #0078d7; border-radius: 4px; font-weight: bold; cursor: pointer; }
 .auth-toggle { display: block; text-align: center; margin-top: 15px; font-size: 11px; color: #0078d7; cursor: pointer; }
@@ -4369,6 +4379,13 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   font-weight: 600;
 }
 
+/* Bouton principal d'une confirmation destructrice (Aero) : rouge, pas bleu */
+.win-btn.win-btn-primary.danger {
+  background: linear-gradient(to bottom, #d9534f 0%, #c9302c 100%);
+  border-color: #ac2925;
+  color: #fff;
+}
+
 .win-btn.danger:hover:not(:disabled) {
   background: linear-gradient(to bottom, #c9302c 0%, #ac2925 100%);
   border-color: #761c19;
@@ -4392,6 +4409,9 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   backdrop-filter: blur(2px);
   animation: wlm-aero-fade 0.15s ease-out;
 }
+
+/* notify() / askConfirm() : au-dessus des autres fenêtres (Options, appels…) */
+.wlm-aero-dialog-overlay-top { z-index: 12000; }
 
 .wlm-aero-dialog {
   width: min(92vw, 380px);

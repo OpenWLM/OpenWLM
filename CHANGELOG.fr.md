@@ -30,6 +30,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - Test E2E : plus de langue dans le menu, déconnexion des autres appareils depuis le menu, pseudo enregistré à la fermeture, message perso enregistré en quittant le champ.
 - **Liste de contacts redimensionnable (ordinateur)** : faire glisser le bord droit de la liste pour l'élargir (de 260 à 640 px, en laissant toujours au moins 420 px à la conversation) ; la largeur est mémorisée sur l'appareil (`wlm_prefs`), un double-clic revient à la taille d'origine, les flèches ←/→ fonctionnent aussi sur la poignée sélectionnée. Pas sur mobile, où la liste occupe tout l'écran. Test E2E.
 
+### Fenêtres Aero au lieu des fenêtres du navigateur
+- **Plus de fenêtres natives du navigateur** : les 41 `alert()` et les 2 `window.confirm()` (supprimer un contact, supprimer une émoticône perso) sont remplacés par de petites fenêtres Aero comme le reste de l'app (`notify()` / `askConfirm()` dans `src/utils/dialogs.ts`, affichées par `<DialogHost />` monté une seule fois à la racine, donc aussi sur l'écran de connexion). Les messages sont mis en file et affichés un par un ; Entrée valide, Échap ferme ou annule ; les erreurs ont une icône ⚠️, les confirmations destructrices un bouton rouge.
+- **La réussite de l'inscription** s'affiche désormais dans le formulaire (message vert) au lieu d'une fenêtre, puisqu'on enchaîne directement sur la connexion.
+- E2E : le test en interface anglaise lit les fenêtres Aero, vérifie la confirmation (Annuler, Échap, Supprimer) et échoue si une fenêtre native du navigateur s'ouvre.
+
 ## [1.6.1] - 2026-10-19
 
 ### Correctifs (revue de la 1.6.0)

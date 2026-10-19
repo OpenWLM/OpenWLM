@@ -6,6 +6,8 @@ import { test, expect, type Browser, type Page } from '@playwright/test';
  */
 
 const PASSWORD = 'MotDePasseE2E-1234';
+const DELETE_LABEL = 'Delete';
+const nativeDialogs: string[] = [];
 const fakeClientIp = () => `10.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}`;
 
 const registerAndLogin = async (page: Page, username: string) => {
@@ -20,8 +22,11 @@ const registerAndLogin = async (page: Page, username: string) => {
   const m = question.match(/(\d+)\s*\+\s*(\d+)/);
   expect(m).not.toBeNull();
   await page.locator('.auth-captcha-container input[type="number"]').fill(String(Number(m![1]) + Number(m![2])));
-  page.once('dialog', (d) => { d.accept().catch(() => {}); }); // « inscription réussie »
+  // Aucune fenêtre native ne doit s'ouvrir : relevées ici, vérifiées en fin de test
+  page.on('dialog', (d) => { nativeDialogs.push(d.message()); d.dismiss().catch(() => {}); });
   await page.locator('button.wlm-btn-auth').click();
+  // Réussite de l'inscription affichée dans le formulaire
+  await expect(page.locator('.auth-info')).toContainText('Account created successfully');
   await expect(page.locator('.auth-captcha-container')).toHaveCount(0, { timeout: 20000 });
   await page.locator('.auth-field input[type="text"]').first().fill(username);
   await page.locator('.auth-field input[type="password"]').fill(PASSWORD);
@@ -36,14 +41,16 @@ const newUserPage = async (browser: Browser, username: string) => {
   return page;
 };
 
-// Texte d'une alerte déclenchée par `action`
-// (l'alerte est fermée dès son ouverture : sinon elle bloque la page et le clic qui l'a ouverte)
+// Texte de la fenêtre Aero ouverte par `action` (plus de fenêtres natives du navigateur),
+// refermée avec OK
 const alertText = async (page: Page, action: () => Promise<void>) => {
-  const shown = new Promise<string>((resolve) => {
-    page.once('dialog', (d) => { resolve(d.message()); d.accept().catch(() => {}); });
-  });
   await action();
-  return shown;
+  const dialog = page.getByTestId('aero-dialog');
+  await expect(dialog).toBeVisible();
+  const text = await page.getByTestId('aero-dialog-message').innerText();
+  await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  return text;
 };
 
 test('interface anglaise : alertes, lignes système, contact de test et erreurs serveur en anglais', async ({ browser }) => {
@@ -98,4 +105,24 @@ test('interface anglaise : alertes, lignes système, contact de test et erreurs 
   // Aucune trace de français dans les lignes système
   const systemTexts = (await a.locator('.msg-system').allInnerTexts()).concat(await b.locator('.msg-system').allInnerTexts());
   for (const text of systemTexts) expect(text).not.toMatch(/Vous|activé|Wizz|Système/);
+
+  // Confirmation Aero (plus de window.confirm) : supprimer un contact, Annuler puis Supprimer
+  const askDelete = async () => {
+    await a.locator('.contact-row', { hasText: nameB }).click({ button: 'right' });
+    await a.locator('.dropdown-item', { hasText: DELETE_LABEL }).click();
+    await expect(a.getByTestId('aero-dialog-message')).toHaveText('Do you really want to remove this contact?');
+  };
+  await askDelete();
+  await a.getByTestId('aero-dialog').getByRole('button', { name: 'Cancel' }).click();
+  await expect(a.getByTestId('aero-dialog')).toHaveCount(0);
+  await expect(a.locator('.contact-row', { hasText: nameB })).toBeVisible();
+  await askDelete();
+  await a.keyboard.press('Escape');
+  await expect(a.getByTestId('aero-dialog')).toHaveCount(0);
+  await expect(a.locator('.contact-row', { hasText: nameB })).toBeVisible();
+  await askDelete();
+  await a.getByTestId('aero-dialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(a.locator('.contact-row', { hasText: nameB })).toHaveCount(0, { timeout: 15000 });
+
+  expect(nativeDialogs, 'aucune fenêtre native (alert/confirm) du navigateur').toEqual([]);
 });

@@ -4,6 +4,7 @@ import { encryptCustomEmoticon, validateImageSignature } from '../utils/Security
 import CustomEmoticonsDB, { type MyEmoticonRecord } from '../utils/CustomEmoticonsDB';
 import { useI18n } from '../i18n';
 import { serverErrorText, serverErrorFromResponse } from '../utils/serverError';
+import { askConfirm } from '../utils/dialogs';
 
 interface CustomEmoticonsModalProps {
   isOpen: boolean;
@@ -352,7 +353,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
   // Suppression d'une émoticône
   const handleDeleteEmoticon = async (id: string, shortcut: string) => {
-    if (!window.confirm(t.customEmoticons.confirmDelete.replace('{shortcut}', shortcut))) {
+    if (!(await askConfirm(t.customEmoticons.confirmDelete.replace('{shortcut}', shortcut), { danger: true, confirmLabel: t.common.delete, icon: '⚠️' }))) {
       return;
     }
 

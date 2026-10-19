@@ -322,7 +322,7 @@ body.wlm-resizing, body.wlm-resizing * { cursor: col-resize !important; user-sel
   width: 130px; /* Fixed width to keep close button at consistent position */
   padding: 6px 8px; background: #c5ddec; 
   border: 1px solid #99b4d1;
-  border-bottom: none; border-radius: 6px 6px 0 0; font-size: 11px; cursor: pointer;
+  border-bottom: none; border-radius: 6px 6px 0 0; font-size: 11px; cursor: default;
   display: flex; align-items: center; justify-content: space-between;
   gap: 5px; flex-shrink: 0;
   position: relative;
@@ -337,6 +337,7 @@ body.wlm-resizing, body.wlm-resizing * { cursor: col-resize !important; user-sel
 }
 
 .chat-tab-close {
+  cursor: pointer;
   font-size: 10px;
   color: #666;
   width: 16px;
@@ -365,7 +366,9 @@ body.wlm-resizing, body.wlm-resizing * { cursor: col-resize !important; user-sel
 
 /* --- GLISSER-DÉPOSER DES ONGLETS DE DISCUSSION --- */
 .chat-tab[draggable="true"] {
-  cursor: grab;
+  /* Flèche normale sur les onglets (comme une fenêtre de conversation WLM) ; la main fermée
+     n'apparaît que pendant un déplacement (.dragging) */
+  cursor: default;
   user-select: none;
   -webkit-user-select: none;
 }

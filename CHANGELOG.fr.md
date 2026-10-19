@@ -35,6 +35,9 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **La réussite de l'inscription** s'affiche désormais dans le formulaire (message vert) au lieu d'une fenêtre, puisqu'on enchaîne directement sur la connexion.
 - E2E : le test en interface anglaise lit les fenêtres Aero, vérifie la confirmation (Annuler, Échap, Supprimer) et échoue si une fenêtre native du navigateur s'ouvre.
 
+### Correctifs
+- **Onglets de conversation** : retour de la flèche normale sur les onglets (ils affichaient une main ouverte depuis qu'on peut les déplacer) ; la main fermée n'apparaît que pendant le déplacement d'un onglet, le ✕ garde sa main.
+
 ## [1.6.1] - 2026-10-19
 
 ### Correctifs (revue de la 1.6.0)

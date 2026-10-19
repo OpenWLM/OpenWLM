@@ -69,6 +69,9 @@ test('non lus : onglet visible et clignotant sans conversation ouverte, effacé 
 
   const tab = a.locator('.chat-tab', { hasText: nameB });
   await expect(tab).toBeVisible({ timeout: 20000 });
+  // Flèche normale sur un onglet (pas de main), main seulement sur le ✕ de fermeture
+  expect(await tab.evaluate((el) => getComputedStyle(el).cursor)).toBe('default');
+  expect(await tab.locator('.chat-tab-close').evaluate((el) => getComputedStyle(el).cursor)).toBe('pointer');
   await expect(tab).toHaveClass(/unread/);
   await expect(tab.locator('.chat-tab-unread')).toHaveText('2', { timeout: 20000 });
   await expect(a.locator('.contact-row.contact-unread', { hasText: nameB })).toBeVisible();

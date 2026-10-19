@@ -35,6 +35,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Sign-up success** is now shown in the form (green message) instead of a pop-up, since you go straight on to signing in.
 - E2E: the English-interface test reads the Aero windows, checks the confirmation (Cancel, Escape, Delete) and fails if any native browser pop-up opens.
 
+### Fixes
+- **Conversation tabs**: the normal arrow cursor is back on the tabs (they showed an open hand since tabs became draggable); the closed hand only appears while moving a tab, the ✕ keeps its pointer.
+
 ## [1.6.1] - 2026-10-19
 
 ### Fixes (review of 1.6.0)

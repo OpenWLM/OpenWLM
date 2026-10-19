@@ -10,11 +10,15 @@ import { PLUS_COLORS, renderPlusText } from '../utils/plusFormat';
 
 type Mode = 'color' | 'background' | 'gradient';
 
+/** Hauteur approximative du panneau (avec l'indication du mode dégradé et l'aperçu). */
+const PANEL_HEIGHT = 250;
+
 export const FormatPicker: React.FC<{ onWrap: (open: string, close: string) => void; testId?: string; align?: 'left' | 'right' }> = ({ onWrap, testId, align = 'left' }) => {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>('color');
   const [gradientStart, setGradientStart] = useState<number | null>(null);
+  const [below, setBelow] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -45,10 +49,19 @@ export const FormatPicker: React.FC<{ onWrap: (open: string, close: string) => v
         data-testid={testId}
         // Ne pas voler le focus : la sélection du champ doit rester intacte
         onMouseDown={e => e.preventDefault()}
-        onClick={() => setOpen(v => !v)}
+        onClick={e => {
+          if (!open) {
+            // Ouvert vers le haut par défaut ; vers le bas si la place manque au-dessus, dans la
+            // zone qui le contient (Options : le pseudo est tout en haut de l'onglet) ou l'écran.
+            const btn = e.currentTarget.getBoundingClientRect();
+            const clip = e.currentTarget.closest('.options-content, .modal-box')?.getBoundingClientRect();
+            setBelow(btn.top - Math.max(clip?.top ?? 0, 0) < PANEL_HEIGHT);
+          }
+          setOpen(v => !v);
+        }}
       >🎨</button>
       {open && (
-        <div className={`fmt-picker-panel ${align === 'right' ? 'align-right' : ''}`} role="dialog" aria-label={t.extras.formatTool} onMouseDown={e => e.preventDefault()}>
+        <div className={`fmt-picker-panel ${align === 'right' ? 'align-right' : ''} ${below ? 'below' : ''}`} role="dialog" aria-label={t.extras.formatTool} onMouseDown={e => e.preventDefault()}>
           <div className="fmt-picker-styles">
             <button type="button" title={t.extras.formatBold} onClick={() => wrap('[b]', '[/b]')}><b>G</b></button>
             <button type="button" title={t.extras.formatItalic} onClick={() => wrap('[i]', '[/i]')}><i>I</i></button>

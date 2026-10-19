@@ -142,6 +142,14 @@ test('mise en forme, commandes, rappel, textes rapides, recherche et aide', asyn
   // --- Texte rapide : créé dans Options → Messages, « /salut » envoie le texte avec (!N)
   await a.locator('.status-trigger').click();
   await a.locator('.dropdown-item', { hasText: 'Options' }).first().click();
+  // Le panneau 🎨 du pseudo (haut de l'onglet Personnel) reste entièrement visible
+  await a.locator('.options-nav-item', { hasText: 'Personal' }).click();
+  await a.getByTestId('nickname-format-picker').click();
+  const panel = await a.locator('.fmt-picker-panel').boundingBox();
+  const area = await a.locator('.options-content').boundingBox();
+  expect(panel!.y).toBeGreaterThanOrEqual(area!.y);
+  await a.getByTestId('nickname-format-picker').click();
+  await expect(a.locator('.fmt-picker-panel')).toHaveCount(0);
   await a.locator('.options-nav-item', { hasText: 'Messages' }).click();
   await a.locator('#qt-shortcut').fill('me');
   await a.locator('#qt-text').fill('reserved');

@@ -9,7 +9,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
-## [Non publié]
+## [1.6.1] - 2026-10-19
 
 ### Correctifs (revue de la 1.6.0)
 - **Messages privés reçus pendant le chargement d'une conversation** : un message privé reçu (ou envoyé) entre la lecture de la copie locale et la réponse du serveur pouvait manquer à la copie réécrite, et être perdu au rechargement suivant. Les messages purement locaux enregistrés depuis la dernière réécriture complète sont désormais gardés de côté et repris dans la suivante.

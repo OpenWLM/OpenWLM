@@ -228,8 +228,8 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ## Version & References
 
-- **Current Version**: `v1.6.0`
-- **Git Reference Tag**: `v1.6.0`
+- **Current Version**: `v1.6.1`
+- **Git Reference Tag**: `v1.6.1`
 - **Changelog**: See [CHANGELOG.md](CHANGELOG.md) (or [French version](CHANGELOG.fr.md)).
 
 ---

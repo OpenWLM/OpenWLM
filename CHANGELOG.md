@@ -9,7 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.6.1] - 2026-10-19
 
 ### Fixes (review of 1.6.0)
 - **Private messages received while a conversation loads**: a private message received (or sent) between reading the local copy and the server's answer could be missing from the rewritten copy, and lost at the next reload. Local-only messages saved since the last full rewrite are now kept aside and included in the next one.

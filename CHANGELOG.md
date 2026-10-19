@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Tests
+- **New E2E tests for file transfer and voice messages** (`e2e/files-voice.spec.ts`), which had no end-to-end test so far (their end-to-end encryption was already in place). File: sent by A, stored encrypted on the server (the plaintext does not appear in the stored file), downloaded by B with exactly the same content. Voice message: recorded with Chromium's fake microphone, received by B, encrypted in the server history (no audio in clear), and actually played (timer moving).
+
 ## [1.6.2] - 2026-10-19
 
 ### Fixes

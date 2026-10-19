@@ -9,6 +9,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [Non publié]
+
+### Tests
+- **Nouveaux tests E2E du transfert de fichier et des messages vocaux** (`e2e/files-voice.spec.ts`), qui n'avaient jusqu'ici aucun test de bout en bout (leur chiffrement de bout en bout existait déjà). Fichier : envoyé par A, stocké chiffré sur le serveur (le texte n'apparaît pas dans le fichier stocké), téléchargé par B avec exactement le même contenu. Message vocal : enregistré avec le faux micro de Chromium, reçu par B, chiffré dans l'historique du serveur (aucun son en clair), et réellement lu (minuteur qui avance).
+
 ## [1.6.2] - 2026-10-19
 
 ### Correctifs

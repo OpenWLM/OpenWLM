@@ -775,7 +775,7 @@
   },
   "help": {
     "title": "Aide d'OpenWLM",
-    "intro": "Les fonctions d'OpenWLM en un coup d'œil. Tout ce qui est décrit ici fonctionne aussi sur mobile.",
+    "intro": "Les fonctions d'OpenWLM en un coup d'œil. Tout ce qui est décrit ici fonctionne aussi sur mobile, sauf les raccourcis clavier (recherche Ctrl+F, rappel Ctrl+↑).",
     "tabFormatting": "Mise en forme",
     "tabCommands": "Commandes",
     "tabQuickTexts": "Textes rapides",

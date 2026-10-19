@@ -775,7 +775,7 @@
   },
   "help": {
     "title": "OpenWLM help",
-    "intro": "OpenWLM features at a glance. Everything described here also works on mobile.",
+    "intro": "OpenWLM features at a glance. Everything described here also works on mobile, except keyboard shortcuts (Ctrl+F search, Ctrl+↑ recall).",
     "tabFormatting": "Formatting",
     "tabCommands": "Commands",
     "tabQuickTexts": "Quick texts",

@@ -114,7 +114,7 @@ enregistré).
 ## Recherche dans une conversation
 
 **Ctrl+F** (Cmd+F sur macOS) dans une conversation ouvre une barre de recherche à la place de
-celle du navigateur. Les résultats sont surlignés dans les messages, avec un compteur (`2/5`), en commençant par le
+celle du navigateur (au clavier seulement : pas sur téléphone). Les résultats sont surlignés dans les messages, avec un compteur (`2/5`), en commençant par le
 plus récent. **Entrée** passe au résultat précédent (plus ancien) et **Maj+Entrée** revient vers
 le plus récent, comme les boutons ▲ / ▼ ; **Échap** ferme la recherche. Seuls les messages affichés sont parcourus (après `/clear`, il n'y a plus rien
 à chercher).

@@ -109,7 +109,8 @@ The last 50 entries are kept for the session, in memory only (nothing is stored)
 
 ## Searching a conversation
 
-**Ctrl+F** (Cmd+F on macOS) in a conversation opens a search bar instead of the browser's search.
+**Ctrl+F** (Cmd+F on macOS) in a conversation opens a search bar instead of the browser's search
+(keyboard only: not available on phones).
 Matches are highlighted in the messages, with a counter (`2/5`), starting with the most recent one.
 **Enter** goes to the previous (older) match and **Shift+Enter** back to the more recent one, as do
 the ▲ / ▼ buttons; **Esc** closes the search. Only the displayed messages are

@@ -89,6 +89,9 @@ case "${1:-}" in
     ;;
 
   install)
+    # Le service tourne depuis le dossier du script : sans .env, c'est sans doute un dépôt
+    # de développement et non le dossier de production (secrets et base absents).
+    [ -f "$APP_DIR/.env" ] || fail "pas de .env dans $APP_DIR : est-ce bien le dossier de production ? Lancez le script de ce dossier-là (cp .env.example .env pour une nouvelle installation)."
     [ -d "$APP_DIR/node_modules" ] || fail "dépendances absentes : lancez « npm ci » dans $APP_DIR."
     if [ ! -f "$APP_DIR/dist/index.html" ]; then
       info "construction de l'interface (npm run build)…"

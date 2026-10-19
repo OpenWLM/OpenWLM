@@ -4987,13 +4987,11 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .fmt-picker-btn { background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 4px; }
 .fmt-picker-btn:hover { background: #e5f1fb; border-color: #b9d4ea; }
 .fmt-picker-panel {
-  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 60; width: 236px;
+  position: fixed; z-index: 10050; box-sizing: border-box;
   background: linear-gradient(180deg, rgba(240, 248, 255, 0.99), rgba(214, 232, 248, 0.99));
   border: 1px solid rgba(120, 170, 210, 0.75); border-radius: 8px; padding: 8px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3); font-size: 11.5px; color: #1a3a5c;
 }
-.fmt-picker-panel.align-right { left: auto; right: 0; }
-.fmt-picker-panel.below { bottom: auto; top: calc(100% + 6px); }
 .fmt-picker-styles { display: flex; gap: 4px; margin-bottom: 6px; }
 .fmt-picker-styles button, .fmt-picker-modes button {
   border: 1px solid #a9c3da; background: linear-gradient(180deg, #ffffff, #e8f1f9); border-radius: 3px; cursor: pointer; font-size: 11.5px; padding: 2px 8px; color: #1a3a5c;
@@ -5041,5 +5039,20 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .help-swatch { width: 14px; height: 14px; border: 1px solid #7f97ad; border-radius: 2px; display: inline-block; }
 .help-docs { margin-top: 14px !important; font-size: 11.5px !important; }
 @media (max-width: 520px) { .help-palette { grid-template-columns: repeat(4, 1fr); } }
+.help-table-wrap { overflow-x: auto; max-width: 100%; }
+.help-nav-tabs { display: flex; flex-direction: column; gap: 2px; }
+/* Bouton ☰ / ◀ : petit écran seulement (même seuil que NARROW_SCREEN dans HelpModal) */
+.help-nav-toggle { display: none; }
+@media (max-width: 600px) {
+  .wlm-help-modal .options-content { padding: 12px; }
+  .help-nav-toggle {
+    display: block; align-self: flex-end; margin-bottom: 4px; min-width: 28px; height: 26px;
+    border: 1px solid #a9c3da; border-radius: 3px; background: linear-gradient(180deg, #ffffff, #e8f1f9);
+    color: #1a3a5c; cursor: pointer; font-size: 13px; line-height: 1;
+  }
+  .help-nav-collapsed .options-sidebar { width: auto; padding: 8px 4px; }
+  .help-nav-collapsed .help-nav-tabs { display: none; }
+  .help-nav-collapsed .help-nav-toggle { align-self: center; }
+}
 
 .auth-help-link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }

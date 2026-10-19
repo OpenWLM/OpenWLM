@@ -805,6 +805,8 @@
     "basicsEncryption": "End-to-end encryption: messages, files and calls are encrypted on your device. Compare your safety number with your contact's (“Verify identity”) to be sure you are talking to the right person.",
     "basicsCalls": "Voice and video calls: “Call” and “Video” buttons in the conversation; during a voice call you can turn on your camera or share your screen.",
     "basicsTestContact": "The “OpenWLM” contact lets you try everything without bothering anyone.",
-    "docsLink": "Full documentation on GitHub"
+    "docsLink": "Full documentation on GitHub",
+    "showMenu": "Show the menu",
+    "hideMenu": "Hide the menu"
   }
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n';
 import { PLUS_COLORS, renderPlusText } from '../utils/plusFormat';
 
@@ -12,22 +13,51 @@ type Mode = 'color' | 'background' | 'gradient';
 
 /** Hauteur approximative du panneau (avec l'indication du mode dégradé et l'aperçu). */
 const PANEL_HEIGHT = 250;
+const PANEL_WIDTH = 236;
+const MARGIN = 8;
+
+/**
+ * Position du panneau, en coordonnées de l'écran : il est affiché par-dessus toute la page
+ * (portail dans <body>), pour qu'aucun conteneur qui défile (barre d'outils sur mobile, contenu
+ * des Options) ne le coupe. Au-dessus du bouton par défaut, en dessous si la place manque.
+ */
+const panelPosition = (btn: DOMRect, align: 'left' | 'right'): React.CSSProperties => {
+  const vw = window.innerWidth;
+  const width = Math.min(PANEL_WIDTH, vw - 2 * MARGIN);
+  const wanted = align === 'right' ? btn.right - width : btn.left;
+  const left = Math.max(MARGIN, Math.min(wanted, vw - width - MARGIN));
+  return btn.top < PANEL_HEIGHT + MARGIN
+    ? { left, width, top: btn.bottom + 6 }
+    : { left, width, bottom: window.innerHeight - btn.top + 6 };
+};
 
 export const FormatPicker: React.FC<{ onWrap: (open: string, close: string) => void; testId?: string; align?: 'left' | 'right' }> = ({ onWrap, testId, align = 'left' }) => {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>('color');
   const [gradientStart, setGradientStart] = useState<number | null>(null);
-  const [below, setBelow] = useState(false);
+  const [position, setPosition] = useState<React.CSSProperties>({});
   const rootRef = useRef<HTMLSpanElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
+    const inside = (target: EventTarget | null) =>
+      !!target && (rootRef.current?.contains(target as Node) || panelRef.current?.contains(target as Node));
+    const onDown = (e: PointerEvent) => { if (!inside(e.target)) setOpen(false); };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onDown);
+    // Le panneau est positionné une fois pour toutes : on le ferme si la page bouge
+    const onMove = (e: Event) => { if (!inside(e.target)) setOpen(false); };
+    document.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
+    window.addEventListener('resize', onMove);
+    window.addEventListener('scroll', onMove, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onMove);
+      window.removeEventListener('scroll', onMove, true);
+    };
   }, [open]);
 
   const wrap = (o: string, c: string) => { onWrap(o, c); setOpen(false); setGradientStart(null); };
@@ -50,18 +80,12 @@ export const FormatPicker: React.FC<{ onWrap: (open: string, close: string) => v
         // Ne pas voler le focus : la sélection du champ doit rester intacte
         onMouseDown={e => e.preventDefault()}
         onClick={e => {
-          if (!open) {
-            // Ouvert vers le haut par défaut ; vers le bas si la place manque au-dessus, dans la
-            // zone qui le contient (Options : le pseudo est tout en haut de l'onglet) ou l'écran.
-            const btn = e.currentTarget.getBoundingClientRect();
-            const clip = e.currentTarget.closest('.options-content, .modal-box')?.getBoundingClientRect();
-            setBelow(btn.top - Math.max(clip?.top ?? 0, 0) < PANEL_HEIGHT);
-          }
+          if (!open) setPosition(panelPosition(e.currentTarget.getBoundingClientRect(), align));
           setOpen(v => !v);
         }}
       >🎨</button>
-      {open && (
-        <div className={`fmt-picker-panel ${align === 'right' ? 'align-right' : ''} ${below ? 'below' : ''}`} role="dialog" aria-label={t.extras.formatTool} onMouseDown={e => e.preventDefault()}>
+      {open && createPortal(
+        <div ref={panelRef} className="fmt-picker-panel" style={position} role="dialog" aria-label={t.extras.formatTool} onMouseDown={e => e.preventDefault()}>
           <div className="fmt-picker-styles">
             <button type="button" title={t.extras.formatBold} onClick={() => wrap('[b]', '[/b]')}><b>G</b></button>
             <button type="button" title={t.extras.formatItalic} onClick={() => wrap('[i]', '[/i]')}><i>I</i></button>
@@ -93,7 +117,8 @@ export const FormatPicker: React.FC<{ onWrap: (open: string, close: string) => v
           <div className="fmt-picker-preview">
             {t.extras.formatPreview} : {renderPlusText('[c=4]Open[/c][c=12]WLM[/c] [b]·[/b] [c=3]Messenger[/c=10]', s => s)}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </span>
   );

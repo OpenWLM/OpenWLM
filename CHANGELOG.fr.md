@@ -21,6 +21,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ### Correctifs
 - Un champ de saisie vidé avec Ctrl+A puis Suppr gardait un saut de ligne invisible, ajouté au début du message suivant.
+- **Mobile** : le panneau de couleurs 🎨 de la conversation était coupé par la barre d'outils (on n'en voyait que le bord derrière le champ de saisie) ; il s'affiche maintenant par-dessus toute la page. Dans la fenêtre d'aide, le menu de gauche se replie (bouton ☰, repli automatique après le choix d'une rubrique) pour laisser toute la largeur au texte, et les tableaux larges défilent.
 - **Clic droit sur le contact de test « OpenWLM »** : il ouvre maintenant son menu — envoyer un message, effacer l'historique (sur l'appareil seulement), masquer le contact de test (à réafficher dans Options → Disposition). Supprimer et Bloquer, sans objet pour ce contact virtuel, ne sont pas proposés.
 
 ### Ménage

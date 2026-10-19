@@ -805,6 +805,8 @@
     "basicsEncryption": "Chiffrement de bout en bout : messages, fichiers et appels sont chiffrés sur votre appareil. Comparez votre code de sécurité avec celui de votre contact (« Vérifier l'identité ») pour être sûr de parler à la bonne personne.",
     "basicsCalls": "Appels audio et vidéo : boutons « Appel » et « Vidéo » de la conversation ; pendant un appel audio, vous pouvez activer la caméra ou partager votre écran.",
     "basicsTestContact": "Le contact « OpenWLM » sert à tout essayer sans déranger personne.",
-    "docsLink": "Documentation complète sur GitHub"
+    "docsLink": "Documentation complète sur GitHub",
+    "showMenu": "Afficher le menu",
+    "hideMenu": "Masquer le menu"
   }
 }

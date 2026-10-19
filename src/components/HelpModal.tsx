@@ -11,6 +11,9 @@ import { BUILTIN_COMMANDS } from '../utils/chatCommands';
 
 type Tab = 'basics' | 'formatting' | 'commands' | 'quickTexts' | 'shortcuts';
 
+/** Même seuil que le CSS (.help-nav-toggle). */
+const NARROW_SCREEN = '(max-width: 600px)';
+
 const DOCS_URL = 'https://github.com/OpenWLM/OpenWLM/blob/main/docs/FORMATTING_AND_COMMANDS.md';
 const DOCS_URL_FR = 'https://github.com/OpenWLM/OpenWLM/blob/main/docs/FORMATTING_AND_COMMANDS.fr.md';
 
@@ -43,6 +46,13 @@ export const HelpModal: React.FC<{ onClose: () => void; initialTab?: Tab }> = ({
   const { t, language } = useI18n();
   const h = t.help;
   const [tab, setTab] = useState<Tab>(initialTab);
+  // Petit écran : le menu de gauche se replie (bouton ☰, ou automatiquement après un choix)
+  // pour laisser toute la largeur au texte
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const pickTab = (id: Tab) => {
+    setTab(id);
+    if (window.matchMedia(NARROW_SCREEN).matches) setNavCollapsed(true);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -69,17 +79,28 @@ export const HelpModal: React.FC<{ onClose: () => void; initialTab?: Tab }> = ({
 
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal-box wlm-options-modal wlm-help-modal" role="dialog" aria-modal="true" aria-label={h.title} onClick={e => e.stopPropagation()} data-testid="help-modal">
+      <div className={`modal-box wlm-options-modal wlm-help-modal ${navCollapsed ? 'help-nav-collapsed' : ''}`} role="dialog" aria-modal="true" aria-label={h.title} onClick={e => e.stopPropagation()} data-testid="help-modal">
         <div className="wlm-aero-dialog-titlebar wlm-options-titlebar">
           <span className="wlm-aero-dialog-icon" aria-hidden="true">❓</span>
           <span className="wlm-aero-dialog-title">{h.title}</span>
           <button type="button" className="win-close-btn" onClick={onClose} aria-label={t.common.close} title={t.common.close}>✕</button>
         </div>
         <div className="options-body">
-          <div className="options-sidebar" role="tablist">
-            {tabs.map(([id, label]) => (
-              <div key={id} role="tab" aria-selected={tab === id} className={`options-nav-item ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</div>
-            ))}
+          <div className="options-sidebar">
+            <button
+              type="button"
+              className="help-nav-toggle"
+              aria-expanded={!navCollapsed}
+              aria-label={navCollapsed ? h.showMenu : h.hideMenu}
+              title={navCollapsed ? h.showMenu : h.hideMenu}
+              data-testid="help-nav-toggle"
+              onClick={() => setNavCollapsed(v => !v)}
+            >{navCollapsed ? '☰' : '◀'}</button>
+            <div className="help-nav-tabs" role="tablist">
+              {tabs.map(([id, label]) => (
+                <div key={id} role="tab" aria-selected={tab === id} className={`options-nav-item ${tab === id ? 'active' : ''}`} onClick={() => pickTab(id)}>{label}</div>
+              ))}
+            </div>
           </div>
           <div className="options-content help-content">
             {tab === 'basics' && (
@@ -100,14 +121,14 @@ export const HelpModal: React.FC<{ onClose: () => void; initialTab?: Tab }> = ({
               <div className="options-section">
                 <div className="options-title">{h.tabFormatting}</div>
                 <p>{h.formattingIntro}</p>
-                <table className="help-table">
+                <div className="help-table-wrap"><table className="help-table">
                   <thead><tr><th>{h.colExample}</th><th>{h.colResult}</th></tr></thead>
                   <tbody>
                     {examples.map(ex => (
                       <tr key={ex}><td><code>{ex}</code></td><td>{renderPlusText(ex, s => s, 'help')}</td></tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
                 <p>{h.formattingColors}</p>
                 <div className="help-palette">
                   {PLUS_COLORS.map((c, i) => (
@@ -122,7 +143,7 @@ export const HelpModal: React.FC<{ onClose: () => void; initialTab?: Tab }> = ({
               <div className="options-section">
                 <div className="options-title">{h.tabCommands}</div>
                 <p>{h.commandsIntro}</p>
-                <table className="help-table">
+                <div className="help-table-wrap"><table className="help-table">
                   <thead><tr><th>{h.colCommand}</th><th>{h.colDescription}</th></tr></thead>
                   <tbody>
                     {BUILTIN_COMMANDS.map(c => (
@@ -132,7 +153,7 @@ export const HelpModal: React.FC<{ onClose: () => void; initialTab?: Tab }> = ({
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
                 <p className="options-hint">{h.commandsEscape}</p>
               </div>
             )}
@@ -146,11 +167,11 @@ export const HelpModal: React.FC<{ onClose: () => void; initialTab?: Tab }> = ({
             {tab === 'shortcuts' && (
               <div className="options-section">
                 <div className="options-title">{h.tabShortcuts}</div>
-                <table className="help-table">
+                <div className="help-table-wrap"><table className="help-table">
                   <tbody>
                     {keys.map(([k, d]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{d}</td></tr>)}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             )}
             <p className="help-docs"><a href={language === 'fr' ? DOCS_URL_FR : DOCS_URL} target="_blank" rel="noopener noreferrer">{h.docsLink} ↗</a></p>

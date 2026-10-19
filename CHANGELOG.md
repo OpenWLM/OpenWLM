@@ -21,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixes
 - An input field emptied with Ctrl+A then Delete kept an invisible line break, which was added at the start of the next message.
+- **Mobile**: the 🎨 color panel of the conversation was cut off by the toolbar (only its edge showed behind the input field); it is now shown above the whole page. In the help window, the left menu can be folded (☰ button, folded automatically after choosing a topic) to leave the whole width to the text, and wide tables scroll.
 - **Right-click on the "OpenWLM" test contact** now opens its menu: send a message, clear the history (on the device only), hide the test contact (shown again from Options → Layout). Delete and Block, meaningless for this virtual contact, are not offered.
 
 ### Cleanup

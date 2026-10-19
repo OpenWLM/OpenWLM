@@ -1,5 +1,6 @@
 import React from 'react';
 import { useI18n } from '../i18n';
+import { isSystemLine } from '../utils/systemLine';
 import { formatNickname } from '../utils/NicknameFormatter';
 import { resolveMessageSide } from '../utils/MessageIdentity';
 import FileTransferCard, { isImageFile } from './FileTransferCard';
@@ -68,7 +69,7 @@ export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
 
           return (
           <div key={i} className="msg-line">
-             {m.sender === 'Système' ? (
+             {isSystemLine(m) ? (
                <div className="msg-system">
                  {m.text}
                  {m.winkId && onPlayWink && (

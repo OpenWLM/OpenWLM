@@ -631,7 +631,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                       fontWeight: 600
                     }}>
                       {isPushSupported()
-                        ? (pushStatus?.hasVapid ? (t.settings.webPushConfigured || 'Actif (clés VAPID configurées)') : t.settings.webPushReady)
+                        ? (pushStatus?.hasVapid ? t.settings.webPushConfigured : t.settings.webPushReady)
                         : t.settings.browserNotifStatusUnsupported}
                     </span>
                   </div>
@@ -644,14 +644,14 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                         style={{ fontSize: '11px', padding: '3px 10px' }}
                         onClick={handleTestPush}
                       >
-                        🔔 {t.settings.pushTestButton || 'Tester la notification Push'}
+                        🔔 {t.settings.pushTestButton}
                       </button>
                       {pushTestFeedback && (
                         <div style={{
                           marginTop: '6px',
                           fontSize: '11px',
                           fontWeight: 500,
-                          color: pushTestFeedback.includes('succès') || pushTestFeedback.includes('success') ? '#1b7d23' : '#c02717'
+                          color: pushTestFeedback === t.settings.pushTestSuccess ? '#1b7d23' : '#c02717'
                         }}>
                           {pushTestFeedback}
                         </div>

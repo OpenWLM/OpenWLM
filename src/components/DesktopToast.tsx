@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useI18n } from '../i18n';
 
 export interface ToastItem {
   id: string;
@@ -48,6 +49,7 @@ export const DesktopToastCard: React.FC<DesktopToastCardProps> = ({
   onOpenChat,
   onDismiss
 }) => {
+  const { t } = useI18n();
   const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
@@ -80,7 +82,7 @@ export const DesktopToastCard: React.FC<DesktopToastCardProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       role="alert"
-      title="Cliquer pour ouvrir la conversation"
+      title={t.notices.toastOpenHint}
     >
       <div className="wlm-desktop-toast-header">
         <div className="wlm-desktop-toast-title">
@@ -109,7 +111,7 @@ export const DesktopToastCard: React.FC<DesktopToastCardProps> = ({
         </div>
         <div className="wlm-desktop-toast-content">
           <div className="wlm-desktop-toast-sender">{toast.senderName}</div>
-          <div className="wlm-desktop-toast-action">{toast.actionText || 'a envoyé un message :'}</div>
+          <div className="wlm-desktop-toast-action">{toast.actionText || t.settings.toastAction}</div>
           {toast.text && <div className="wlm-desktop-toast-message">{toast.text}</div>}
         </div>
       </div>

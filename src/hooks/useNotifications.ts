@@ -60,7 +60,7 @@ export interface NotificationsApi {
 
 export function useNotifications(options: UseNotificationsOptions): NotificationsApi {
   const { user, showOptionsModal, setOpenChatIds, setActiveChatId } = options;
-  const { t } = useI18n();
+  const { t, language } = useI18n();
 
   const [enableDesktopToasts, setEnableDesktopToasts] = useState<boolean>(() => loadEnableDesktopToasts(true));
   const enableDesktopToastsRef = useRef(enableDesktopToasts);
@@ -238,11 +238,13 @@ export function useNotifications(options: UseNotificationsOptions): Notification
     await subscribeToWebPush().catch(() => {});
     const res = await sendTestWebPush();
     if (res.success) {
-      setPushTestFeedback(t.settings.pushTestSuccess || 'Notification Push de test envoyée avec succès !');
+      setPushTestFeedback(t.settings.pushTestSuccess);
     } else {
-      setPushTestFeedback((t.settings.pushTestError || 'Échec du test push') + (res.error ? ` : ${res.error}` : ''));
+      // Serveur sans clés VAPID (400) : explication traduite ; sinon détail du serveur en français seulement
+      const detail = res.status === 400 ? t.notices.pushTestNotConfigured : (language === 'fr' ? res.error : undefined);
+      setPushTestFeedback(t.settings.pushTestError + (detail ? ` : ${detail}` : ''));
     }
-  }, [t]);
+  }, [t, language]);
 
   return {
     enableDesktopToasts,

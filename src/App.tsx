@@ -92,6 +92,8 @@ import {
 } from './utils/profileStorage';
 import { useAppPrefs, getAppPrefs, setPresenceForSounds } from './utils/appPrefs';
 import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
+import { systemLine } from './utils/systemLine';
+import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
 
 axios.defaults.withCredentials = true;
 
@@ -137,11 +139,12 @@ const formatMessageTime = (rawTimestamp: string | number | undefined, fallbackTi
  * CONSTANTES DE CONFIGURATION
  */
 
+// Libellés traduits par getStatusLabel (t.status.*)
 const STATUS_OPTIONS = [
-  { id: 'online', label: 'Disponible', color: '#5ec300' },
-  { id: 'busy', label: 'Occupé', color: '#ef3100' },
-  { id: 'away', label: 'Absent', color: '#f9a000' },
-  { id: 'offline', label: 'Hors ligne', color: '#a0a0a0' },
+  { id: 'online', color: '#5ec300' },
+  { id: 'busy', color: '#ef3100' },
+  { id: 'away', color: '#f9a000' },
+  { id: 'offline', color: '#a0a0a0' },
 ];
 
 const EMOTICON_MAP: Record<string, string> = {
@@ -532,20 +535,20 @@ const App: React.FC = () => {
    */
   const togglePrivateMode = (chatId: number) => {
     if (chatId === SYSTEM_BOT_ID) {
-      alert("La discussion avec OpenWLM est locale et n'est pas enregistrée sur le serveur.");
+      alert(t.notices.botLocalOnly);
       return;
     }
     const activeContact = contacts.find(c => c.id === chatId);
     if (activeContact?.global_private === 1) {
-      alert("Ce contact a imposé le mode privé. Vous ne pouvez pas le désactiver.");
+      alert(t.notices.privateForcedByContact);
       return;
     }
     if (globalPrivateMode) {
-      alert("Le mode privé global est activé. Désactivez-le dans le menu principal pour gérer individuellement.");
+      alert(t.chat.privateModeGlobalAlert);
       return;
     }
     if (activeContact?.their_private === 1 && !isPrivateMode[chatId]) {
-      alert("Ce contact a activé le mode privé pour cette conversation. Vous ne pouvez pas le désactiver.");
+      alert(t.notices.privateForcedForConversation);
       return;
     }
     const newState = !isPrivateMode[chatId];
@@ -555,15 +558,10 @@ const App: React.FC = () => {
     const stillPrivate = newState || activeContact?.their_private === 1;
 
     // Notification système locale
-    const systemMsg = {
-      senderId: 0,
-      receiverId: chatId,
-      text: newState || !stillPrivate
-        ? `Vous avez ${newState ? 'activé' : 'désactivé'} le mode privé. Les messages ${newState ? 'ne seront plus' : 'seront à nouveau'} enregistrés.`
-        : `Vous avez désactivé le mode privé, mais votre contact le garde actif : les messages ne sont toujours pas enregistrés.`,
-      sender: 'Système',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
+    const systemMsg = systemLine(
+      newState ? t.notices.privateYouOn : !stillPrivate ? t.notices.privateYouOff : t.notices.privateYouOffContactKeeps,
+      { senderId: 0, receiverId: chatId }
+    );
     setMessages(prev => ({ ...prev, [chatId]: [...(prev[chatId] || []), systemMsg] }));
 
     // Envoyer au destinataire
@@ -1136,7 +1134,7 @@ const App: React.FC = () => {
 
         privJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
         if (!privJwk) {
-          alert("Échec du déchiffrement du coffre de clés privées. Mot de passe incorrect ou coffre altéré.");
+          alert(t.notices.vaultDecryptFailed);
           return;
         }
 
@@ -1216,7 +1214,7 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("[Zero-Knowledge] Erreur initialisation clés:", err);
-      alert("Erreur lors de l'initialisation des clés de sécurité.");
+      alert(t.notices.keysInitFailed);
     }
   };
 
@@ -1259,7 +1257,8 @@ const App: React.FC = () => {
       }
 
       setMyNickname(currentUser.nickname || currentUser.username || 'Utilisateur');
-      setMyPSM(currentUser.psm || 'Disponible');
+      // Sans message perso : vide (l'interface affiche alors l'invite traduite « Entrez votre message perso »)
+      setMyPSM(currentUser.psm || '');
       setMyAvatar(currentUser.avatar || '/assets/usertiles/chess.png');
       setMyScene(currentUser.scene || '/assets/scenes/0006.png');
       // Statut : dernier choix manuel mémorisé sur CET appareil (jamais l'absence automatique) ;
@@ -1552,7 +1551,7 @@ const App: React.FC = () => {
       const payload = DISPLAYABLE_AUTH.has(opened.status) ? (opened.payload as any) : null;
       if (payload) {
         if (payload.type === 'file' && payload.fileId) {
-          decryptedText = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
+          decryptedText = tRef.current.notices.fileLabel.replace('{name}', payload.fileName || tRef.current.notices.fileDefaultName);
           fileData = payload;
         } else {
           decryptedText = payload.text ?? '';
@@ -1614,7 +1613,7 @@ const App: React.FC = () => {
           senderId: SYSTEM_BOT_ID,
           receiverId: user.id,
           sender: 'OpenWLM',
-          text: "Bonjour ! Vous pouvez envoyer un message pour tester l'écho, ou utiliser les boutons ci-dessous pour tester les sons, le Wizz, les émoticônes et le Morpion.",
+          text: tRef.current.bot.localWelcome,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timestamp: new Date().toISOString()
         };
@@ -1919,7 +1918,7 @@ const App: React.FC = () => {
           decryptedData = { ...decryptedData, ...payload };
           if (payload.type === 'file' && payload.fileId) {
             fileData = payload;
-            decryptedData.text = `[Fichier] ${payload.fileName || 'Fichier partagé'}`;
+            decryptedData.text = tRef.current.notices.fileLabel.replace('{name}', payload.fileName || tRef.current.notices.fileDefaultName);
           }
           if (payload.customEmoticons) {
             registerReceivedCustomEmoticons(payload.customEmoticons);
@@ -2031,13 +2030,13 @@ const App: React.FC = () => {
 
         let previewText = decryptedData.text || '';
         if (decryptedData.type === 'file' && fileData) {
-          previewText = `📎 [Fichier] ${fileData.fileName || 'Fichier partagé'}`;
+          previewText = tRef.current.notices.previewFile.replace('{name}', fileData.fileName || tRef.current.notices.fileDefaultName);
         } else if (decryptedData.audio || decryptedData.type === 'audio') {
-          previewText = `🎵 [Message vocal]`;
+          previewText = tRef.current.notices.previewVoice;
         } else if (decryptedData.type === 'wink') {
-          previewText = `😉 [Clin d'œil]`;
+          previewText = tRef.current.notices.previewWink;
         } else if (decryptedData.type === 'nudge') {
-          previewText = `💥 [Wizz !]`;
+          previewText = tRef.current.notices.previewNudge;
         }
 
         const contactAvatar = contactFromList?.avatar || (senderId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT.avatar : '/assets/usertiles/chess.png');
@@ -2059,7 +2058,7 @@ const App: React.FC = () => {
             senderName: finalSenderName,
             avatar: contactAvatar,
             text: previewText,
-            actionText: t.settings.toastAction || 'a envoyé un message :'
+            actionText: tRef.current.settings.toastAction
           });
         }
 
@@ -2110,7 +2109,7 @@ const App: React.FC = () => {
             senderName,
             avatar: contactAvatar,
             text: `💥 [Wizz !]`,
-            actionText: t.settings.toastAction || 'a envoyé un message :'
+            actionText: tRef.current.settings.toastAction
           });
         }
       });
@@ -2133,13 +2132,11 @@ const App: React.FC = () => {
         const senderNickname = data.senderNickname;
         setContacts(prev => prev.map(c => c.id === senderId ? { ...c, their_private: isPrivate ? 1 : 0 } : c));
 
-        const systemMsg: Message = {
-          senderId: 0,
-          receiverId: senderId,
-          text: `${senderNickname} a ${isPrivate ? 'activé' : 'désactivé'} le mode privé. Les messages ${effective ? 'ne seront pas' : 'seront'} enregistrés.`,
-          sender: 'Système',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
+        const tr = tRef.current.notices;
+        const systemMsg = systemLine(
+          (isPrivate ? tr.privateContactOn : effective ? tr.privateContactOffStillPrivate : tr.privateContactOff).replace('{name}', senderNickname || tRef.current.chat.unknownSender),
+          { senderId: 0, receiverId: senderId }
+        );
         setMessages(prev => ({ ...prev, [senderId]: [...(prev[senderId] || []), systemMsg] }));
       });
 
@@ -2279,13 +2276,10 @@ const App: React.FC = () => {
           if (known && known.global_private !== undefined && Number(known.global_private) !== Number(data.global_private)) {
             const on = Number(data.global_private) === 1;
             const name = known.nickname || known.username;
-            const systemMsg: Message = {
-              senderId: 0,
-              receiverId: contactId,
-              text: `${name} a ${on ? 'activé' : 'désactivé'} le mode privé global.${on ? ' Les messages ne seront pas enregistrés.' : ''}`,
-              sender: 'Système',
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            };
+            const systemMsg = systemLine(
+              (on ? tRef.current.notices.privateGlobalContactOn : tRef.current.notices.privateGlobalContactOff).replace('{name}', name),
+              { senderId: 0, receiverId: contactId }
+            );
             setMessages(prev => (prev[contactId] ? { ...prev, [contactId]: [...prev[contactId], systemMsg] } : prev));
           }
         }
@@ -2333,12 +2327,12 @@ const App: React.FC = () => {
 
       newSocket.on('game_declined', (data: { from: number; fromName: string }) => {
         setOutgoingGameInvite(null);
-        alert(`${data.fromName} a décliné l'invitation à jouer.`);
+        alert(tRef.current.notices.gameDeclined.replace('{name}', data.fromName));
       });
 
       newSocket.on('game_user_offline', () => {
         setOutgoingGameInvite(null);
-        alert("Ce contact n'est pas en ligne pour jouer actuellement.");
+        alert(tRef.current.notices.gameContactOffline);
       });
 
       // Réception d'une mise à jour de statut de message (remis)
@@ -2715,10 +2709,10 @@ const App: React.FC = () => {
       setTimeout(() => {
         try { SoundManager.play('NEW_MESSAGE'); } catch {}
 
-        let echoNotice = `Écho : ${userText}`;
+        let echoNotice = t.bot.echo.replace('{text}', userText);
         const hasCustomEmo = myCustomEmoticons.some(e => userText.includes(e.shortcut));
         if (hasCustomEmo) {
-          echoNotice += " (émoticône personnalisée reçue)";
+          echoNotice += t.bot.echoCustomEmoticon;
         }
 
         setMessages(prev => ({
@@ -2768,7 +2762,7 @@ const App: React.FC = () => {
             senderName: 'OpenWLM Bot',
             avatar: SYSTEM_BOT_CONTACT.avatar,
             text: echoNotice,
-            actionText: t.settings.toastAction || 'a envoyé un message :'
+            actionText: t.settings.toastAction
           });
         }
       }, 400);
@@ -2781,7 +2775,7 @@ const App: React.FC = () => {
     // On récupère la clé publique du destinataire pour le chiffrement E2E
     const contactPubKey = await getPublicKey(activeChatId);
     if (!contactPubKey) {
-      alert("Ce contact doit se connecter au moins une fois pour activer la discussion sécurisée.");
+      alert(t.notices.contactNeverConnected);
       return;
     }
 
@@ -2859,7 +2853,7 @@ const App: React.FC = () => {
 
     } catch (e) {
       console.error("Échec du chiffrement:", e);
-      alert(e instanceof Error && e.message === t.chat.signingKeyMissing ? e.message : "Erreur lors du chiffrement du message.");
+      alert(e instanceof Error && e.message === t.chat.signingKeyMissing ? e.message : t.notices.encryptFailed);
     }
   };
 
@@ -2895,23 +2889,23 @@ const App: React.FC = () => {
    */
   const sendFile = useCallback(async (file: File): Promise<void> => {
     if (!file) return;
-    if (!socket) { alert("Connexion au serveur non établie."); return; }
-    if (!myKeys) { alert("Clés E2E non prêtes."); return; }
-    if (!activeChatId) { alert("Veuillez sélectionner un contact."); return; }
+    if (!socket) { alert(t.notices.notConnected); return; }
+    if (!myKeys) { alert(t.notices.keysNotReady); return; }
+    if (!activeChatId) { alert(t.notices.selectContact); return; }
     if (activeChatId === SYSTEM_BOT_ID) {
-      alert("OpenWLM est un contact de test. Pour envoyer des fichiers, sélectionnez un contact réel.");
+      alert(t.notices.botNoFiles);
       return;
     }
 
     const MAX_SIZE = 100 * 1024 * 1024; // 100 Mo max
     if (file.size > MAX_SIZE) {
-      alert("Le fichier dépasse la taille maximale autorisée (100 Mo).");
+      alert(t.notices.fileTooLarge);
       return;
     }
 
     const contactPubKey = await getPublicKey(activeChatId);
     if (!contactPubKey) {
-      alert("Ce contact doit se connecter au moins une fois pour activer le transfert sécurisé.");
+      alert(t.notices.contactNeverConnectedFiles);
       return;
     }
 
@@ -2982,7 +2976,7 @@ const App: React.FC = () => {
         receiverId: activeChatId,
         receiver_id: activeChatId,
         sender: senderDisplayName,
-        text: `[Fichier] ${file.name}`,
+        text: t.notices.fileLabel.replace('{name}', file.name),
         type: 'file',
         fileData: filePayload,
         time: formattedTime,
@@ -3001,13 +2995,11 @@ const App: React.FC = () => {
       const axiosErr = err as { response?: { status?: number; data?: { error?: string } }; message?: string };
       const serverError = axiosErr.response?.data?.error;
       if (axiosErr.response?.status === 413 || (serverError && /100\s*Mo|taille|large/i.test(serverError))) {
-        alert("Échec de l'envoi : le fichier dépasse la taille maximale autorisée (100 Mo).");
-      } else if (serverError) {
-        alert(`Échec de l'envoi : ${serverError}`);
-      } else if (axiosErr.message) {
-        alert(`Échec de l'envoi : ${axiosErr.message}`);
+        alert(t.notices.fileTooLarge);
+      } else if (axiosErr.response) {
+        alert(t.notices.fileSendFailed.replace('{reason}', serverErrorText(err, t, language, t.notices.fileSendError)));
       } else {
-        alert("Une erreur est survenue lors du chiffrement ou de l'envoi du fichier.");
+        alert(t.notices.fileSendError);
       }
     }
   }, [socket, myKeys, activeChatId, user, myNickname, effectivePrivateModes]);
@@ -3198,14 +3190,14 @@ const App: React.FC = () => {
 
   const handleVoiceClip = async () => {
     if (activeChatId === SYSTEM_BOT_ID) {
-      alert("Les clips vocaux sont réservés aux échanges avec des contacts réels.");
+      alert(t.notices.botNoVoice);
       return;
     }
     if (!isRecording) {
       cancelRecordingRef.current = false;
       try {
         if (!navigator.mediaDevices || !window.isSecureContext) {
-          alert("Votre navigateur bloque l'accès au microphone car le site n'est pas sécurisé (HTTPS requis).");
+          alert(t.notices.micInsecure);
           return;
         }
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -3234,7 +3226,7 @@ const App: React.FC = () => {
             if (!myKeys) return;
             const contactPubKey = await getPublicKey(activeChatId);
             if (!contactPubKey) {
-              alert("Ce contact doit se connecter au moins une fois pour activer la discussion sécurisée.");
+              alert(t.notices.contactNeverConnected);
               return;
             }
 
@@ -3303,16 +3295,12 @@ const App: React.FC = () => {
           setMediaRecorder(null);
           setMessages(prev => ({
             ...prev,
-            [recordingChatId]: [...(prev[recordingChatId] || []), {
-              sender: 'Système',
-              text: t.chat.voiceClipMaxReached,
-              timestamp: new Date().toISOString()
-            }]
+            [recordingChatId]: [...(prev[recordingChatId] || []), systemLine(t.chat.voiceClipMaxReached, { timestamp: new Date().toISOString() })]
           }));
         }, VOICE_CLIP_MAX_MS);
         recorder.addEventListener('stop', () => clearTimeout(autoStopTimer));
       } catch { 
-        alert("Impossible d'accéder au microphone."); 
+        alert(t.notices.micUnavailable);
       }
     } else {
       if (mediaRecorder?.stream) {
@@ -3380,7 +3368,7 @@ const App: React.FC = () => {
           await LocalDB.clearUser(user.id);
         } catch (err: any) {
           console.error('[Reset] Échec purge LocalDB:', err);
-          purgeErrors.push("messages locaux");
+          purgeErrors.push(t.notices.purgeItemMessages);
         }
         try {
           // Seulement les clés mémorisées de CE compte : les autres comptes du navigateur
@@ -3388,21 +3376,21 @@ const App: React.FC = () => {
           const resKeys = await E2EEKeyStorage.removeKeys(user.id);
           if (!resKeys) {
             console.error('[Reset] Échec purge E2EEKeyStorage');
-            purgeErrors.push("clés privées locales");
+            purgeErrors.push(t.notices.purgeItemKeys);
           }
         } catch (err: any) {
           console.error('[Reset] Exception purge E2EEKeyStorage:', err);
-          purgeErrors.push("clés privées locales");
+          purgeErrors.push(t.notices.purgeItemKeys);
         }
         try {
           const resVC = await VerifiedContactsStorage.clearAll();
           if (!resVC || !resVC.success) {
             console.error('[Reset] Échec purge VerifiedContactsStorage:', resVC?.error);
-            purgeErrors.push("contacts vérifiés");
+            purgeErrors.push(t.notices.purgeItemVerified);
           }
         } catch (err: any) {
           console.error('[Reset] Exception purge VerifiedContactsStorage:', err);
-          purgeErrors.push("contacts vérifiés");
+          purgeErrors.push(t.notices.purgeItemVerified);
         }
         try {
           await CustomEmoticonsDB.clearAll();
@@ -3412,7 +3400,7 @@ const App: React.FC = () => {
 
         if (purgeErrors.length > 0) {
           console.error('[Reset] Échec partiel de purge locale:', purgeErrors);
-          alert(`Attention : Les données locales suivantes n'ont pas pu être entièrement purgées sur cet appareil : ${purgeErrors.join(', ')}.`);
+          alert(t.notices.resetPurgePartial.replace('{items}', purgeErrors.join(', ')));
         }
 
         // 6. Nettoyage de l'état en mémoire
@@ -3424,11 +3412,11 @@ const App: React.FC = () => {
         // 7. Déconnexion propre et redirection vers l'écran d'accueil/authentification
         handleLogout('Réinitialisation E2E effectuée avec succès');
       } else {
-        setResetE2EError(res.data?.error || "Échec de la réinitialisation.");
+        setResetE2EError(serverErrorFromResponse(undefined, res.data, t, language, t.notices.resetFailed));
       }
     } catch (err: any) {
       console.error("[Reset E2E] Erreur:", err);
-      const errorMsg = err.response?.data?.error || err.message || "Erreur lors de la réinitialisation des clés E2E.";
+      const errorMsg = serverErrorText(err, t, language, t.notices.resetError);
       setResetE2EError(errorMsg);
     } finally {
       setIsResettingE2E(false);
@@ -3540,9 +3528,9 @@ const App: React.FC = () => {
 
     let botResponseText = '';
     if (action === 'emo') {
-      botResponseText = ":)  :D  ;)  :P  (H)  :@  :$  :O  (A)  :S  (L)  (K)\n(Émoticônes classiques reconnues)";
+      botResponseText = t.bot.emoticonsHelp;
     } else if (action === 'sons') {
-      botResponseText = "Test des sons en cours... (connexion, message, wizz)";
+      botResponseText = t.bot.soundsTest;
       try {
         SoundManager.play('ONLINE');
         setTimeout(() => {
@@ -3557,7 +3545,7 @@ const App: React.FC = () => {
         console.warn("Erreur lecture son:", e);
       }
     } else if (action === 'help') {
-      botResponseText = "Commandes disponibles :\n• /emo : tester les émoticônes\n• /wizz : envoyer un Wizz\n• /sons : tester les sons\n• /morpion : jouer au Morpion\n• /puissance4 (ou /p4) : jouer au Puissance 4\n• Tout autre texte : écho direct";
+      botResponseText = t.bot.commandsHelp;
     }
 
     if (botResponseText) {
@@ -3897,7 +3885,7 @@ const App: React.FC = () => {
           <img src="/assets/openwlm_logo.png" alt="OpenWLM Logo" className="wlm-auth-logo-img" style={{ width: 64, height: 64, margin: '0 auto 15px', display: 'block' }} />
           <div className="wlm-logo-text-large" style={{ marginBottom: 12 }}>OpenWLM</div>
           <div style={{ fontSize: '12px', color: '#004b8d', fontWeight: 'bold' }}>
-            {t.auth.signingIn || "Connexion en cours..."}
+            {t.auth.signingIn}
           </div>
         </div>
       </div>
@@ -3917,7 +3905,7 @@ const App: React.FC = () => {
   }
 
   // Détermination du contact actif pour l'affichage de la discussion
-  const activeContact = (activeChatId === SYSTEM_BOT_ID ? SYSTEM_BOT_CONTACT : contacts.find(c => c.id === activeChatId)) || { 
+  const activeContact = (activeChatId === SYSTEM_BOT_ID ? { ...SYSTEM_BOT_CONTACT, psm: t.bot.status } : contacts.find(c => c.id === activeChatId)) || { 
     id: 0, 
     username: '',
     nickname: 'Contact...', 
@@ -4861,7 +4849,7 @@ const App: React.FC = () => {
                     disabled={isResettingE2E}
                     onClick={() => setShowResetE2EModal(false)}
                   >
-                    {t.common.cancel || "Annuler"}
+                    {t.common.cancel}
                   </button>
                   <button
                     type="submit"
@@ -4993,7 +4981,7 @@ const App: React.FC = () => {
             type="button" 
             className="wlm-toast-close"
             onClick={() => setPersistenceNotice(null)}
-            title={t.common.cancel || "Fermer"}
+            title={t.common.close}
           >
             ✕
           </button>

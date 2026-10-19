@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { SYSTEM_BOT_ID, type User } from '../types';
+import { useI18n } from '../i18n';
 
 /**
  * DOMAINE APPELS (WebRTC)
@@ -34,6 +35,7 @@ export interface UseCallsOptions {
 }
 
 export function useCalls({ user, activeChatId }: UseCallsOptions): CallsApi {
+  const { t } = useI18n();
   const [activeCallId, setActiveCallId] = useState<number | null>(null);
   const [isReceivingCall, setIsReceivingCall] = useState(false);
   const [callSignal, setCallSignal] = useState<any>(null);
@@ -45,7 +47,7 @@ export function useCalls({ user, activeChatId }: UseCallsOptions): CallsApi {
   const handleStartCall = (audioOnly: boolean) => {
     if (!activeChatId || !user) return;
     if (activeChatId === SYSTEM_BOT_ID) {
-      alert("Les appels audio/vidéo nécessitent un contact humain réel connecté.");
+      alert(t.notices.callsBotOnly);
       return;
     }
     setIsAudioOnly(audioOnly);

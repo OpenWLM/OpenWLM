@@ -134,11 +134,11 @@ test('i18n: FR and EN translation files contain all required guidance and streng
   assert.equal(fr.auth.emailPlaceholderSignup, 'exemple@openwlm.dev', 'Placeholder must be exemple@openwlm.dev');
 });
 
-test('Auth UI: Identifier input has placeholder exemple@openwlm.dev without auto-filling value', () => {
+test('Auth UI: Identifier input has the translated sign-up placeholder without auto-filling value', () => {
   const authTsx = fs.readFileSync(path.join(rootDir, 'src/components/Auth.tsx'), 'utf8');
 
-  // Verify placeholder logic
-  assert.match(authTsx, /placeholder=\{!isLogin\s*\?\s*\(t\.auth\.emailPlaceholderSignup\s*\|\|\s*['"]exemple@openwlm\.dev['"]\)/);
+  // Verify placeholder logic (translated: exemple@openwlm.dev / example@openwlm.dev, no French fallback)
+  assert.match(authTsx, /placeholder=\{!isLogin\s*\?\s*t\.auth\.emailPlaceholderSignup\s*:/);
 
   // Ensure value is untouched (bound purely to value={username}, no default '@openwlm.dev' string injected)
   assert.match(authTsx, /value=\{username\}/);

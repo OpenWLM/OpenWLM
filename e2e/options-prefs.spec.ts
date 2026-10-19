@@ -150,7 +150,7 @@ test('options : disposition, messages et sons appliqués', async ({ browser }) =
   await a.locator('#pref-winks').uncheck();
   await closeOptions(a);
   await b.getByTitle('Nudge!').click();
-  await expect(a.locator('.msg-system', { hasText: 'secousse désactivée' })).toBeVisible({ timeout: 20000 });
+  await expect(a.locator('.msg-system', { hasText: 'shaking is turned off' })).toBeVisible({ timeout: 20000 });
   await expect(a.locator('.wlm-desktop.wlm-nudge')).toHaveCount(0);
   await b.getByTitle('Winks').click();
   await b.locator('.scene-thumb').first().click();

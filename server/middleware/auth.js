@@ -201,7 +201,7 @@ export const authRateLimiter = (req, res, next) => {
   let timestamps = rateLimitStorage.get(ip).filter(ts => now - ts < windowMs);
   if (timestamps.length >= limit) {
     console.warn(`[Security] Rate limit atteint pour l'IP: ${ip}`);
-    return res.status(429).json({ error: "Trop de tentatives. Veuillez réessayer dans une minute." });
+    return res.status(429).json({ error: "Trop de tentatives. Veuillez réessayer dans une minute.", code: 'rate_limited' });
   }
 
   timestamps.push(now);

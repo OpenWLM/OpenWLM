@@ -17,6 +17,12 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - La minuterie de fermeture automatique de la fenêtre de mot de passe est annulée si la fenêtre disparaît avant.
 - Doc : un appareil révoqué efface ses clés mémorisées et ses données de session ; la copie locale chiffrée est conservée (illisible jusqu'à la prochaine connexion), pour qu'un changement de mot de passe ou une déconnexion sur un autre de ses appareils n'efface pas les messages privés.
 
+### Traduction (interface anglaise)
+- **Plus de français dans l'interface anglaise** : 39 alertes du navigateur et 1 confirmation, les lignes système des conversations (mode privé, Wizz, clins d'œil), le contact de test « OpenWLM » (accueil, écho, aide, jeux solo, son message perso), les aperçus de notification (« [Fichier] », « [Message vocal] », « [Clin d'œil] »), les noms des arrière-plans de conversation, le résultat du test Push et le message perso par défaut (« Disponible » est désormais vide, ce qui affiche l'invite traduite « Entrez votre message perso ») étaient écrits en français en dur. Ils passent désormais par les fichiers de traduction (nouveaux groupes `notices` et `errors`).
+- **Lignes système repérées par le drapeau `system`** au lieu de l'expéditeur « Système », qui apparaissait en français dans l'interface anglaise.
+- **Erreurs du serveur traduites** : les erreurs de connexion, d'inscription et d'invitation portent désormais un code (`invalid_credentials`, `username_taken`, `captcha_wrong`, `invite_self`…) traduit par l'app ; un 429 affiche « Trop de tentatives ». Les autres erreurs restent rédigées en français par le serveur : l'interface française les affiche telles quelles, l'interface anglaise affiche son propre message traduit.
+- Test E2E `e2e/i18n-en.spec.ts` (interface anglaise : mauvais mot de passe, contact de test, erreur d'invitation, lignes de mode privé et de Wizz des deux côtés).
+
 ## [1.6.1] - 2026-10-19
 
 ### Correctifs (revue de la 1.6.0)

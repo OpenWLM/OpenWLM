@@ -17,6 +17,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The password window's automatic close timer is cancelled if the window disappears first.
 - Docs: a revoked device deletes its remembered keys and session data; the encrypted local copy is kept (unreadable until the next sign-in), so that a password change or a sign-out on another of your devices does not wipe your private messages.
 
+### Translation (English interface)
+- **No more French in the English interface**: 39 browser alerts and 1 confirmation, the system lines in conversations (private mode, nudges, winks), the test contact "OpenWLM" (welcome, echo, help, solo games, its personal message), notification previews ("[File]", "[Voice message]", "[Wink]"), conversation background names, the push test result and the default personal message ("Disponible" is now empty, showing the translated "Enter your personal message") were hard-coded in French. They now go through the translation files (new `notices` and `errors` groups).
+- **System lines flagged with `system`** instead of the sender name "Système", which showed up in French in the English interface.
+- **Server errors translated**: sign-in, sign-up and invitation errors now carry a code (`invalid_credentials`, `username_taken`, `captcha_wrong`, `invite_self`…) translated by the app; a 429 shows "Too many attempts". Other server errors are still written in French by the server: the French interface shows them as is, the English interface shows its own translated message.
+- E2E test `e2e/i18n-en.spec.ts` (English interface: wrong password, test contact, invitation error, private-mode and nudge lines on both sides).
+
 ## [1.6.1] - 2026-10-19
 
 ### Fixes (review of 1.6.0)

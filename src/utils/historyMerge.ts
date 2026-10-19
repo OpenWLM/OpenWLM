@@ -1,4 +1,5 @@
 import type { Message } from '../types';
+import { isSystemLine } from './systemLine';
 
 /**
  * FUSION DE L'HISTORIQUE SERVEUR AVEC CE QUI N'EXISTE QUE SUR L'APPAREIL
@@ -15,7 +16,7 @@ import type { Message } from '../types';
 
 /** Message à conserver même s'il est absent de l'historique du serveur. */
 export const isLocalOnly = (m: Message): boolean =>
-  m.isPrivate === true || m.sender === 'Système' || !!m._isPending || !!m._failed || (!m.id && !m.mid);
+  m.isPrivate === true || isSystemLine(m) || !!m._isPending || !!m._failed || (!m.id && !m.mid);
 
 const timeOf = (m: Message): number | null => {
   const t = typeof m.timestamp === 'number' ? m.timestamp : m.timestamp ? Date.parse(m.timestamp) : NaN;
@@ -67,4 +68,4 @@ export const withLocalOnly = (current: Message[], cached: Message[]): Message[] 
 
 /** Ce qui va dans la copie locale chiffrée : l'historique, messages privés compris (jamais les lignes système ni les envois en cours). */
 export const cacheableHistory = (merged: Message[]): Message[] =>
-  merged.filter((m) => m.sender !== 'Système' && !m._isPending && !m._failed);
+  merged.filter((m) => !isSystemLine(m) && !m._isPending && !m._failed);

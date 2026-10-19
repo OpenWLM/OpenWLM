@@ -20,7 +20,7 @@ interface PasswordModalProps {
 }
 
 export const PasswordModal: React.FC<PasswordModalProps> = ({ onClose, onSubmit }) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -50,7 +50,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ onClose, onSubmit 
       setCurrent(''); setNext(''); setConfirm('');
       closeTimerRef.current = setTimeout(onClose, 1800);
     } else {
-      setError(result.error === 'wrongCurrent' ? t.modals.changePasswordWrongCurrent : (result.message || t.modals.changePasswordFailed));
+      // Le détail du serveur est en français : affiché seulement dans l'interface française
+      setError(result.error === 'wrongCurrent' ? t.modals.changePasswordWrongCurrent
+        : (language === 'fr' && result.message) || t.modals.changePasswordFailed);
     }
   };
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
+import { useI18n } from '../i18n';
 
 /**
  * Lecteur de Clins d'œil (Winks) MSN.
@@ -48,6 +49,7 @@ function outputLatencySec(): number {
 }
 
 const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
+  const { t } = useI18n();
   const audioRef = useRef<HTMLAudioElement>(null);
   const meta = WINK_META[winkId];
   // L'anim ne démarre qu'après la latence de sortie audio → son et image tombent ensemble
@@ -84,7 +86,7 @@ const WinkPlayer: React.FC<WinkPlayerProps> = ({ winkId, onFinish }) => {
         {started && (
           <img
             src={`/assets/winks/${winkId}/${winkId}.webp?n=${nonce}`}
-            alt={`Clin d'œil ${winkId}`}
+            alt={t.notices.winkAlt.replace('{name}', winkId)}
             style={{ width: meta?.w ? `${meta.w}px` : undefined, height: meta?.h ? `${meta.h}px` : undefined }}
             draggable={false}
           />

@@ -3,6 +3,7 @@ import axios from 'axios';
 import { encryptCustomEmoticon, validateImageSignature } from '../utils/Security';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from '../utils/CustomEmoticonsDB';
 import { useI18n } from '../i18n';
+import { serverErrorText, serverErrorFromResponse } from '../utils/serverError';
 
 interface CustomEmoticonsModalProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
   onEmoticonsChange,
   onSelectEmoticon
 }) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [myEmoticons, setMyEmoticons] = useState<MyEmoticonRecord[]>([]);
   const [emoticonUrls, setEmoticonUrls] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -312,7 +313,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       });
 
       if (!res.data.success) {
-        throw new Error(res.data.error || "Erreur serveur lors de l'enregistrement.");
+        throw new Error(serverErrorFromResponse(res.status, res.data, t, language, t.notices.emoticonSaveFailed));
       }
 
       const serverEmoticon = res.data.emoticon;
@@ -341,7 +342,9 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
     } catch (err: unknown) {
       console.error("Erreur upload émoticône:", err);
       const axiosErr = err as { response?: { data?: { error?: string } }; message?: string };
-      setErrorMessage(axiosErr.response?.data?.error || axiosErr.message || "Échec de l'enregistrement de l'émoticône.");
+      setErrorMessage(axiosErr.response
+        ? serverErrorText(err, t, language, t.notices.emoticonSaveFailed)
+        : (axiosErr.message || t.notices.emoticonSaveFailed));
     } finally {
       setIsUploading(false);
     }

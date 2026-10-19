@@ -3,6 +3,7 @@ import axios from 'axios';
 import { deriveZeroKnowledgeKeys } from '../utils/Security';
 import { useI18n } from '../i18n';
 import { PASSWORD_MIN_LENGTH } from '../utils/PasswordStrength';
+import { serverErrorText } from '../utils/serverError';
 import { PasswordStrengthMeter } from './PasswordStrengthMeter';
 import { solveProofOfWork, type PowChallenge } from '../utils/ProofOfWork';
 
@@ -186,8 +187,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
       }
     } catch (err: unknown) {
       // Gestion des erreurs serveur
-      const serverError = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || t.auth.unexpectedError;
-      setError(serverError);
+      // Code d'erreur du serveur traduit (identifiants invalides, captcha, identifiant déjà pris…)
+      setError(serverErrorText(err, t, language, t.auth.unexpectedError));
       
       // Rafraîchir le captcha en cas d'erreur d'inscription
       if (!isLogin) fetchCaptcha();
@@ -252,7 +253,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
               type="text" 
               value={username} 
               onChange={e => setUsername(e.target.value)} 
-              placeholder={!isLogin ? (t.auth.emailPlaceholderSignup || "exemple@openwlm.dev") : t.auth.emailPlaceholder}
+              placeholder={!isLogin ? t.auth.emailPlaceholderSignup : t.auth.emailPlaceholder}
               required 
             />
           </div>

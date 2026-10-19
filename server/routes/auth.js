@@ -109,43 +109,43 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
 
     const clientIp = getClientIp(req);
     if (!signupIpCounter.check(clientIp).allowed) {
-      return res.status(429).json({ error: "Trop de comptes créés depuis cette adresse. Veuillez réessayer plus tard." });
+      return res.status(429).json({ error: "Trop de comptes créés depuis cette adresse. Veuillez réessayer plus tard.", code: 'signup_ip_limit' });
     }
 
     const signupLimit = signupAccountLimiter.attempt(username);
     if (!signupLimit.allowed) {
-      return res.status(429).json({ error: "Trop de tentatives d'inscription pour ce compte. Veuillez réessayer plus tard." });
+      return res.status(429).json({ error: "Trop de tentatives d'inscription pour ce compte. Veuillez réessayer plus tard.", code: 'signup_rate_limited' });
     }
     
     if (!captchaId || captchaAnswer === undefined) {
-      return res.status(400).json({ error: 'Captcha manquant.' });
+      return res.status(400).json({ error: 'Captcha manquant.', code: 'captcha_missing' });
     }
     const storedCaptcha = captchas.get(captchaId);
     if (!storedCaptcha || storedCaptcha.expires < Date.now()) {
       captchas.delete(captchaId);
-      return res.status(400).json({ error: 'Captcha expiré ou invalide.' });
+      return res.status(400).json({ error: 'Captcha expiré ou invalide.', code: 'captcha_expired' });
     }
     if (parseInt(captchaAnswer) !== storedCaptcha.answer) {
       captchas.delete(captchaId);
-      return res.status(400).json({ error: 'Réponse au Captcha incorrecte.' });
+      return res.status(400).json({ error: 'Réponse au Captcha incorrecte.', code: 'captcha_wrong' });
     }
     if (!verifyPow(storedCaptcha.pow, powNonce)) {
       captchas.delete(captchaId);
-      return res.status(400).json({ error: 'Vérification anti-robot (preuve de travail) invalide.' });
+      return res.status(400).json({ error: 'Vérification anti-robot (preuve de travail) invalide.', code: 'pow_invalid' });
     }
     captchas.delete(captchaId);
 
     const usernameRegex = /^[a-zA-Z0-9_.@-]{3,100}$/;
     if (!username || typeof username !== 'string' || !usernameRegex.test(username.trim()) || username.trim().length > 100) {
-      return res.status(400).json({ error: 'Adresse de messagerie invalide (3-100 caractères, sans espaces).' });
+      return res.status(400).json({ error: 'Adresse de messagerie invalide (3-100 caractères, sans espaces).', code: 'username_invalid' });
     }
 
     if (nickname !== undefined && nickname !== null && (typeof nickname !== 'string' || nickname.length > 50)) {
-      return res.status(400).json({ error: 'Surnom invalide (max 50 caractères).' });
+      return res.status(400).json({ error: 'Surnom invalide (max 50 caractères).', code: 'nickname_invalid' });
     }
 
     if (!password || typeof password !== 'string' || !/^[a-fA-F0-9]{64}$/.test(password)) {
-      return res.status(400).json({ error: "Clé d'authentification invalide (format hex 256 bits requis)." });
+      return res.status(400).json({ error: "Clé d'authentification invalide (format hex 256 bits requis).", code: 'auth_key_invalid' });
     }
 
     const salt = crypto.randomBytes(16).toString('hex');
@@ -158,7 +158,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
       res.json({ success: true, userId: info.lastInsertRowid });
     } catch (err) {
       if (err.message.includes('UNIQUE constraint failed')) {
-        return res.status(400).json({ error: 'Cet identifiant est déjà utilisé.' });
+        return res.status(400).json({ error: 'Cet identifiant est déjà utilisé.', code: 'username_taken' });
       }
       res.status(500).json({ error: "Erreur lors de l'inscription." });
     }
@@ -170,15 +170,15 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   router.post('/login', authRateLimiter, async (req, res) => {
     const { username, password } = req.body;
     
-    if (!username || !password) return res.status(400).json({ error: 'Identifiants requis.' });
+    if (!username || !password) return res.status(400).json({ error: 'Identifiants requis.', code: 'credentials_required' });
 
     const loginLimit = loginAccountLimiter.attempt(username);
     if (!loginLimit.allowed) {
-      return res.status(429).json({ error: "Trop de tentatives de connexion pour ce compte. Veuillez réessayer plus tard." });
+      return res.status(429).json({ error: "Trop de tentatives de connexion pour ce compte. Veuillez réessayer plus tard.", code: 'login_rate_limited' });
     }
 
     if (typeof password !== 'string' || !/^[a-fA-F0-9]{64}$/.test(password)) {
-      return res.status(400).json({ error: "Format de clé d'authentification invalide." });
+      return res.status(400).json({ error: "Format de clé d'authentification invalide.", code: 'auth_key_invalid' });
     }
 
     const normalizedUsername = String(username).trim().toLowerCase();
@@ -213,7 +213,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
 
       res.json({ success: true, user: toPrivateUserDTO(user) });
     } else {
-      res.status(401).json({ error: 'Identifiants invalides.' });
+      res.status(401).json({ error: 'Identifiants invalides.', code: 'invalid_credentials' });
     }
   });
 

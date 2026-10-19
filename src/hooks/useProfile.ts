@@ -92,7 +92,7 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
   } = options;
 
   const [myStatus, setMyStatus] = useState('online');
-  const [myPSM, setMyPSM] = useState('Disponible');
+  const [myPSM, setMyPSM] = useState('');
   const [myNickname, setMyNickname] = useState('');
   const [myAvatar, setMyAvatar] = useState('/assets/usertiles/chess.png');
   const [myScene, setMyScene] = useState('/assets/scenes/0006.png');

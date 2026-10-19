@@ -1,9 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Socket } from 'socket.io-client';
 import SoundManager from '../utils/SoundManager';
 import { getAppPrefs } from '../utils/appPrefs';
 import { SYSTEM_BOT_ID, type Message, type User } from '../types';
+import { useI18n } from '../i18n';
+import { systemLine } from '../utils/systemLine';
 
 /**
  * DOMAINE CLINS D'ŒIL & WIZZ (nudges)
@@ -93,6 +95,11 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
     winkNotSentNetworkText,
     winkNotSentOfflineText
   } = options;
+  // Textes des lignes système dans la langue de l'app (lus par référence : les handlers sont
+  // aussi rappelés depuis l'effet socket d'App)
+  const { t } = useI18n();
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
 
   const [activeWink, setActiveWink] = useState<string | null>(null);
   const [winkCounter, setWinkCounter] = useState(0);
@@ -120,10 +127,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
     if (received) {
       setMessages(prev => ({
         ...prev,
-        [targetId]: [...(prev[targetId] || []), {
-          text: `Vous avez reçu un clin d'œil (${winkName}).`,
-          sender: 'Système', time: winkTime(), isWink: true, winkId, style: null
-        }]
+        [targetId]: [...(prev[targetId] || []), systemLine(tRef.current.notices.winkReceived.replace('{name}', winkName), { time: winkTime(), isWink: true, winkId, style: null })]
       }));
       return;
     }
@@ -131,7 +135,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
     if (!socket || !myKeys) return;
     const contactPubKey = await getPublicKey(activeChatId);
     if (!contactPubKey) {
-      alert("Ce contact doit être en ligne pour recevoir un clin d'œil.");
+      alert(tRef.current.notices.winkContactOffline);
       return;
     }
 
@@ -149,7 +153,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
 
     const pushWinkLine = (text: string) => setMessages(prev => ({
       ...prev,
-      [targetId]: [...(prev[targetId] || []), { text, sender: 'Système', time: winkTime(), isWink: true, style: null }]
+      [targetId]: [...(prev[targetId] || []), systemLine(text, { time: winkTime(), isWink: true, style: null })]
     }));
 
     // ACCUSÉ : on n'affiche « envoyé » qu'après acceptation du serveur. En mode privé vers un
@@ -169,7 +173,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
       if (err || !ack?.success) {
         pushWinkLine(ack?.code === 'RECIPIENT_OFFLINE_PRIVATE' ? winkNotSentOfflineText : winkNotSentNetworkText);
       } else {
-        pushWinkLine(`Vous venez d'envoyer un clin d'œil (${winkName}).`);
+        pushWinkLine(tRef.current.notices.winkSent.replace('{name}', winkName));
       }
     });
   };
@@ -189,7 +193,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
         }
         setMessages(prev => ({
           ...prev,
-          [SYSTEM_BOT_ID]: [...(prev[SYSTEM_BOT_ID] || []), { text: "Vous venez d'envoyer un Wizz !", sender: 'Système' }]
+          [SYSTEM_BOT_ID]: [...(prev[SYSTEM_BOT_ID] || []), systemLine(tRef.current.notices.nudgeSent)]
         }));
 
         setTimeout(() => {
@@ -200,11 +204,11 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
             ...prev,
             [SYSTEM_BOT_ID]: [
               ...(prev[SYSTEM_BOT_ID] || []),
-              { text: "Vous venez de recevoir un Wizz !", sender: 'Système' },
+              systemLine(tRef.current.notices.nudgeReceived),
               {
                 senderId: SYSTEM_BOT_ID,
                 receiverId: user?.id,
-                text: "Wizz bien reçu.",
+                text: tRef.current.bot.nudgeAck,
                 sender: 'OpenWLM',
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 timestamp: new Date().toISOString()
@@ -221,7 +225,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
       if (recentNudges.length >= 3) {
         setMessages(prev => ({
           ...prev,
-          [activeChatId]: [...(prev[activeChatId] || []), { text: 'Vous ne pouvez pas envoyer de Wizz aussi souvent.', sender: 'Système' }]
+          [activeChatId]: [...(prev[activeChatId] || []), systemLine(tRef.current.notices.nudgeTooOften)]
         }));
         return;
       }
@@ -231,7 +235,7 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
 
     // Options → Messages : Wizz reçus sans secousse ni son, une simple ligne
     if (received && !getAppPrefs().messages.receiveNudges) {
-      setMessages(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), { text: 'Vous avez reçu un Wizz (secousse désactivée dans vos options).', sender: 'Système' }] }));
+      setMessages(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), systemLine(tRef.current.notices.nudgeReceivedNoShake)] }));
       return;
     }
 
@@ -239,8 +243,8 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
     if (isNudging) return;
     setIsNudging(true);
 
-    const msgText = received ? 'Vous venez de recevoir un Wizz !' : 'Vous venez d\'envoyer un Wizz !';
-    setMessages(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), { text: msgText, sender: 'Système' }] }));
+    const msgText = received ? tRef.current.notices.nudgeReceived : tRef.current.notices.nudgeSent;
+    setMessages(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), systemLine(msgText)] }));
     setTimeout(() => setIsNudging(false), 2000);
   };
 

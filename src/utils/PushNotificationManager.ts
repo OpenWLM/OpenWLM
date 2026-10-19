@@ -159,7 +159,7 @@ export async function unsubscribeFromWebPush(): Promise<boolean> {
 /**
  * Envoie une notification Push de test via le serveur OpenWLM
  */
-export async function sendTestWebPush(): Promise<{ success: boolean; count?: number; error?: string }> {
+export async function sendTestWebPush(): Promise<{ success: boolean; count?: number; error?: string; status?: number }> {
   try {
     const res = await fetch('/api/push/test', {
       method: 'POST',
@@ -167,11 +167,11 @@ export async function sendTestWebPush(): Promise<{ success: boolean; count?: num
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) {
-      return { success: false, error: data.error || 'Erreur lors de l\'envoi du push de test' };
+      return { success: false, error: data.error, status: res.status };
     }
     return { success: true, count: data.count };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Erreur réseau test push' };
+    return { success: false, error: err.message };
   }
 }
 

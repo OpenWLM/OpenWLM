@@ -7,13 +7,13 @@ import { useI18n } from '../i18n';
  * la fermeture via `onClose`.
  */
 
-const CONV_BACKGROUNDS = [
-  { id: 'none', name: 'Standard', file: '' },
-  { id: 'car', name: 'Voiture', file: 'car.jpg' },
-  { id: 'fish', name: 'Poissons', file: 'fish.jpg' },
-  { id: 'hearts', name: 'Cœurs', file: 'hearts.jpg' },
-  { id: 'lavender', name: 'Lavande', file: 'lavender.jpg' },
-  { id: 'planets', name: 'Planètes', file: 'planets.jpg' }
+const CONV_BACKGROUNDS: { id: string; nameKey: 'bgStandard' | 'bgCar' | 'bgFish' | 'bgHearts' | 'bgLavender' | 'bgPlanets'; file: string }[] = [
+  { id: 'none', nameKey: 'bgStandard', file: '' },
+  { id: 'car', nameKey: 'bgCar', file: 'car.jpg' },
+  { id: 'fish', nameKey: 'bgFish', file: 'fish.jpg' },
+  { id: 'hearts', nameKey: 'bgHearts', file: 'hearts.jpg' },
+  { id: 'lavender', nameKey: 'bgLavender', file: 'lavender.jpg' },
+  { id: 'planets', nameKey: 'bgPlanets', file: 'planets.jpg' }
 ];
 
 interface BgModalProps {
@@ -35,8 +35,8 @@ export const BgModal: React.FC<BgModalProps> = ({ onClose, onSelect }) => {
               className="scene-thumb"
               onClick={() => onSelect(bg.file)}
             >
-              {bg.file ? <img src={`/assets/backgrounds/${bg.file}`} alt={bg.name} /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f0f0' }}>{t.modals.bgNone}</div>}
-              <div className="scene-name">{bg.name}</div>
+              {bg.file ? <img src={`/assets/backgrounds/${bg.file}`} alt={t.modals[bg.nameKey]} /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f0f0' }}>{t.modals.bgNone}</div>}
+              <div className="scene-name">{t.modals[bg.nameKey]}</div>
             </div>
           ))}
         </div>

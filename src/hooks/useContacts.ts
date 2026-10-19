@@ -5,6 +5,8 @@ import SoundManager from '../utils/SoundManager';
 import LocalDB from '../utils/LocalDB';
 import { removeConversationBackground } from '../utils/ConversationBackgrounds';
 import type { Contact, Message, User } from '../types';
+import { useI18n } from '../i18n';
+import { serverErrorText } from '../utils/serverError';
 
 /**
  * DOMAINE CONTACTS (roster, invitations, menu contextuel)
@@ -68,6 +70,7 @@ export interface ContactsApi {
 }
 
 export function useContacts(options: UseContactsOptions): ContactsApi {
+  const { t, language } = useI18n();
   const {
     user,
     setPublicKeysCache,
@@ -160,7 +163,7 @@ export function useContacts(options: UseContactsOptions): ContactsApi {
 
   const handleDeleteContact = useCallback(async (contactId: number) => {
     if (!user) return;
-    if (!window.confirm("Voulez-vous vraiment supprimer ce contact ?")) return;
+    if (!window.confirm(t.notices.deleteContactConfirm)) return;
     try {
       await axios.post('/api/contacts/delete', { userId: user.id, contactId });
       refreshData();
@@ -218,11 +221,11 @@ export function useContacts(options: UseContactsOptions): ContactsApi {
     if (!contactEmail.trim()) return;
     try {
       await axios.post('/api/invite', { senderId: user?.id, receiverUsername: contactEmail });
-      alert('Invitation envoyée !');
+      alert(t.notices.inviteSent);
       setShowAddContactModal(false);
       setContactEmail('');
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Erreur lors de l\'envoi de l\'invitation.');
+      alert(serverErrorText(err, t, language, t.notices.inviteFailed));
     }
   };
 

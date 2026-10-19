@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Socket } from 'socket.io-client';
 import axios from 'axios';
 import { SYSTEM_BOT_ID, type Contact, type Message, type User } from '../types';
+import { useI18n } from '../i18n';
 
 /**
  * DOMAINE JEUX MULTI-JOUEURS (Morpion, Dames, Puissance 4, Démineur)
@@ -91,6 +92,7 @@ export interface GamesApi {
 
 export function useGames(options: UseGamesOptions): GamesApi {
   const { socket, user, activeChatId, contacts, setMessages } = options;
+  const { t } = useI18n();
 
   const [activeGame, setActiveGame] = useState<ActiveGame | null>(null);
   const [incomingGameInvite, setIncomingGameInvite] = useState<IncomingGameInvite | null>(null);
@@ -173,7 +175,7 @@ export function useGames(options: UseGamesOptions): GamesApi {
               senderId: SYSTEM_BOT_ID,
               receiverId: user.id,
               sender: 'OpenWLM',
-              text: "Partie de Morpion lancée. À vous de jouer (X).",
+              text: t.bot.morpionStarted,
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               timestamp: new Date().toISOString()
             }
@@ -198,14 +200,14 @@ export function useGames(options: UseGamesOptions): GamesApi {
               senderId: SYSTEM_BOT_ID,
               receiverId: user.id,
               sender: 'OpenWLM',
-              text: "Partie de Puissance 4 lancée. À vous de jouer (Rouge 🔴).",
+              text: t.bot.puissance4Started,
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               timestamp: new Date().toISOString()
             }
           ]
         }));
       } else {
-        alert("OpenWLM prend en charge le Morpion et le Puissance 4 pour les tests solo.");
+        alert(t.notices.botGamesOnly);
         setShowGamesMenu(false);
       }
       return;
@@ -214,11 +216,11 @@ export function useGames(options: UseGamesOptions): GamesApi {
     if (!socket) return;
     const contact = contacts.find(c => c.id === activeChatId);
     if (!contact || contact.status === 'offline') {
-      const gameLabel = gameType === 'checkers' ? 'au Jeu de dames'
-        : gameType === 'puissance4' ? 'au Puissance 4'
-        : gameType === 'minesweeper' ? 'au Démineur'
-        : 'au Morpion';
-      alert(`Ce contact doit être en ligne pour jouer ${gameLabel}.`);
+      const gameLabel = gameType === 'checkers' ? t.notices.gameNameCheckers
+        : gameType === 'puissance4' ? t.notices.gameNamePuissance4
+        : gameType === 'minesweeper' ? t.notices.gameNameMinesweeper
+        : t.notices.gameNameMorpion;
+      alert(t.notices.gameNeedsOnline.replace('{game}', gameLabel));
       return;
     }
 

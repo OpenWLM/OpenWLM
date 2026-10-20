@@ -16,6 +16,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - Nouvelles routes `POST /api/push/fcm/register` et `POST /api/push/fcm/unregister` : **mettre à jour les règles WAF Cloudflare** ([docs/CLOUDFLARE_WAF.md](docs/CLOUDFLARE_WAF.md)).
 - Nouvelle variable facultative `FIREBASE_SERVICE_ACCOUNT` (chemin de la clé de compte de service Firebase, hors dépôt) pour les notifications de l'app Android. Sans elle, le serveur fonctionne comme avant.
 - Nouvelle dépendance `firebase-admin` (`npm ci`). Redémarrer le service après le déploiement.
+- npm 12 et plus n'exécutent que les scripts d'installation autorisés : `package.json` autorise celui de `better-sqlite3` (`allowScripts`). Sans lui, `npm ci` installait la base de données sans la compiler et le serveur ne démarrait plus.
 
 ### Nouveautés
 - **Application Android** (première étape) : coquille native Capacitor qui charge l'interface depuis le serveur choisi au premier lancement (par défaut messenger.guifort.ovh), modifiable dans Options → Sécurité ou depuis l'écran hors ligne. Verrouillage par empreinte, visage ou code du téléphone à l'ouverture et après une minute en arrière-plan ; fichiers reçus enregistrés dans Téléchargements ; sauvegarde Android désactivée pour que les clés mémorisées restent sur le téléphone. Dans l'app, l'installation PWA, les réglages Web Push et l'option d'inactivité de tout l'ordinateur sont masqués. Compilation, signature et installation : [docs/ANDROID.md](docs/ANDROID.md).

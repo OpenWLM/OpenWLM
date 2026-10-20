@@ -32,6 +32,8 @@ public class MainActivity extends BridgeActivity {
     private static volatile boolean userVisible;
 
     private boolean started;
+    /** Déverrouillage de l'app inutile jusqu'à cet instant (cf. handleChatIntent). */
+    private long skipLockUntil;
     private View lockOverlay;
     private BiometricPrompt biometricPrompt;
     private boolean locked;
@@ -114,14 +116,26 @@ public class MainActivity extends BridgeActivity {
         handleChatIntent(intent);
     }
 
-    /** Notification touchée : ouvrir la conversation de l'expéditeur. */
+    /** Notification touchée : ouvrir la conversation de l'expéditeur (et prendre son appel : « Répondre »). */
     private void handleChatIntent(Intent intent) {
         int chatId = intent != null ? intent.getIntExtra(OpenWLMNotifications.EXTRA_CHAT_ID, 0) : 0;
         if (chatId <= 0 || bridge == null) return;
+        boolean answer = intent.getBooleanExtra(OpenWLMNotifications.EXTRA_ANSWER, false);
         intent.removeExtra(OpenWLMNotifications.EXTRA_CHAT_ID);
+        intent.removeExtra(OpenWLMNotifications.EXTRA_ANSWER);
+        if (answer) {
+            // Le téléphone verrouillé pendant la sonnerie vient d'être déverrouillé par son
+            // propriétaire pour répondre : pas de second déverrouillage de l'app
+            KeyguardManager km = ContextCompat.getSystemService(this, KeyguardManager.class);
+            if (IncomingCallService.wasLockedWhenRang() && km != null && !km.isKeyguardLocked()) {
+                skipLockUntil = SystemClock.elapsedRealtime() + 10_000;
+                if (locked) unlock();
+            }
+            IncomingCallService.stop(this, chatId);
+        }
         PluginHandle handle = bridge.getPlugin("OpenWLMNative");
         if (handle != null && handle.getInstance() instanceof OpenWLMNativePlugin) {
-            ((OpenWLMNativePlugin) handle.getInstance()).openChat(chatId);
+            ((OpenWLMNativePlugin) handle.getInstance()).openChat(chatId, answer);
         }
     }
 
@@ -159,6 +173,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void lock() {
+        if (SystemClock.elapsedRealtime() < skipLockUntil) return;
         locked = true;
         if (lockOverlay == null) {
             lockOverlay = LayoutInflater.from(this).inflate(R.layout.lock_overlay, null);

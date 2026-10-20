@@ -16,7 +16,7 @@
     <string name="channel_messages">Messages</string>
     <string name="channel_messages_desc">Nouveaux messages, Wizz et fichiers</string>
     <string name="channel_calls">Appels</string>
-    <string name="channel_calls_desc">Appels audio et vidéo entrants (sonnerie)</string>
+    <string name="channel_calls_desc">Appels audio et vidéo entrants (écran d\'appel)</string>
     <string name="notif_message">Nouveau message reçu</string>
     <string name="notif_private_message">🔒 Nouveau message privé</string>
     <string name="notif_voice">🎤 Message vocal</string>
@@ -31,4 +31,10 @@
     <string name="notif_push_test">Les notifications Android fonctionnent !</string>
     <string name="notif_answer">Répondre</string>
     <string name="notif_decline">Refuser</string>
+    <string name="channel_ongoing_call">Appel en cours</string>
+    <string name="channel_ongoing_call_desc">Maintient l\'appel quand l\'écran est éteint</string>
+    <string name="call_ongoing_audio">Appel audio en cours</string>
+    <string name="call_ongoing_video">Appel vidéo en cours</string>
+    <string name="call_speaker">Haut-parleur</string>
+    <string name="call_earpiece">Écouteur</string>
 </resources>

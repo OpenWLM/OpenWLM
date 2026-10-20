@@ -15,7 +15,8 @@ import FormatPicker from './FormatPicker';
 import QuickTextsEditor from './QuickTextsEditor';
 import {
   isNativeApp, getNativeAppInfo, openServerSettings, getNativeNotificationPermission, requestNativeNotificationPermission,
-  openNativeNotificationSettings, type NativeAppInfo, type NativeNotificationPermission
+  openNativeNotificationSettings, getNativeCallPermissions, requestNativeCallPermission,
+  type NativeAppInfo, type NativeNotificationPermission, type NativeCallPermissions
 } from '../utils/platform';
 import { hasPlusFormatting, visibleLength } from '../utils/plusFormat';
 
@@ -132,11 +133,16 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   const nativeApp = isNativeApp();
   const [nativeInfo, setNativeInfo] = useState<NativeAppInfo | null>(null);
   const [nativeNotif, setNativeNotif] = useState<NativeNotificationPermission | null>(null);
+  const [callPerms, setCallPerms] = useState<NativeCallPermissions | null>(null);
+  const refreshCallPerms = () => { getNativeCallPermissions().then(setCallPerms); };
   useEffect(() => {
     if (!nativeApp) return;
     let cancelled = false;
     getNativeAppInfo().then(info => { if (!cancelled) setNativeInfo(info); });
-    const refresh = () => getNativeNotificationPermission().then(p => { if (!cancelled) setNativeNotif(p); });
+    const refresh = () => {
+      getNativeNotificationPermission().then(p => { if (!cancelled) setNativeNotif(p); });
+      getNativeCallPermissions().then(p => { if (!cancelled) setCallPerms(p); });
+    };
     refresh();
     // Retour des réglages Android : l'autorisation a pu changer
     document.addEventListener('visibilitychange', refresh);
@@ -558,6 +564,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                 </div>
 
                 {nativeApp ? (
+                  <>
                   <div className="options-subsection" style={{ marginTop: '16px' }} data-testid="native-notifications">
                     <label className="options-label">{t.settings.nativeNotifSection}</label>
                     <div className="options-hint">
@@ -590,6 +597,31 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                       </div>
                     )}
                   </div>
+                  <div className="options-subsection" data-testid="native-call-permissions">
+                    <label className="options-label">{t.settings.nativeCallSection}</label>
+                    <div className="options-hint">{t.settings.nativeCallHint}</div>
+                    {callPerms && ([
+                      ['microphone', t.settings.nativeCallMicrophone],
+                      ['camera', t.settings.nativeCallCamera],
+                      ['fullScreen', t.settings.nativeCallFullScreen]
+                    ] as const).map(([kind, label]) => (
+                      <div key={kind} className="options-hint" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                        <span style={{ flex: 1 }}>{label}</span>
+                        {callPerms[kind] === 'granted' ? (
+                          <span style={{ color: '#1b7d23', fontWeight: 600 }}>✓ {t.settings.nativeCallGranted}</span>
+                        ) : (
+                          <button type="button" className="win-btn" style={{ fontSize: '11px', padding: '2px 8px' }}
+                            onClick={async () => {
+                              await requestNativeCallPermission(kind);
+                              refreshCallPerms();
+                            }}>
+                            {kind === 'fullScreen' || callPerms[kind] === 'denied' ? t.settings.nativeCallOpenSettings : t.settings.nativeCallAllow}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  </>
                 ) : (
                 <>
                 <div className="options-subsection" style={{ marginTop: '16px' }}>

@@ -1,5 +1,6 @@
 package org.openwlm.dev;
 
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -10,22 +11,48 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Bouton « Refuser » de la notification d'appel : refuse l'appel sans ouvrir l'app
- * (POST /api/calls/decline, avec le cookie de session de la WebView), comme public/sw.js.
+ * Boutons des notifications d'appel :
+ * - « Refuser » (appel entrant) : refuse l'appel sans ouvrir l'app (POST /api/calls/decline,
+ *   avec le cookie de session de la WebView), comme public/sw.js ;
+ * - « Raccrocher » (appel en cours) : transmis à l'interface, qui termine l'appel ;
+ * - « Haut-parleur » / « Écouteur » (appel en cours).
  */
 public class CallActionReceiver extends BroadcastReceiver {
 
     static final String ACTION_DECLINE = "org.openwlm.dev.DECLINE_CALL";
+    static final String ACTION_HANGUP = "org.openwlm.dev.HANGUP_CALL";
     static final String EXTRA_CALLER_ID = "callerId";
-    static final String EXTRA_TAG = "tag";
+
+    static PendingIntent declineIntent(Context context, int callerId) {
+        Intent intent = new Intent(context, CallActionReceiver.class)
+            .setAction(ACTION_DECLINE)
+            .putExtra(EXTRA_CALLER_ID, callerId);
+        return PendingIntent.getBroadcast(context, callerId, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    static PendingIntent hangUpIntent(Context context) {
+        Intent intent = new Intent(context, CallActionReceiver.class).setAction(ACTION_HANGUP);
+        return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    static PendingIntent speakerIntent(Context context) {
+        Intent intent = new Intent(context, OngoingCallService.class).setAction(OngoingCallService.ACTION_TOGGLE_SPEAKER);
+        return PendingIntent.getService(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (!ACTION_DECLINE.equals(intent.getAction())) return;
+        String action = intent.getAction();
+        if (ACTION_HANGUP.equals(action)) {
+            OpenWLMNativePlugin.onHangUpRequested();
+            OngoingCallService.stop(context);
+            return;
+        }
+        if (!ACTION_DECLINE.equals(action)) return;
         int callerId = intent.getIntExtra(EXTRA_CALLER_ID, 0);
-        String tag = intent.getStringExtra(EXTRA_TAG);
-        if (tag != null) OpenWLMNotifications.cancel(context, tag);
+        IncomingCallService.stop(context, callerId);
         if (callerId <= 0) return;
+        OpenWLMNotifications.cancel(context, OpenWLMNotifications.callTag(callerId));
 
         String host = ServerConfig.getHost(context);
         if (host == null) return;

@@ -44,7 +44,30 @@
             </intent-filter>
         </service>
 
-        <!-- Bouton « Refuser » de la notification d'appel -->
+        <!-- Appel entrant : sonnerie + écran d'appel (service de premier plan « phoneCall ») -->
+        <service
+            android:name=".IncomingCallService"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall" />
+
+        <!-- Appel en cours : app et audio actifs écran éteint -->
+        <service
+            android:name=".OngoingCallService"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall|microphone|camera" />
+
+        <!-- Écran d'appel entrant, affiché aussi téléphone verrouillé -->
+        <activity
+            android:name=".IncomingCallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:taskAffinity="org.openwlm.dev.call"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:turnScreenOn="true" />
+
+        <!-- Boutons des notifications d'appel (Refuser, Raccrocher) -->
         <receiver
             android:name=".CallActionReceiver"
             android:exported="false" />
@@ -71,6 +94,15 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- Notifications (Android 13+ : autorisation demandée après la connexion) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Appels natifs : services de premier plan, écran d'appel plein écran, proximité -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />

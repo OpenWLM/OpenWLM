@@ -26,7 +26,8 @@ et pour Firebase).
 |---|---|
 | Verrouillage | Empreinte, visage ou code du téléphone à l'ouverture et après 1 min en arrière-plan. Sans verrouillage d'écran configuré sur le téléphone, l'app ne peut pas être protégée (indiqué dans les Options). L'aperçu dans les applications récentes est masqué (Android 13+). |
 | Session | « Se souvenir de cet appareil » garde la session 30 jours glissants (cf. ci-dessous). |
-| Appels, messages vocaux | Permissions caméra / micro demandées par Android au premier usage. |
+| Appels | Écran d'appel Android, même téléphone verrouillé ; service d'appel pendant la conversation (cf. « Appels natifs »). |
+| Messages vocaux | Permission micro demandée par Android au premier usage. |
 | Fichiers reçus | Enregistrés dans **Téléchargements** (la WebView ignore les liens de téléchargement). |
 | Bouton Retour | Revient en arrière dans l'app, sinon la passe en arrière-plan sans la fermer. |
 | Sauvegarde Android | Désactivée (y compris transfert d'appareil) : les clés E2EE mémorisées en IndexedDB ne quittent pas le téléphone. |
@@ -36,7 +37,41 @@ Dans l'app, l'interface masque ce qui n'existe pas dans une WebView Android : in
 PWA, réglages des notifications du navigateur / Web Push, option « inactivité de tout
 l'ordinateur ». Détection : `isNativeApp()` dans `src/utils/platform.ts`.
 
-**Pas encore** (étape suivante) : écran d'appel natif (plein écran, écran verrouillé).
+## Appels natifs
+
+Le serveur n'est pas modifié : il envoie le FCM d'appel (« data », priorité haute, TTL 45 s)
+quand aucun appareil connecté n'a confirmé l'appel, puis le FCM `call_cancel` à la fin, et
+redonne l'appel en attente à l'appareil qui se connecte (cf. docs/CALLS.md).
+
+**Appel entrant** (`IncomingCallService`, service de premier plan « phoneCall ») :
+- notification `CallStyle` avec intention plein écran : écran d'appel (`IncomingCallActivity`)
+  par-dessus l'écran verrouillé, bandeau d'appel si le téléphone est utilisé ;
+- sonnerie du téléphone en boucle et vibration, selon son mode : sonnerie, vibreur seul,
+  silencieux ou « Ne pas déranger » (écran d'appel sans son) ;
+- **Répondre** : l'app s'ouvre sur la conversation et **prend l'appel automatiquement** dès que le
+  serveur le lui redonne (pas de second appui). Téléphone verrouillé : Android demande d'abord
+  de le déverrouiller ; l'app ne redemande alors pas son propre déverrouillage ;
+- **Refuser** : `POST /api/calls/decline` avec le cookie de session, sans ouvrir l'app ;
+- arrêt de la sonnerie : `call_cancel` reçu (« Appel manqué », « Appel pris sur un autre
+  appareil », « Appel refusé »), appel affiché par l'interface (app ouverte), ou expiration de
+  l'appel (`expiresAt`) → « Appel manqué ». Un FCM d'appel déjà expiré est ignoré.
+
+**Pendant l'appel** (`OngoingCallService`, types « phoneCall », « microphone » et, en vidéo,
+« camera ») : démarré par l'interface quand l'appel s'établit (`startNativeCall`,
+`src/utils/platform.ts`), il garde l'app et l'audio actifs écran éteint. Audio en mode
+communication : **écouteur + capteur de proximité** (écran éteint contre l'oreille) en appel
+audio, **haut-parleur + écran allumé** en vidéo ; casque ou Bluetooth utilisés s'ils sont
+branchés. Notification d'appel en cours : durée, **Raccrocher**, **Haut-parleur / Écouteur**.
+Dans l'app, les contournements web (`src/utils/callKeepAlive.ts` : piste quasi silencieuse +
+Media Session, Screen Wake Lock) ne sont pas utilisés.
+
+**Autorisations** : après la connexion, une fois par appareil, une fenêtre explique puis
+demande le micro et l'autorisation « écran d'appel plein écran » (Android 14+ : à activer dans
+les réglages, Android ne la donne d'office qu'aux applications de téléphone). État et boutons :
+Options → Alertes → Appels. Sans l'autorisation plein écran, un appel téléphone verrouillé
+s'affiche en notification (avec sonnerie) au lieu de l'écran d'appel.
+
+Journaux utiles : `adb logcat | grep -iE "openwlm|IncomingCall|OngoingCall|FirebaseMessaging|chromium"`.
 
 ## Notifications (Firebase Cloud Messaging)
 
@@ -48,11 +83,8 @@ navigateurs, FCM pour l'app) à chaque `dispatchPushNotification`.
   jamais le texte d'un message ni l'offre d'un appel. Messages FCM « data » uniquement : c'est
   l'app qui construit la notification, dans la langue choisie dans l'app
   (`OpenWLMNotifications.java`).
-- **Appels** : priorité haute, durée de vie 45 s (`CALL_PUSH_TTL_S`). Notification « Appels »
-  avec la sonnerie du téléphone répétée (`FLAG_INSISTENT`), boutons **Répondre** (ouvre la
-  conversation ; le serveur redonne l'appel en attente à la connexion) et **Refuser**
-  (`POST /api/calls/decline` sans ouvrir l'app). Fin d'appel (`call_cancel`) : la sonnerie est
-  remplacée par « Appel manqué » / « Appel pris sur un autre appareil » / « Appel refusé ».
+- **Appels** : priorité haute, durée de vie 45 s (`CALL_PUSH_TTL_S`) ; écran d'appel natif,
+  cf. « Appels natifs » ci-dessous.
 - **App à l'écran** : pas de notification système, l'interface affiche ses propres alertes.
 - **Toucher** : ouvre la conversation de l'expéditeur.
 - **Jetons** : table `fcm_tokens` (un par installation). L'interface enregistre le jeton après la
@@ -189,7 +221,10 @@ Empreinte du certificat (pour vérifier un APK) :
 - Verrouillage : empreinte / code à l'ouverture ; rien après moins d'une minute en
   arrière-plan ; de nouveau après plus d'une minute.
 - Messages, fichiers (envoi, réception → Téléchargements), clins d'œil, jeux, Options.
-- Appel audio puis vidéo, app ouverte : demande des permissions, son et image dans les deux sens.
+- Appel audio puis vidéo, app ouverte : son et image dans les deux sens ; écran éteint
+  (bouton marche) → l'appel continue ; appel audio contre l'oreille → écran éteint.
+- Appels app fermée / téléphone verrouillé : cf. la procédure de test de la livraison
+  (Répondre, Refuser, appel manqué, pris sur un autre appareil).
 - Mode avion → page hors ligne → « Réessayer » au retour du réseau.
 - Options → Sécurité → Application Android → Changer de serveur.
 - Déconnexion.

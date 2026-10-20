@@ -561,7 +561,18 @@
     "nativeNotifDenied": "Turned off in Android settings: you won't be alerted to messages and calls while the app is closed.",
     "nativeNotifPrompt": "Allow notifications to be alerted to messages and calls while the app is closed.",
     "nativeNotifNoFirebase": "This build of the app has no Firebase configuration: no notifications while the app is closed.",
-    "nativeNotifOpenSettings": "Open notification settings"
+    "nativeNotifOpenSettings": "Open notification settings",
+    "nativeCallSetupTitle": "Calls in the app",
+    "nativeCallSetupText": "To answer calls, even when the phone is locked, OpenWLM needs the microphone and permission to show the call screen in full screen. Android will ask you for them (the second one in its settings: turn OpenWLM on, then come back).",
+    "nativeCallSetupConfirm": "Continue",
+    "nativeCallSection": "Calls",
+    "nativeCallHint": "Permissions used for voice and video calls.",
+    "nativeCallMicrophone": "Microphone",
+    "nativeCallCamera": "Camera (video calls)",
+    "nativeCallFullScreen": "Full-screen call screen (locked phone)",
+    "nativeCallGranted": "Allowed",
+    "nativeCallAllow": "Allow",
+    "nativeCallOpenSettings": "Settings"
   },
   "modals": {
     "addContactTitle": "Add a contact",

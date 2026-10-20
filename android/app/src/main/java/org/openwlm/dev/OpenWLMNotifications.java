@@ -8,8 +8,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
-import android.media.AudioAttributes;
-import android.media.RingtoneManager;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -22,13 +20,22 @@ import java.util.Map;
  * Notifications de l'app construites à partir des messages FCM « data » du serveur (même
  * contenu que le Web Push, cf. public/sw.js) : le serveur envoie le nom de l'expéditeur et une
  * clé de traduction (`l10n`), jamais le texte d'un message ; le texte est pris ici dans la
- * langue choisie dans l'app.
+ * langue choisie dans l'app. Les appels entrants passent par IncomingCallService (écran
+ * d'appel, sonnerie).
  */
 final class OpenWLMNotifications {
 
     static final String CHANNEL_MESSAGES = "messages";
-    static final String CHANNEL_CALLS = "calls";
+    /** Appel entrant : notification plein écran, la sonnerie est jouée par IncomingCallService. */
+    static final String CHANNEL_INCOMING_CALLS = "incoming_calls";
+    /** Appel en cours : notification discrète du service de premier plan. */
+    static final String CHANNEL_ONGOING_CALL = "ongoing_call";
+    /** Canal de la v2 (sonnerie portée par la notification), remplacé par CHANNEL_INCOMING_CALLS. */
+    private static final String LEGACY_CHANNEL_CALLS = "calls";
+
     static final String EXTRA_CHAT_ID = "org.openwlm.dev.CHAT_ID";
+    /** Avec EXTRA_CHAT_ID : l'utilisateur a choisi « Répondre » à l'appel de ce contact. */
+    static final String EXTRA_ANSWER = "org.openwlm.dev.ANSWER";
     private static final int NOTIFICATION_ID = 1;
 
     private static final String PREFS = "openwlm_app";
@@ -80,20 +87,19 @@ final class OpenWLMNotifications {
         messages.enableVibration(true);
         nm.createNotificationChannel(messages);
 
-        // Appels : sonnerie du téléphone (répétée tant que la notification sonne, FLAG_INSISTENT)
-        NotificationChannel calls = new NotificationChannel(CHANNEL_CALLS, loc.getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH);
-        calls.setDescription(loc.getString(R.string.channel_calls_desc));
-        calls.setSound(
-            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
-            new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-        );
-        calls.enableVibration(true);
-        calls.setVibrationPattern(new long[] { 0, 800, 600, 800, 600 });
-        calls.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-        nm.createNotificationChannel(calls);
+        nm.deleteNotificationChannel(LEGACY_CHANNEL_CALLS);
+        NotificationChannel incoming = new NotificationChannel(CHANNEL_INCOMING_CALLS, loc.getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH);
+        incoming.setDescription(loc.getString(R.string.channel_calls_desc));
+        incoming.setSound(null, null);
+        incoming.enableVibration(false);
+        incoming.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        nm.createNotificationChannel(incoming);
+
+        NotificationChannel ongoing = new NotificationChannel(CHANNEL_ONGOING_CALL, loc.getString(R.string.channel_ongoing_call), NotificationManager.IMPORTANCE_LOW);
+        ongoing.setDescription(loc.getString(R.string.channel_ongoing_call_desc));
+        ongoing.setSound(null, null);
+        ongoing.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        nm.createNotificationChannel(ongoing);
     }
 
     /** Affiche (ou retire) la notification correspondant à un message FCM du serveur. */
@@ -103,8 +109,17 @@ final class OpenWLMNotifications {
         NotificationManagerCompat nm = NotificationManagerCompat.from(context);
         boolean appVisible = MainActivity.isUserVisible();
 
+        if ("call".equals(type)) {
+            // Toujours l'écran d'appel natif : si le serveur réveille cet appareil, l'interface
+            // n'a pas confirmé l'appel. Elle l'arrêtera elle-même dès qu'elle l'affiche.
+            IncomingCallService.ring(context, data);
+            return;
+        }
+
         if ("call_cancel".equals(type)) {
-            // Fin d'un appel qui sonnait : la sonnerie est remplacée (manqué, pris ou refusé ailleurs)
+            // Fin d'un appel qui sonnait : la sonnerie s'arrête et la notification est remplacée
+            // (manqué, pris ou refusé ailleurs)
+            IncomingCallService.stop(context, parseId(data.get("senderId")));
             nm.cancel(tag, NOTIFICATION_ID);
             String reason = data.get("reason");
             if (appVisible && ("answered".equals(reason) || "declined".equals(reason))) return;
@@ -115,45 +130,37 @@ final class OpenWLMNotifications {
         // App au premier plan : c'est elle qui affiche ses alertes (avec le contenu déchiffré),
         // sauf la notification de test demandée depuis les Options
         if (appVisible && !"pushTest".equals(data.get("l10n"))) return;
-
-        if ("call".equals(type)) {
-            notify(context, tag, buildCall(context, data, tag));
-            return;
-        }
         notify(context, tag, base(context, data, CHANNEL_MESSAGES).setAutoCancel(true).build());
     }
 
-    private static Notification buildCall(Context context, Map<String, String> data, String tag) {
-        Context loc = localized(context);
-        int callerId = parseId(data.get("callerId"));
-        long expiresAt = parseLong(data.get("expiresAt"));
-        long remaining = expiresAt > 0 ? expiresAt - System.currentTimeMillis() : 60_000;
+    /** « Appel manqué » : l'appel a expiré sans réponse sur cet appareil. */
+    static void showMissedCall(Context context, String callerName, int callerId) {
+        Map<String, String> data = new HashMap<>();
+        data.put("title", callerName);
+        data.put("l10n", "callMissed");
+        data.put("senderId", String.valueOf(callerId));
+        notify(context, callTag(callerId), base(context, data, CHANNEL_MESSAGES).setSilent(true).setAutoCancel(true).build());
+    }
 
-        Intent decline = new Intent(context, CallActionReceiver.class)
-            .setAction(CallActionReceiver.ACTION_DECLINE)
-            .putExtra(CallActionReceiver.EXTRA_CALLER_ID, callerId)
-            .putExtra(CallActionReceiver.EXTRA_TAG, tag);
-        PendingIntent declinePi = PendingIntent.getBroadcast(context, callerId, decline, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    static String callTag(int callerId) {
+        return "openwlm-call-" + callerId;
+    }
 
-        NotificationCompat.Builder b = base(context, data, CHANNEL_CALLS)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
-            .setAutoCancel(true)
-            .setTimeoutAfter(Math.max(5_000, remaining))
-            .addAction(0, loc.getString(R.string.notif_decline), declinePi)
-            .addAction(0, loc.getString(R.string.notif_answer), openChatIntent(context, callerId));
-        Notification n = b.build();
-        n.flags |= Notification.FLAG_INSISTENT;
-        return n;
+    /** Texte d'une clé `l10n` dans la langue de l'app. */
+    static String text(Context context, String l10n) {
+        Integer res = l10n != null ? TEXTS.get(l10n) : null;
+        return localized(context).getString(res != null ? res : R.string.notif_message);
+    }
+
+    /** Nom de l'appelant à partir du titre envoyé par le serveur (« Nom — OpenWLM »). */
+    static String callerName(String title) {
+        if (title == null || title.isEmpty()) return "OpenWLM";
+        return title.replaceFirst("\\s+[—-]\\s+OpenWLM$", "");
     }
 
     private static NotificationCompat.Builder base(Context context, Map<String, String> data, String channel) {
-        Context loc = localized(context);
         String l10n = data.get("l10n");
-        Integer res = l10n != null ? TEXTS.get(l10n) : null;
-        String body = res != null ? loc.getString(res) : (data.containsKey("body") ? data.get("body") : loc.getString(R.string.notif_message));
+        String body = l10n != null && TEXTS.containsKey(l10n) ? text(context, l10n) : (data.containsKey("body") ? data.get("body") : text(context, "message"));
         String title = data.containsKey("title") ? data.get("title") : "OpenWLM";
         int senderId = parseId(data.containsKey("senderId") ? data.get("senderId") : data.get("callerId"));
         return new NotificationCompat.Builder(context, channel)
@@ -163,16 +170,18 @@ final class OpenWLMNotifications {
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setContentIntent(openChatIntent(context, senderId));
+            .setContentIntent(openChatIntent(context, senderId, false));
     }
 
-    /** Ouvre l'app sur la conversation de `senderId` (0 : simplement l'app). */
-    static PendingIntent openChatIntent(Context context, int senderId) {
+    /** Ouvre l'app sur la conversation de `senderId` (0 : simplement l'app) ; `answer` : prendre son appel. */
+    static PendingIntent openChatIntent(Context context, int senderId, boolean answer) {
         Intent intent = new Intent(context, MainActivity.class)
-            .setAction(Intent.ACTION_VIEW)
+            .setAction(answer ? "org.openwlm.dev.ANSWER_CALL" : Intent.ACTION_VIEW)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (senderId > 0) intent.putExtra(EXTRA_CHAT_ID, senderId);
-        return PendingIntent.getActivity(context, senderId, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        if (answer) intent.putExtra(EXTRA_ANSWER, true);
+        int requestCode = senderId * 2 + (answer ? 1 : 0);
+        return PendingIntent.getActivity(context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     static void cancel(Context context, String tag) {
@@ -188,7 +197,7 @@ final class OpenWLMNotifications {
         }
     }
 
-    private static int parseId(String s) {
+    static int parseId(String s) {
         try {
             return s == null ? 0 : Integer.parseInt(s);
         } catch (NumberFormatException e) {
@@ -196,7 +205,7 @@ final class OpenWLMNotifications {
         }
     }
 
-    private static long parseLong(String s) {
+    static long parseLong(String s) {
         try {
             return s == null ? 0 : Long.parseLong(s);
         } catch (NumberFormatException e) {

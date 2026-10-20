@@ -3,6 +3,7 @@ package org.openwlm.dev;
 import android.Manifest;
 import android.app.Activity;
 import android.app.KeyguardManager;
+import android.app.NotificationManager;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
@@ -13,6 +14,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Base64;
+import android.view.WindowManager;
 import androidx.activity.result.ActivityResult;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
@@ -36,7 +38,11 @@ import java.lang.ref.WeakReference;
  */
 @CapacitorPlugin(
     name = "OpenWLMNative",
-    permissions = { @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }) }
+    permissions = {
+        @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }),
+        @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO }),
+        @Permission(alias = "camera", strings = { Manifest.permission.CAMERA })
+    }
 )
 public class OpenWLMNativePlugin extends Plugin {
 
@@ -57,11 +63,131 @@ public class OpenWLMNativePlugin extends Plugin {
         plugin.notifyListeners("fcmToken", data, true);
     }
 
-    /** Toucher d'une notification : ouvrir la conversation (événement « openChat », gardé jusqu'à lecture). */
-    void openChat(int senderId) {
+    /**
+     * Toucher d'une notification : ouvrir la conversation (événement « openChat », gardé jusqu'à
+     * lecture). `answer` : l'utilisateur a choisi « Répondre », l'interface prend l'appel.
+     */
+    void openChat(int senderId, boolean answer) {
         JSObject data = new JSObject();
         data.put("senderId", senderId);
+        data.put("answer", answer);
         notifyListeners("openChat", data, true);
+    }
+
+    /** « Raccrocher » dans la notification d'appel en cours (événement « hangUp »). */
+    static void onHangUpRequested() {
+        OpenWLMNativePlugin plugin = instance.get();
+        if (plugin != null) plugin.notifyListeners("hangUp", new JSObject());
+    }
+
+    /** L'interface affiche l'appel de `callerId` : l'écran d'appel natif et sa sonnerie s'arrêtent. */
+    @PluginMethod
+    public void dismissIncomingCall(PluginCall call) {
+        IncomingCallService.stop(getContext(), call.getInt("callerId", 0));
+        call.resolve();
+    }
+
+    /** Appel établi ou en cours d'établissement : service de premier plan, audio d'appel. */
+    @PluginMethod
+    public void startOngoingCall(PluginCall call) {
+        try {
+            OngoingCallService.start(getContext(), call.getString("peerName", "OpenWLM"), Boolean.TRUE.equals(call.getBoolean("video", false)));
+            call.resolve();
+        } catch (RuntimeException e) {
+            call.reject("call_service_unavailable");
+        }
+    }
+
+    @PluginMethod
+    public void updateOngoingCall(PluginCall call) {
+        OngoingCallService.update(getContext(), Boolean.TRUE.equals(call.getBoolean("video", false)));
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void stopOngoingCall(PluginCall call) {
+        OngoingCallService.stop(getContext());
+        call.resolve();
+    }
+
+    /** Écran allumé pendant la vidéo (remplace le Screen Wake Lock du navigateur). */
+    @PluginMethod
+    public void setKeepScreenOn(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        getActivity().runOnUiThread(() -> {
+            if (on) getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        });
+        call.resolve();
+    }
+
+    /**
+     * Autorisations utiles aux appels : notifications, écran d'appel plein écran (Android 14+ :
+     * à accorder dans les réglages), micro, caméra. « granted », « denied » ou « prompt ».
+     */
+    @PluginMethod
+    public void getCallPermissions(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("notifications", notificationPermissionResult().getString("state"));
+        ret.put("fullScreen", canUseFullScreen() ? "granted" : "denied");
+        ret.put("microphone", permissionString("microphone"));
+        ret.put("camera", permissionString("camera"));
+        call.resolve(ret);
+    }
+
+    /** `kind` : « microphone », « camera » (demande Android) ou « fullScreen » (réglages). */
+    @PluginMethod
+    public void requestCallPermission(PluginCall call) {
+        String kind = call.getString("kind", "");
+        if ("fullScreen".equals(kind)) {
+            if (Build.VERSION.SDK_INT >= 34 && !canUseFullScreen()) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + getContext().getPackageName()))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    getContext().startActivity(intent);
+                } catch (RuntimeException e) {
+                    openNotificationSettings(call);
+                    return;
+                }
+            }
+            call.resolve();
+            return;
+        }
+        if (!"microphone".equals(kind) && !"camera".equals(kind)) {
+            call.reject("unknown_permission");
+            return;
+        }
+        PermissionState state = getPermissionState(kind);
+        if (state == PermissionState.GRANTED) {
+            call.resolve();
+            return;
+        }
+        if (state == PermissionState.DENIED) {
+            // Refusée définitivement : Android ne la redemande plus, ouvrir les autorisations de l'app
+            getContext().startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            call.resolve();
+            return;
+        }
+        requestPermissionForAlias(kind, call, "onCallPermission");
+    }
+
+    @PermissionCallback
+    private void onCallPermission(PluginCall call) {
+        call.resolve();
+    }
+
+    private String permissionString(String alias) {
+        PermissionState state = getPermissionState(alias);
+        if (state == PermissionState.GRANTED) return "granted";
+        if (state == PermissionState.DENIED) return "denied";
+        return "prompt";
+    }
+
+    private boolean canUseFullScreen() {
+        if (Build.VERSION.SDK_INT < 34) return true;
+        NotificationManager nm = ContextCompat.getSystemService(getContext(), NotificationManager.class);
+        return nm != null && nm.canUseFullScreenIntent();
     }
 
     /** Taille maximale d'un fichier enregistré (données base64 décodées). */

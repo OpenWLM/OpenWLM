@@ -561,7 +561,18 @@
     "nativeNotifDenied": "Désactivées dans les réglages Android : vous ne serez pas prévenu des messages et appels quand l'application est fermée.",
     "nativeNotifPrompt": "Autorisez les notifications pour être prévenu des messages et appels quand l'application est fermée.",
     "nativeNotifNoFirebase": "Cette version de l'application a été compilée sans Firebase : pas de notifications quand l'application est fermée.",
-    "nativeNotifOpenSettings": "Ouvrir les réglages des notifications"
+    "nativeNotifOpenSettings": "Ouvrir les réglages des notifications",
+    "nativeCallSetupTitle": "Appels dans l'application",
+    "nativeCallSetupText": "Pour répondre aux appels, même téléphone verrouillé, OpenWLM a besoin du micro et de l'autorisation d'afficher l'écran d'appel en plein écran. Android va vous les demander (la seconde dans ses réglages : activez OpenWLM puis revenez).",
+    "nativeCallSetupConfirm": "Continuer",
+    "nativeCallSection": "Appels",
+    "nativeCallHint": "Autorisations utilisées pour les appels audio et vidéo.",
+    "nativeCallMicrophone": "Micro",
+    "nativeCallCamera": "Caméra (appels vidéo)",
+    "nativeCallFullScreen": "Écran d'appel en plein écran (téléphone verrouillé)",
+    "nativeCallGranted": "Autorisé",
+    "nativeCallAllow": "Autoriser",
+    "nativeCallOpenSettings": "Réglages"
   },
   "modals": {
     "addContactTitle": "Ajouter un contact",

@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 import { formatNickname } from '../utils/NicknameFormatter';
 import { startCallKeepAlive, keepScreenOn } from '../utils/callKeepAlive';
+import { isNativeApp, startNativeCall, setNativeCallVideo } from '../utils/platform';
 import { stripPlusTags } from '../utils/plusFormat';
 import {
   encryptMessagePayload,
@@ -27,6 +28,8 @@ interface VideoCallProps {
   audioOnly?: boolean;
   myKeys?: { publicKeyJwk?: JsonWebKey; privateKey?: CryptoKey; signingKey?: CryptoKey | null } | null;
   getContactPublicKey?: (contactId: number, forceRefresh?: boolean) => Promise<JsonWebKey | null>;
+  /** App Android : « Répondre » déjà choisi sur l'écran d'appel natif, prendre l'appel aussitôt. */
+  autoAnswer?: boolean;
   onEndCall: () => void;
 }
 
@@ -61,7 +64,7 @@ const MAX_ICE_RESTARTS = 3;
 
 const fmtDuration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, contactName, callerName, isReceivingCall, incomingSignal, audioOnly, myKeys, getContactPublicKey, onEndCall }) => {
+const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, contactName, callerName, isReceivingCall, incomingSignal, audioOnly, myKeys, getContactPublicKey, autoAnswer, onEndCall }) => {
   const { t } = useI18n();
   const [callStatus, setCallStatus] = useState<CallStatus>(isReceivingCall ? 'ringing' : 'calling');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -582,17 +585,26 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const keepAliveTitle = t.videoCall.conversationWith
     .replace('{type}', (audioOnly ? t.videoCall.audio : t.videoCall.video).toLowerCase())
     .replace('{name}', stripPlusTags(contactName));
+  // App Android : service d'appel natif à la place (cf. src/utils/platform.ts)
+  const nativeApp = isNativeApp();
+  const peerName = stripPlusTags(contactName);
   useEffect(() => {
     if (!callActive) return;
+    if (nativeApp) return startNativeCall({ peerName, video: !audioOnly, onHangUp: () => finishRef.current() });
     return startCallKeepAlive({ title: keepAliveTitle, onHangUp: () => finishRef.current() });
-  }, [callActive, keepAliveTitle]);
+  }, [callActive, keepAliveTitle, nativeApp, peerName, audioOnly]);
 
   // Vidéo en cours (la mienne ou celle du correspondant) : garder l'écran allumé
   const videoFlowing = callActive && (camOn || sharingScreen || remoteVideoOn);
   useEffect(() => {
+    if (nativeApp) {
+      // Haut-parleur et écran allumé en vidéo ; écouteur et capteur de proximité sinon
+      if (callActive) setNativeCallVideo(videoFlowing);
+      return;
+    }
     if (!videoFlowing) return;
     return keepScreenOn();
-  }, [videoFlowing]);
+  }, [videoFlowing, callActive, nativeApp]);
 
   // Minuteur d'appel
   useEffect(() => {
@@ -779,6 +791,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
     if (socket) socket.emit('call_accept', { target: activeChatId });
     initCall();
   };
+
+  // « Répondre » choisi sur l'écran d'appel de l'app Android : pas de second appui
+  const autoAnsweredRef = useRef(false);
+  useEffect(() => {
+    if (!autoAnswer || autoAnsweredRef.current || !isReceivingCall || callStatus !== 'ringing') return;
+    autoAnsweredRef.current = true;
+    handleAcceptCall();
+  });
 
   const handleRejectCall = () => {
     if (socket) socket.emit('call_reject', { target: activeChatId });

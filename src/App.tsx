@@ -53,7 +53,7 @@ import { ChatMessageLog } from './components/ChatMessageLog';
 import { ChatWindow } from './components/ChatWindow';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
-import { isNativeApp, getNativeFcmToken } from './utils/platform';
+import { isNativeApp, getNativeFcmToken, dismissNativeIncomingCall } from './utils/platform';
 import { useNativePush, unregisterNativePush } from './hooks/useNativePush';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
@@ -950,8 +950,20 @@ const App: React.FC = () => {
     setActiveChatId
   });
 
+  // App Android : « Répondre » sur l'écran d'appel natif. L'appel est pris dès que l'interface
+  // l'affiche (le serveur le redonne à la connexion), sans second appui sur « Répondre ».
+  const [autoAnswerCallId, setAutoAnswerCallId] = useState<number | null>(null);
+  const pendingNativeAnswerRef = useRef<{ callerId: number; until: number } | null>(null);
+  const handleNativeAnswer = (callerId: number) => {
+    if (activeCallId === callerId && isReceivingCall) {
+      setAutoAnswerCallId(callerId);
+    } else {
+      pendingNativeAnswerRef.current = { callerId, until: Date.now() + 60_000 };
+    }
+  };
+
   // App Android : notifications FCM (jeton, autorisation, ouverture de conversation)
-  useNativePush({ userId, setOpenChatIds, setActiveChatId });
+  useNativePush({ userId, setOpenChatIds, setActiveChatId, onAnswerCall: handleNativeAnswer });
 
   // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
   useEffect(() => {
@@ -2187,8 +2199,14 @@ const App: React.FC = () => {
         // fantôme d'un téléphone en veille ne répond pas, le serveur tente alors un réveil par Push)
         try { ack?.({ ok: true }); } catch { /* ancien serveur sans accusé */ }
         // L'application prend le relais : la notification Push d'appel (qui sonne en boucle)
-        // de cet appelant est fermée
+        // de cet appelant est fermée, ainsi que l'écran d'appel de l'app Android
         closeCallPushNotifications(Number(data.caller));
+        dismissNativeIncomingCall(Number(data.caller));
+        const pendingAnswer = pendingNativeAnswerRef.current;
+        if (pendingAnswer && pendingAnswer.callerId === Number(data.caller) && pendingAnswer.until > Date.now()) {
+          pendingNativeAnswerRef.current = null;
+          setAutoAnswerCallId(Number(data.caller));
+        }
         // Déjà présenté (nouvelle remise au retour au premier plan) : rien à refaire
         if (activeCallIdRef.current === Number(data.caller)) return;
 
@@ -5015,7 +5033,8 @@ const App: React.FC = () => {
           audioOnly={isAudioOnly}
           myKeys={myKeys}
           getContactPublicKey={getPublicKey}
-          onEndCall={handleEndCall}
+          autoAnswer={isReceivingCall && autoAnswerCallId === activeCallId}
+          onEndCall={() => { setAutoAnswerCallId(null); handleEndCall(); }}
         />
       )}
 

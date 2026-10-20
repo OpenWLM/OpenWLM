@@ -1,13 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">OpenWLM</string>
-    <string name="title_activity_main">OpenWLM</string>
-    <string name="package_name">org.openwlm.dev</string>
-    <string name="custom_url_scheme">org.openwlm.dev</string>
+    <string name="app_name" translatable="false">OpenWLM</string>
+    <string name="title_activity_main" translatable="false">OpenWLM</string>
+    <string name="package_name" translatable="false">org.openwlm.dev</string>
+    <string name="custom_url_scheme" translatable="false">org.openwlm.dev</string>
 
     <string name="server_title">OpenWLM server</string>
     <string name="server_description">Enter the address of the OpenWLM server to use. You can change it later from Options or from the offline screen.</string>
-    <string name="server_hint">messenger.example.org</string>
+    <string name="server_hint" translatable="false">messenger.example.org</string>
     <string name="server_use_default">Use the default server</string>
     <string name="server_connect">Connect</string>
     <string name="server_cancel">Cancel</string>
@@ -22,7 +22,7 @@
     <string name="channel_messages">Messages</string>
     <string name="channel_messages_desc">New messages, nudges and files</string>
     <string name="channel_calls">Calls</string>
-    <string name="channel_calls_desc">Incoming voice and video calls (ringtone)</string>
+    <string name="channel_calls_desc">Incoming voice and video calls (call screen)</string>
     <string name="notif_message">New message</string>
     <string name="notif_private_message">🔒 New private message</string>
     <string name="notif_voice">🎤 Voice message</string>
@@ -37,4 +37,10 @@
     <string name="notif_push_test">Android notifications are working!</string>
     <string name="notif_answer">Answer</string>
     <string name="notif_decline">Decline</string>
+    <string name="channel_ongoing_call">Ongoing call</string>
+    <string name="channel_ongoing_call_desc">Keeps the call running while the screen is off</string>
+    <string name="call_ongoing_audio">Voice call in progress</string>
+    <string name="call_ongoing_video">Video call in progress</string>
+    <string name="call_speaker">Speaker</string>
+    <string name="call_earpiece">Earpiece</string>
 </resources>

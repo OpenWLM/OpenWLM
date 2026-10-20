@@ -11,6 +11,16 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ## [Non publié]
 
+### Mise à jour du serveur
+- Aucune migration de base, aucune nouvelle variable d'environnement, aucune nouvelle route HTTP (règles WAF Cloudflare inchangées). Redémarrer le service après le déploiement.
+
+### Nouveautés
+- **Application Android** (première étape) : coquille native Capacitor qui charge l'interface depuis le serveur choisi au premier lancement (par défaut messenger.guifort.ovh), modifiable dans Options → Sécurité ou depuis l'écran hors ligne. Verrouillage par empreinte, visage ou code du téléphone à l'ouverture et après une minute en arrière-plan ; fichiers reçus enregistrés dans Téléchargements ; sauvegarde Android désactivée pour que les clés mémorisées restent sur le téléphone. Les notifications app fermée viendront dans une prochaine étape. Dans l'app, l'installation PWA, les réglages Web Push et l'option d'inactivité de tout l'ordinateur sont masqués. Compilation, signature et installation : [docs/ANDROID.md](docs/ANDROID.md).
+- **« Se souvenir de cet appareil » garde la session 30 jours glissants** (au lieu de 24 h) : le serveur renouvelle le cookie de session tant que l'appareil sert au moins une fois par mois, dans l'app comme dans le navigateur. Sans cette option, la session dure toujours 24 h. La révocation des sessions reste immédiate.
+
+### Tests
+- `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
+
 ### Corrections
 - **Inactivité de tout l'ordinateur** (Chrome / Edge) : quand le navigateur refusait de démarrer la détection alors que l'autorisation était accordée (PWA ouverte au démarrage de Windows ou à la sortie de veille, par exemple), l'option restait inopérante jusqu'à ce qu'on retire puis rende l'autorisation, et annonçait à tort une autorisation retirée. La détection est maintenant relancée quand la fenêtre revient au premier plan (et après 5 s, 15 s et 60 s), les Options affichent un message dédié et l'erreur du navigateur est écrite dans la console.
 - `scripts/openwlm-service.sh install` refuse un dossier sans `.env` : lancé depuis un dépôt de développement, il faisait tourner le service depuis ce dossier (sans secrets ni base de prod).

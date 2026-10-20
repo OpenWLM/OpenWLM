@@ -63,6 +63,31 @@ export const parseCookies = (cookieHeader) => {
   return list;
 };
 
+// Durée de session : 24 h, ou 30 jours glissants pour un appareil mémorisé (« se souvenir de
+// cet appareil », marqueur `rm` dans le jeton). Le jeton d'un appareil mémorisé est réémis
+// par GET /api/user/me dès qu'il a plus de 12 h : la session reste ouverte tant que l'appareil
+// sert au moins une fois par mois. La révocation (token_version) s'applique toujours.
+export const SESSION_TTL_S = 24 * 60 * 60;
+export const REMEMBERED_SESSION_TTL_S = 30 * 24 * 60 * 60;
+export const SESSION_RENEW_AFTER_S = 12 * 60 * 60;
+
+/** Signe le JWT de session et le pose en cookie HttpOnly SameSite=Strict. */
+export const issueSessionCookie = (req, res, { id, username, tv, remember }, isProd) => {
+  const ttl = remember ? REMEMBERED_SESSION_TTL_S : SESSION_TTL_S;
+  const payload = remember ? { id, username, tv, rm: 1 } : { id, username, tv };
+  const token = jwt.sign(payload, SECRET, { expiresIn: ttl });
+  const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const isSecure = (isProd || Boolean(req.headers['cf-ray'] || isHttps)) && isHttps;
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'strict',
+    maxAge: ttl * 1000,
+    path: '/'
+  });
+  return token;
+};
+
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.split(' ')[1];
@@ -94,6 +119,7 @@ export const authenticateToken = (req, res, next) => {
     }
 
     req.user = dbUser;
+    req.tokenPayload = payload;
     next();
   });
 };

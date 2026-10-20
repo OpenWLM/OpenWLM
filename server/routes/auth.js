@@ -14,7 +14,9 @@ import {
   captchaRateLimiter, 
   hashPassword, 
   verifyPasswordHash,
-  burnPasswordCheck
+  burnPasswordCheck,
+  issueSessionCookie,
+  SESSION_RENEW_AFTER_S
 } from '../middleware/auth.js';
 import { getClientIp } from '../clientIdentity.js';
 import {
@@ -42,6 +44,11 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     try {
       const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
       if (!user) return res.status(404).json({ error: "Utilisateur non trouvé." });
+      // Appareil mémorisé : prolonger la session (jeton réémis avec la même version)
+      const p = req.tokenPayload;
+      if (p?.rm && Number.isInteger(p.iat) && Date.now() / 1000 - p.iat > SESSION_RENEW_AFTER_S) {
+        issueSessionCookie(req, res, { id: user.id, username: user.username, tv: user.token_version || 0, remember: true }, isProd);
+      }
       res.json({ success: true, user: toPrivateUserDTO(user) });
     } catch (err) {
       res.status(500).json({ error: "Erreur serveur." });
@@ -169,7 +176,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
    * Connexion utilisateur
    */
   router.post('/login', authRateLimiter, async (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, remember } = req.body;
     
     if (!username || !password) return res.status(400).json({ error: 'Identifiants requis.', code: 'credentials_required' });
 
@@ -198,19 +205,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
 
     if (user && passwordOk) {
       loginAccountLimiter.reset(username);
-      const tv = user.token_version || 0;
-      const token = jwt.sign({ id: user.id, username: user.username, tv }, SECRET, { expiresIn: '24h' });
-
-      const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
-      const isSecure = (isProd || Boolean(req.headers['cf-ray'] || isHttps)) && isHttps;
-
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: isSecure,
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000,
-        path: '/'
-      });
+      issueSessionCookie(req, res, { id: user.id, username: user.username, tv: user.token_version || 0, remember: remember === true }, isProd);
 
       res.json({ success: true, user: toPrivateUserDTO(user) });
     } else {

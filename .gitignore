@@ -162,6 +162,14 @@ messenger.db*
 *.key
 *.secret
 
+# Android : keystore de signature et ses mots de passe (hors dépôt, cf. docs/ANDROID.md),
+# clé de compte de service Firebase (serveur uniquement)
+*.jks
+*.keystore
+keystore.properties
+*firebase-adminsdk*.json
+service-account*.json
+
 # Backups and scratch
 *.tar.gz
 scratch/

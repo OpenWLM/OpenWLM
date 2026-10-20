@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OpenWLM</string>
+    <string name="title_activity_main">OpenWLM</string>
+    <string name="package_name">org.openwlm.dev</string>
+    <string name="custom_url_scheme">org.openwlm.dev</string>
+
+    <string name="server_title">OpenWLM server</string>
+    <string name="server_description">Enter the address of the OpenWLM server to use. You can change it later from Options or from the offline screen.</string>
+    <string name="server_hint">messenger.example.org</string>
+    <string name="server_use_default">Use the default server</string>
+    <string name="server_connect">Connect</string>
+    <string name="server_cancel">Cancel</string>
+    <string name="server_error_invalid">Invalid address. Enter a domain name (HTTPS), for example messenger.example.org.</string>
+    <string name="server_error_unreachable">%1$s does not respond like an OpenWLM server. Check the address and your connection.</string>
+
+    <string name="lock_title">OpenWLM is locked</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="lock_prompt_title">Unlock OpenWLM</string>
+    <string name="lock_prompt_subtitle">Use your fingerprint, face or screen lock</string>
+</resources>

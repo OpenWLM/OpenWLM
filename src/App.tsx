@@ -53,6 +53,7 @@ import { ChatMessageLog } from './components/ChatMessageLog';
 import { ChatWindow } from './components/ChatWindow';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
+import { isNativeApp } from './utils/platform';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
 import DesktopToastContainer from './components/DesktopToast';
@@ -436,6 +437,17 @@ const App: React.FC = () => {
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(true);
   const [isDeviceRemembered, setIsDeviceRemembered] = useState<boolean>(false);
   const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null);
+
+  // Appareil mémorisé : le serveur prolonge la session (30 jours glissants) à chaque appel de
+  // /api/user/me sur un jeton de plus de 12 h. Un appel par heure suffit pour une app restée ouverte.
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId || !isDeviceRemembered) return;
+    const timer = window.setInterval(() => {
+      axios.get('/api/user/me').catch(() => { /* hors ligne : nouvel essai à l'heure suivante */ });
+    }, 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [userId, isDeviceRemembered]);
 
   // --- ÉTAT SOCKET & NAVIGATION ---
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -4063,7 +4075,7 @@ const App: React.FC = () => {
         <div className="wlm-branding">
           <div className="msn-butterfly"></div>
           <div className="wlm-logo-text">Open<span>WLM</span></div>
-          {canInstallPWA && (
+          {canInstallPWA && !isNativeApp() && (
             <button 
               className="pwa-install-btn" 
               onClick={() => promptPWAInstall()}

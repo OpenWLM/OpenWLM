@@ -13,6 +13,7 @@ import type { Socket } from 'socket.io-client';
 import ConnectionDiagnostics from './ConnectionDiagnostics';
 import FormatPicker from './FormatPicker';
 import QuickTextsEditor from './QuickTextsEditor';
+import { isNativeApp, getNativeAppInfo, openServerSettings, type NativeAppInfo } from '../utils/platform';
 import { hasPlusFormatting, visibleLength } from '../utils/plusFormat';
 
 /**
@@ -124,6 +125,15 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   // Brouillon du délai d'inactivité : permet d'effacer le champ pour retaper une valeur
   const [awayTimeoutDraft, setAwayTimeoutDraft] = useState(() => String(awayTimeout));
   const [systemIdleDenied, setSystemIdleDenied] = useState(false);
+  // App Android : serveur, version et verrouillage (fournis par le code natif)
+  const nativeApp = isNativeApp();
+  const [nativeInfo, setNativeInfo] = useState<NativeAppInfo | null>(null);
+  useEffect(() => {
+    if (!nativeApp) return;
+    let cancelled = false;
+    getNativeAppInfo().then(info => { if (!cancelled) setNativeInfo(info); });
+    return () => { cancelled = true; };
+  }, [nativeApp]);
   // « Déconnecter mes autres sessions » : confirmation dans l'onglet (pas de fenêtre du navigateur)
   const [revokeStep, setRevokeStep] = useState<'idle' | 'confirm' | 'busy' | 'done' | 'error'>('idle');
   const confirmRevoke = async () => {
@@ -287,7 +297,9 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     />
                     <span>{t.settings.autoAwaySuffix}</span>
                   </div>
-                  {/* Inactivité de tout l'ordinateur (API Idle Detection), comme sur MSN */}
+                  {/* Inactivité de tout l'ordinateur (API Idle Detection) : absente des WebView Android */}
+                  {!nativeApp && (
+                  <>
                   <div className="options-checkbox-line">
                     <input
                       type="checkbox"
@@ -315,6 +327,8 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                       : systemIdleEnabled ? t.settings.systemIdleBlocked
                       : t.settings.systemIdleHint}
                   </div>
+                  </>
+                  )}
                 </div>
 
               </div>
@@ -398,6 +412,18 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
             {optionsTab === 'security' && (
               <div className="options-section" data-testid="options-security">
                 <div className="options-title">{t.settings.tabSecurity}</div>
+
+                {nativeApp && (
+                  <div className="options-subsection" data-testid="native-app">
+                    <label className="options-label">{t.settings.nativeAppSection}</label>
+                    <div className="options-hint">{t.settings.nativeServerLabel} <strong>{nativeInfo?.server ?? '…'}</strong></div>
+                    <button type="button" className="win-btn" style={{ marginTop: '5px' }} onClick={() => { openServerSettings(); }}>{t.settings.nativeChangeServer}</button>
+                    <div className="options-hint" style={{ marginTop: '6px' }}>{nativeInfo?.appLock === false ? t.settings.nativeLockOff : t.settings.nativeLockOn}</div>
+                    {nativeInfo?.versionName && (
+                      <div className="options-hint">{t.settings.nativeVersionLabel} {nativeInfo.versionName} ({nativeInfo.versionCode})</div>
+                    )}
+                  </div>
+                )}
 
                 <div className="options-subsection">
                   <label className="options-label">{t.settings.securityPassword}</label>
@@ -523,6 +549,13 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   </div>
                 </div>
 
+                {nativeApp ? (
+                  <div className="options-subsection" style={{ marginTop: '16px' }}>
+                    <label className="options-label">{t.settings.nativeAppSection}</label>
+                    <div className="options-hint">{t.settings.nativeNotifSoon}</div>
+                  </div>
+                ) : (
+                <>
                 <div className="options-subsection" style={{ marginTop: '16px' }}>
                   <label className="options-label">{t.settings.browserNotifSection}</label>
                   <div style={{ marginTop: '4px', marginBottom: '6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -719,6 +752,8 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     </div>
                   )}
                 </div>
+                </>
+                )}
               </div>
             )}
           </div>

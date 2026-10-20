@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#1E5FA8</color>
+    <color name="colorPrimaryDark">#163F73</color>
+    <color name="colorAccent">#3C8DDE</color>
+    <color name="openwlm_background">#D5E9F8</color>
+    <color name="openwlm_text">#1A3B5C</color>
+    <color name="openwlm_link">#0066CC</color>
+    <color name="openwlm_error">#C02717</color>
+</resources>

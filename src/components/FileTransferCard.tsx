@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { type EncryptedFileKeys, decryptFileBinary } from '../utils/Security';
 import { useI18n } from '../i18n';
 import { notify } from '../utils/dialogs';
+import { isNativeApp, saveBlob } from '../utils/platform';
 
 export interface FileDataPayload {
   type: 'file';
@@ -69,6 +70,8 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
 
   // États spécifiques à la prévisualisation d'image
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  // Blob déchiffré de l'aperçu : réutilisé pour l'enregistrer sans nouveau téléchargement
+  const imageBlobRef = useRef<Blob | null>(null);
   const [isAutoLoading, setIsAutoLoading] = useState(false);
   const [autoLoadError, setAutoLoadError] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
@@ -134,6 +137,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
         : 'image/png';
       const blob = new Blob([decryptedBuffer], { type: mime });
       const objectUrl = URL.createObjectURL(blob);
+      imageBlobRef.current = blob;
       setImageUrl(objectUrl);
     } catch (err) {
       console.error("Erreur de prévisualisation auto de l'image:", err);
@@ -178,14 +182,16 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
     }
 
     // Optimisation : si l'image est déjà déchiffrée en local, téléchargement immédiat sans requête réseau
-    if (imageUrl) {
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.href = imageUrl;
-      downloadAnchor.download = fileData.fileName || 'image_recue.png';
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      document.body.removeChild(downloadAnchor);
-      setIsDownloaded(true);
+    if (imageUrl && imageBlobRef.current) {
+      try {
+        if (await saveBlob(imageBlobRef.current, fileData.fileName || 'image_recue.png')) {
+          setIsDownloaded(true);
+          if (isNativeApp()) notify(t.fileTransfer.savedToDownloads, { icon: '✅' });
+        }
+      } catch (err) {
+        console.error("Erreur d'enregistrement du fichier:", err);
+        notify(t.fileTransfer.saveFailed, { icon: '⚠️' });
+      }
       return;
     }
 
@@ -228,25 +234,17 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
       // 3. Déclencher le téléchargement direct du fichier original déchiffré
       const mime = fileData.fileType || 'application/octet-stream';
       const blob = new Blob([decryptedBuffer], { type: mime });
-      const objectUrl = URL.createObjectURL(blob);
 
       // Si c'est une image, alimenter aussi l'aperçu inline
       if (isImage && !imageUrl) {
-        setImageUrl(objectUrl);
+        imageBlobRef.current = blob;
+        setImageUrl(URL.createObjectURL(blob));
       }
 
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.href = objectUrl;
-      downloadAnchor.download = fileData.fileName || 'fichier_dechiffre';
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      document.body.removeChild(downloadAnchor);
-
-      if (!isImage) {
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+      if (await saveBlob(blob, fileData.fileName || 'fichier_dechiffre')) {
+        setIsDownloaded(true);
+        if (isNativeApp()) notify(t.fileTransfer.savedToDownloads, { icon: '✅' });
       }
-
-      setIsDownloaded(true);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number } };
       if (axiosErr.response?.status === 410) {

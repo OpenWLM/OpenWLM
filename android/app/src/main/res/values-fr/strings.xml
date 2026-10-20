@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="server_title">Serveur OpenWLM</string>
+    <string name="server_description">Saisissez l\'adresse du serveur OpenWLM à utiliser. Vous pourrez la changer plus tard depuis les Options ou depuis l\'écran hors ligne.</string>
+    <string name="server_use_default">Utiliser le serveur par défaut</string>
+    <string name="server_connect">Se connecter</string>
+    <string name="server_cancel">Annuler</string>
+    <string name="server_error_invalid">Adresse invalide. Saisissez un nom de domaine (HTTPS), par exemple messenger.exemple.org.</string>
+    <string name="server_error_unreachable">%1$s ne répond pas comme un serveur OpenWLM. Vérifiez l\'adresse et votre connexion.</string>
+
+    <string name="lock_title">OpenWLM est verrouillé</string>
+    <string name="lock_unlock">Déverrouiller</string>
+    <string name="lock_prompt_title">Déverrouiller OpenWLM</string>
+    <string name="lock_prompt_subtitle">Utilisez votre empreinte, votre visage ou le verrouillage de l\'écran</string>
+</resources>

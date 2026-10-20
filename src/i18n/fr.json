@@ -329,7 +329,9 @@
     "delayExpired": "Délai expiré",
     "autoDecryptFailed": "Déchiffrement auto en échec",
     "clickToLoad": "Cliquer pour charger l'aperçu",
-    "downloadError": "Erreur lors du téléchargement/déchiffrement."
+    "downloadError": "Erreur lors du téléchargement/déchiffrement.",
+    "savedToDownloads": "Fichier enregistré dans Téléchargements.",
+    "saveFailed": "Impossible d'enregistrer le fichier sur l'appareil."
   },
   "videoCall": {
     "conversationWith": "Conversation {type} avec {name}",
@@ -547,7 +549,14 @@
     "pushTestError": "Échec du test Web Push",
     "autoSavedNote": "Les modifications sont enregistrées automatiquement.",
     "rosterResizeLabel": "Largeur de la liste de contacts",
-    "rosterResizeHint": "Glisser pour élargir ou réduire la liste · double-clic : taille d'origine"
+    "rosterResizeHint": "Glisser pour élargir ou réduire la liste · double-clic : taille d'origine",
+    "nativeAppSection": "Application Android",
+    "nativeServerLabel": "Serveur :",
+    "nativeChangeServer": "Changer de serveur",
+    "nativeVersionLabel": "Version de l'application :",
+    "nativeLockOn": "L'application est protégée par le verrouillage du téléphone (empreinte, visage ou code) à l'ouverture et après une minute en arrière-plan.",
+    "nativeLockOff": "Aucun verrouillage d'écran n'est configuré sur ce téléphone : l'application ne peut pas être protégée. Configurez un code ou une empreinte dans les paramètres Android.",
+    "nativeNotifSoon": "Dans l'application Android, les notifications quand l'application est fermée arriveront dans une prochaine version. Pour l'instant, les messages et les appels sont reçus quand l'application est ouverte."
   },
   "modals": {
     "addContactTitle": "Ajouter un contact",

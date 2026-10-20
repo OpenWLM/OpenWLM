@@ -329,7 +329,9 @@
     "delayExpired": "Expired",
     "autoDecryptFailed": "Auto-decryption failed",
     "clickToLoad": "Click to load preview",
-    "downloadError": "Error during download/decryption."
+    "downloadError": "Error during download/decryption.",
+    "savedToDownloads": "File saved to Downloads.",
+    "saveFailed": "Could not save the file on this device."
   },
   "videoCall": {
     "conversationWith": "Conversation {type} with {name}",
@@ -547,7 +549,14 @@
     "pushTestError": "Failed to send test Web Push",
     "autoSavedNote": "Changes are saved automatically.",
     "rosterResizeLabel": "Contact list width",
-    "rosterResizeHint": "Drag to widen or narrow the list · double-click: original size"
+    "rosterResizeHint": "Drag to widen or narrow the list · double-click: original size",
+    "nativeAppSection": "Android app",
+    "nativeServerLabel": "Server:",
+    "nativeChangeServer": "Change server",
+    "nativeVersionLabel": "App version:",
+    "nativeLockOn": "The app is protected by the phone's screen lock (fingerprint, face or PIN) when opened and after one minute in the background.",
+    "nativeLockOff": "No screen lock is set up on this phone, so the app cannot be protected. Set up a PIN or fingerprint in Android settings.",
+    "nativeNotifSoon": "In the Android app, notifications while the app is closed will come in a future version. For now, messages and calls are received while the app is open."
   },
   "modals": {
     "addContactTitle": "Add a contact",

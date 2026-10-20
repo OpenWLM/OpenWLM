@@ -1,11 +1,10 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
 import { db, toPublicUserDTO } from '../db.js';
 import { getUserRoom } from '../sessionStore.js';
 import { isValidFormattedField } from '../utils/plusText.js';
 import { 
-  SECRET, 
+  issueSessionCookie,
   authenticateToken, 
   sensitiveRateLimiter, 
   inviteRateLimiter, 
@@ -472,16 +471,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
       })();
 
       const newTv = (db.prepare('SELECT token_version FROM users WHERE id = ?').get(userId) || {}).token_version || 0;
-      const newToken = jwt.sign({ id: userId, username: req.user.username, tv: newTv }, SECRET, { expiresIn: '24h' });
-      const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
-      const isSecure = (isProd || Boolean(req.headers['cf-ray'] || isHttps)) && isHttps;
-      res.cookie('token', newToken, {
-        httpOnly: true,
-        secure: isSecure,
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000,
-        path: '/'
-      });
+      issueSessionCookie(req, res, { id: userId, username: req.user.username, tv: newTv, remember: Boolean(req.tokenPayload?.rm) }, isProd);
       // Appareil courant conservé (`socketId`), autres appareils coupés
       const keepSocketId = typeof req.body.socketId === 'string' && req.body.socketId.length <= 64 ? req.body.socketId : null;
       cutOtherSessions(userId, keepSocketId, newTv);
@@ -524,16 +514,7 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
       })();
 
       const newTv = (db.prepare('SELECT token_version FROM users WHERE id = ?').get(userId) || {}).token_version || 0;
-      const newToken = jwt.sign({ id: userId, username: req.user.username, tv: newTv }, SECRET, { expiresIn: '24h' });
-      const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
-      const isSecure = (isProd || Boolean(req.headers['cf-ray'] || isHttps)) && isHttps;
-      res.cookie('token', newToken, {
-        httpOnly: true,
-        secure: isSecure,
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000,
-        path: '/'
-      });
+      issueSessionCookie(req, res, { id: userId, username: req.user.username, tv: newTv, remember: Boolean(req.tokenPayload?.rm) }, isProd);
 
       const disconnected = cutOtherSessions(userId, currentSocketId, newTv);
 

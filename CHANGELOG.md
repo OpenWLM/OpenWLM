@@ -11,6 +11,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Server update
+- No database migration, no new environment variable, no new HTTP route (Cloudflare WAF rules unchanged). Restart the service after deploying.
+
+### Added
+- **Android app** (first stage): a native Capacitor shell that loads the interface from the server chosen on first launch (messenger.guifort.ovh by default), changeable in Options → Security or from the offline screen. Locked with the phone's fingerprint, face or PIN when opened and after one minute in the background; received files are saved to Downloads; Android backup is disabled so remembered keys stay on the phone. Notifications while the app is closed will come in a later stage. In the app, PWA install, Web Push settings and the whole-computer inactivity option are hidden. Build, signing and install: [docs/ANDROID.md](docs/ANDROID.md).
+- **"Remember this device" keeps the session for 30 rolling days** (instead of 24 h): the server renews the session cookie as long as the device is used at least once a month, in the app and in the browser. Without this option, the session still lasts 24 h. Session revocation remains immediate.
+
+### Tests
+- `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
+
 ### Fixed
 - **Whole-computer inactivity** (Chrome / Edge): when the browser refused to start the detection although the permission was granted (e.g. a PWA opened at Windows startup or on resume from sleep), the option stayed off until the permission was toggled in the browser, and claimed the permission had been withdrawn. The detection now retries when the window comes back to the foreground (and after 5 s, 15 s and 60 s), Options shows a dedicated message, and the browser's error is logged to the console.
 - `scripts/openwlm-service.sh install` refuses a folder without `.env`: run from a development checkout, it pointed the service at that folder (no production secrets or database).

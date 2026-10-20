@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenWLM</title>
+  <!-- Page intégrée à l'app Android, affichée quand le serveur est injoignable. -->
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(to bottom, #e9f4fc 0%, #d5e9f8 100%);
+      font-family: 'Segoe UI', Roboto, sans-serif; color: #1a3b5c;
+    }
+    .box {
+      width: min(88vw, 360px); padding: 24px 20px; text-align: center;
+      background: #fff; border: 1px solid #b8d6f3; border-radius: 6px;
+      box-shadow: 0 2px 10px rgba(30, 95, 168, 0.15);
+    }
+    h1 { font-size: 18px; margin: 0 0 10px; }
+    p { font-size: 14px; line-height: 1.45; margin: 0 0 6px; }
+    .server { font-size: 13px; color: #555; word-break: break-all; }
+    button {
+      display: block; width: 100%; margin-top: 12px; padding: 10px; font-size: 15px;
+      border: 1px solid #7aa7d6; border-radius: 4px; cursor: pointer;
+      background: linear-gradient(to bottom, #f6fbff 0%, #dcecfb 100%); color: #1a3b5c;
+    }
+    button.secondary { background: none; border-color: transparent; color: #0066cc; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1 id="title"></h1>
+    <p id="text"></p>
+    <p class="server" id="server"></p>
+    <button type="button" id="retry"></button>
+    <button type="button" class="secondary" id="change" hidden></button>
+  </div>
+  <script>
+    (function () {
+      var fr = /^fr\b/i.test(navigator.language || '');
+      var texts = fr ? {
+        title: 'Serveur injoignable',
+        text: 'OpenWLM ne parvient pas à joindre le serveur. Vérifiez votre connexion Internet.',
+        retry: 'Réessayer',
+        change: 'Changer de serveur'
+      } : {
+        title: 'Server unreachable',
+        text: 'OpenWLM cannot reach the server. Check your Internet connection.',
+        retry: 'Try again',
+        change: 'Change server'
+      };
+      document.documentElement.lang = fr ? 'fr' : 'en';
+      document.getElementById('title').textContent = texts.title;
+      document.getElementById('text').textContent = texts.text;
+      document.getElementById('server').textContent = location.host;
+      document.getElementById('retry').textContent = texts.retry;
+      document.getElementById('retry').onclick = function () { location.replace('/'); };
+
+      var cap = window.Capacitor;
+      if (cap && typeof cap.nativePromise === 'function') {
+        var change = document.getElementById('change');
+        change.textContent = texts.change;
+        change.hidden = false;
+        change.onclick = function () { cap.nativePromise('OpenWLMNative', 'changeServer', {}); };
+      }
+      // Nouvel essai automatique au retour du réseau
+      window.addEventListener('online', function () { location.replace('/'); });
+    })();
+  </script>
+</body>
+</html>

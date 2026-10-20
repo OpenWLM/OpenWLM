@@ -4,7 +4,8 @@
  * Garde-fou automatisé anti-fuite de secrets (VAPID, JWT, certificats, credentials).
  * 
  * Scanne :
- * 1. La liste des fichiers trackés par Git (interdiction stricte de .env, .jwt_secret, .vapid_keys.json, *.pem, *.key).
+ * 1. La liste des fichiers trackés par Git (interdiction stricte de .env, .jwt_secret, .vapid_keys.json, *.pem, *.key,
+ *    keystores Android et clés de compte de service Firebase).
  * 2. Le contenu de tous les fichiers versionnés pour détecter toute chaîne ressemblant à une clé privée.
  * 3. Les modifications indexées (staged) si exécuté dans un hook pre-commit.
  * 4. La conformité du template .env.example (valeurs de secrets obligatoirement vides).
@@ -40,7 +41,13 @@ const FORBIDDEN_FILE_PATTERNS = [
   /\.secret$/,
   /\.sqlite$/,
   /\.sqlite3$/,
-  /^messenger\.db.*$/
+  /^messenger\.db.*$/,
+  // App Android : keystore de signature, ses mots de passe, clé de compte de service Firebase
+  /\.jks$/,
+  /\.keystore$/,
+  /^keystore\.properties$/,
+  /firebase-adminsdk.*\.json$/i,
+  /^service-account.*\.json$/i
 ];
 
 // Vérification des fichiers actuellement suivis par Git

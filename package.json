@@ -14,6 +14,9 @@
     "preview": "vite preview",
     "electron": "electron .",
     "start": "npm run build && concurrently \"node server/index.js\" \"wait-on http://localhost:3001 && npm run electron\"",
+    "android:sync": "cap sync android",
+    "android:icons": "node scripts/gen_android_icons.cjs",
+    "android:apk": "cap sync android && cd android && ./gradlew assembleRelease",
     "db:seed": "node scripts/seed-demo.js",
     "check:secrets": "node scripts/check_secrets.js",
     "waf:gen": "node scripts/gen_waf_rules.mjs --write",
@@ -29,6 +32,7 @@
     "e2e:install": "playwright install chromium"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.3",
     "axios": "^1.17.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
@@ -43,6 +47,8 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.0",
     "@ruffle-rs/ruffle": "^0.7.1",

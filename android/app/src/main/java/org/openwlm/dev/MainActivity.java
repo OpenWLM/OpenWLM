@@ -1,6 +1,7 @@
 package org.openwlm.dev;
 
 import android.app.KeyguardManager;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -16,6 +17,7 @@ import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.CapConfig;
+import com.getcapacitor.PluginHandle;
 
 /**
  * Coquille native d'OpenWLM : charge l'interface depuis le serveur choisi (ServerConfig),
@@ -26,6 +28,10 @@ public class MainActivity extends BridgeActivity {
     /** Durée en arrière-plan au-delà de laquelle l'app redemande le déverrouillage. */
     private static final long RELOCK_AFTER_MS = 60_000;
 
+    /** App à l'écran et déverrouillée : c'est alors l'interface qui affiche les alertes. */
+    private static volatile boolean userVisible;
+
+    private boolean started;
     private View lockOverlay;
     private BiometricPrompt biometricPrompt;
     private boolean locked;
@@ -91,15 +97,43 @@ public class MainActivity extends BridgeActivity {
         });
 
         if (isDeviceSecure()) lock();
+        handleChatIntent(getIntent());
+    }
+
+    static boolean isUserVisible() {
+        return userVisible;
+    }
+
+    private void updateVisibility() {
+        userVisible = started && !locked;
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleChatIntent(intent);
+    }
+
+    /** Notification touchée : ouvrir la conversation de l'expéditeur. */
+    private void handleChatIntent(Intent intent) {
+        int chatId = intent != null ? intent.getIntExtra(OpenWLMNotifications.EXTRA_CHAT_ID, 0) : 0;
+        if (chatId <= 0 || bridge == null) return;
+        intent.removeExtra(OpenWLMNotifications.EXTRA_CHAT_ID);
+        PluginHandle handle = bridge.getPlugin("OpenWLMNative");
+        if (handle != null && handle.getInstance() instanceof OpenWLMNativePlugin) {
+            ((OpenWLMNativePlugin) handle.getInstance()).openChat(chatId);
+        }
     }
 
     @Override
     public void onStart() {
         super.onStart();
+        started = true;
         if (!locked && backgroundSince > 0 && SystemClock.elapsedRealtime() - backgroundSince >= RELOCK_AFTER_MS && isDeviceSecure()) {
             lock();
         }
         backgroundSince = 0;
+        updateVisibility();
     }
 
     @Override
@@ -111,6 +145,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onStop() {
         super.onStop();
+        started = false;
+        updateVisibility();
         // La saisie du code du téléphone ouvre un écran système : ce n'est pas une sortie de l'app.
         if (!authInProgress && !isChangingConfigurations()) {
             backgroundSince = SystemClock.elapsedRealtime();
@@ -131,11 +167,13 @@ public class MainActivity extends BridgeActivity {
         }
         lockOverlay.setVisibility(View.VISIBLE);
         lockOverlay.bringToFront();
+        updateVisibility();
     }
 
     private void unlock() {
         locked = false;
         if (lockOverlay != null) lockOverlay.setVisibility(View.GONE);
+        updateVisibility();
     }
 
     private void authenticate() {

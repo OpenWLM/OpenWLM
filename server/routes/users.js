@@ -492,7 +492,8 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
    * reçoit aussitôt un nouveau cookie valide. Les connexions temps réel des autres appareils
    * reçoivent `session_revoked` et sont coupées ; celle de l'appareil courant (`socketId`) est
    * conservée. Les abonnements Push des autres appareils sont supprimés (un téléphone perdu ne
-   * reçoit plus de notifications), sauf celui de cet appareil (`keepPushEndpoint`).
+   * reçoit plus de notifications), sauf celui de cet appareil (`keepPushEndpoint` pour le
+   * navigateur, `keepFcmToken` pour l'app Android).
    */
   router.post('/sessions/revoke-others', authenticateToken, sensitiveRateLimiter, (req, res) => {
     const userId = req.user.id;
@@ -500,9 +501,10 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     if (!limit.allowed) {
       return res.status(429).json({ error: "Trop de demandes. Veuillez réessayer plus tard." });
     }
-    const { socketId, keepPushEndpoint } = req.body || {};
+    const { socketId, keepPushEndpoint, keepFcmToken } = req.body || {};
     const currentSocketId = typeof socketId === 'string' && socketId.length <= 64 ? socketId : null;
     const keepEndpoint = typeof keepPushEndpoint === 'string' && keepPushEndpoint.length <= 2048 ? keepPushEndpoint : null;
+    const keepToken = typeof keepFcmToken === 'string' && keepFcmToken.length <= 4096 ? keepFcmToken : null;
 
     try {
       let pushRemoved = 0;
@@ -511,6 +513,10 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
         pushRemoved = keepEndpoint
           ? db.prepare('DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint != ?').run(userId, keepEndpoint).changes
           : db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId).changes;
+        // App Android : jetons FCM des autres appareils (celui de cet appareil est gardé)
+        pushRemoved += keepToken
+          ? db.prepare('DELETE FROM fcm_tokens WHERE user_id = ? AND token != ?').run(userId, keepToken).changes
+          : db.prepare('DELETE FROM fcm_tokens WHERE user_id = ?').run(userId).changes;
       })();
 
       const newTv = (db.prepare('SELECT token_version FROM users WHERE id = ?').get(userId) || {}).token_version || 0;

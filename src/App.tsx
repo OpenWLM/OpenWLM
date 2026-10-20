@@ -53,7 +53,8 @@ import { ChatMessageLog } from './components/ChatMessageLog';
 import { ChatWindow } from './components/ChatWindow';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
-import { isNativeApp } from './utils/platform';
+import { isNativeApp, getNativeFcmToken } from './utils/platform';
+import { useNativePush, unregisterNativePush } from './hooks/useNativePush';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
 import DesktopToastContainer from './components/DesktopToast';
@@ -948,6 +949,9 @@ const App: React.FC = () => {
     setOpenChatIds,
     setActiveChatId
   });
+
+  // App Android : notifications FCM (jeton, autorisation, ouverture de conversation)
+  useNativePush({ userId, setOpenChatIds, setActiveChatId });
 
   // --- PURGE PROACTIVE DU STOCKAGE LOCAL (HYGIÈNE STRICTE) ---
   useEffect(() => {
@@ -3501,6 +3505,8 @@ const App: React.FC = () => {
       if (socket) {
         socket.emit('manual_disconnect');
       }
+      // App Android : cet appareil ne doit plus recevoir les notifications du compte
+      await unregisterNativePush();
       // SÉCURITÉ : Révocation du token côté serveur via l'endpoint dédié et suppression du cookie HttpOnly
       try {
         await fetch('/api/logout', {
@@ -3554,7 +3560,8 @@ const App: React.FC = () => {
   const revokeOtherSessions = async (): Promise<{ ok: boolean; disconnected?: number }> => {
     try {
       const sub = await getExistingPushSubscription().catch(() => null);
-      const res = await axios.post('/api/sessions/revoke-others', { socketId: socket?.id, keepPushEndpoint: sub?.endpoint });
+      const fcmToken = await getNativeFcmToken();
+      const res = await axios.post('/api/sessions/revoke-others', { socketId: socket?.id, keepPushEndpoint: sub?.endpoint, keepFcmToken: fcmToken ?? undefined });
       dropInMemoryToken();
       // Si l'abonnement de cet appareil n'a pas pu être lu à temps, il a été supprimé avec les
       // autres : réenregistrement (sans rien demander : seulement si déjà autorisé)

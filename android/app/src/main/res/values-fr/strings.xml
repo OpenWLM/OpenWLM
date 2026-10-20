@@ -12,4 +12,23 @@
     <string name="lock_unlock">Déverrouiller</string>
     <string name="lock_prompt_title">Déverrouiller OpenWLM</string>
     <string name="lock_prompt_subtitle">Utilisez votre empreinte, votre visage ou le verrouillage de l\'écran</string>
+
+    <string name="channel_messages">Messages</string>
+    <string name="channel_messages_desc">Nouveaux messages, Wizz et fichiers</string>
+    <string name="channel_calls">Appels</string>
+    <string name="channel_calls_desc">Appels audio et vidéo entrants (sonnerie)</string>
+    <string name="notif_message">Nouveau message reçu</string>
+    <string name="notif_private_message">🔒 Nouveau message privé</string>
+    <string name="notif_voice">🎤 Message vocal</string>
+    <string name="notif_file">📎 Fichier partagé</string>
+    <string name="notif_encrypted">🔐 Message chiffré (E2EE)</string>
+    <string name="notif_nudge">💥 [Wizz !]</string>
+    <string name="notif_call_audio">📞 Appel audio entrant</string>
+    <string name="notif_call_video">📹 Appel vidéo entrant</string>
+    <string name="notif_call_missed">📵 Appel manqué</string>
+    <string name="notif_call_answered">📞 Appel pris sur un autre appareil</string>
+    <string name="notif_call_declined">📵 Appel refusé</string>
+    <string name="notif_push_test">Les notifications Android fonctionnent !</string>
+    <string name="notif_answer">Répondre</string>
+    <string name="notif_decline">Refuser</string>
 </resources>

@@ -556,7 +556,12 @@
     "nativeVersionLabel": "App version:",
     "nativeLockOn": "The app is protected by the phone's screen lock (fingerprint, face or PIN) when opened and after one minute in the background.",
     "nativeLockOff": "No screen lock is set up on this phone, so the app cannot be protected. Set up a PIN or fingerprint in Android settings.",
-    "nativeNotifSoon": "In the Android app, notifications while the app is closed will come in a future version. For now, messages and calls are received while the app is open."
+    "nativeNotifSection": "App notifications",
+    "nativeNotifGranted": "On: messages and calls are notified even when the app is closed or the phone is asleep.",
+    "nativeNotifDenied": "Turned off in Android settings: you won't be alerted to messages and calls while the app is closed.",
+    "nativeNotifPrompt": "Allow notifications to be alerted to messages and calls while the app is closed.",
+    "nativeNotifNoFirebase": "This build of the app has no Firebase configuration: no notifications while the app is closed.",
+    "nativeNotifOpenSettings": "Open notification settings"
   },
   "modals": {
     "addContactTitle": "Add a contact",

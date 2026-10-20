@@ -6,6 +6,7 @@ import webpush from 'web-push';
 import { fileURLToPath } from 'url';
 import { db } from '../db.js';
 import { authenticateToken, sensitiveRateLimiter } from '../middleware/auth.js';
+import { createFcmDispatcher, getFcmMessaging, isFcmConfigured, isValidFcmToken } from '../utils/fcm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,20 +75,46 @@ export const initVapid = () => {
 
 export const vapidConfig = initVapid();
 
-/** Nombre d'abonnements Push d'un utilisateur (un appareil réveillable par Push ?). */
+// App Android : initialisée au démarrage pour journaliser la configuration ; sans clé, FCM est
+// simplement désactivé (getFcmMessaging renvoie null, jamais d'exception).
+getFcmMessaging();
+
+const dispatchFcm = createFcmDispatcher({
+  getMessaging: getFcmMessaging,
+  listTokens: (userId) => db.prepare('SELECT token FROM fcm_tokens WHERE user_id = ?').all(userId).map((r) => r.token),
+  deleteToken: (token) => db.prepare('DELETE FROM fcm_tokens WHERE token = ?').run(token)
+});
+
+/** Nombre d'appareils réveillables par Push d'un utilisateur (Web Push + app Android). */
 export const countPushSubscriptions = (userId) => {
   try {
-    return db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(userId)?.n || 0;
+    const web = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(userId)?.n || 0;
+    const fcm = isFcmConfigured() ? (db.prepare('SELECT COUNT(*) AS n FROM fcm_tokens WHERE user_id = ?').get(userId)?.n || 0) : 0;
+    return web + fcm;
   } catch {
     return 0;
   }
 };
 
 /**
- * `options` (facultatif) : { TTL, urgency } — ex. appel entrant : TTL court et urgence haute,
- * pour que le service de Push réveille l'appareil tout de suite et n'envoie pas un appel périmé.
+ * Notification Push vers tous les appareils d'un utilisateur : navigateurs (Web Push) et app
+ * Android (FCM). `options` (facultatif) : { TTL, urgency } — ex. appel entrant : TTL court et
+ * urgence haute, pour réveiller l'appareil tout de suite sans envoyer un appel périmé.
  */
 export const dispatchPushNotification = async (receiverId, payload, options = {}) => {
+  const [web, fcm] = await Promise.all([
+    dispatchWebPush(receiverId, payload, options),
+    dispatchFcm(receiverId, payload, options).catch((err) => {
+      console.warn('[FCM] Erreur dispatch notification:', err);
+      return { sent: 0, failed: 0, error: err.message };
+    })
+  ]);
+  const result = { sent: web.sent + fcm.sent, failed: web.failed + fcm.failed };
+  if (web.reason && fcm.reason) result.reason = web.reason;
+  return result;
+};
+
+const dispatchWebPush = async (receiverId, payload, options = {}) => {
   if (!vapidConfig) {
     return { sent: 0, failed: 0, reason: 'vapid_not_configured' };
   }
@@ -189,6 +216,7 @@ export const createPushRouter = () => {
     res.json({
       available: true,
       hasVapid: Boolean(vapidConfig),
+      hasFcm: isFcmConfigured(),
       publicKey: vapidConfig ? vapidConfig.publicKey : null,
       subject: vapidConfig ? vapidConfig.subject : null
     });
@@ -256,8 +284,51 @@ export const createPushRouter = () => {
     }
   });
 
+  /**
+   * App Android : enregistrement du jeton FCM de l'appareil pour le compte connecté.
+   * Un jeton identifie une installation de l'app : s'il était lié à un autre compte (changement
+   * de compte sur le téléphone), il passe au compte connecté, pour que l'ancien compte ne
+   * reçoive plus de notifications sur un appareil qu'il n'utilise plus.
+   */
+  router.post('/push/fcm/register', authenticateToken, sensitiveRateLimiter, (req, res) => {
+    const token = req.body?.token;
+    if (!isValidFcmToken(token)) {
+      return res.status(400).json({ error: 'Jeton FCM invalide.' });
+    }
+    try {
+      const existing = db.prepare('SELECT user_id FROM fcm_tokens WHERE token = ?').get(token);
+      if (!existing || Number(existing.user_id) !== Number(req.user.id)) {
+        const cnt = db.prepare('SELECT COUNT(*) AS c FROM fcm_tokens WHERE user_id = ?').get(req.user.id).c;
+        if (cnt >= 20) return res.status(400).json({ error: "Trop d'appareils Android enregistrés (maximum 20)." });
+      }
+      db.prepare(`
+        INSERT INTO fcm_tokens (user_id, token, created_at) VALUES (?, ?, ?)
+        ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, created_at = excluded.created_at
+      `).run(req.user.id, token, Date.now());
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[FCM] Erreur enregistrement jeton:', err);
+      res.status(500).json({ error: 'Erreur enregistrement jeton FCM.' });
+    }
+  });
+
+  /** App Android : retrait du jeton (déconnexion). Seul un jeton du compte connecté est retiré. */
+  router.post('/push/fcm/unregister', authenticateToken, sensitiveRateLimiter, (req, res) => {
+    const token = req.body?.token;
+    if (!isValidFcmToken(token)) {
+      return res.status(400).json({ error: 'Jeton FCM invalide.' });
+    }
+    try {
+      db.prepare('DELETE FROM fcm_tokens WHERE token = ? AND user_id = ?').run(token, req.user.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[FCM] Erreur retrait jeton:', err);
+      res.status(500).json({ error: 'Erreur retrait jeton FCM.' });
+    }
+  });
+
   router.post('/push/test', authenticateToken, sensitiveRateLimiter, async (req, res) => {
-    if (!vapidConfig) {
+    if (!vapidConfig && !isFcmConfigured()) {
       return res.status(400).json({ success: false, error: "Web Push non configuré sur le serveur (clés VAPID manquantes)." });
     }
 

@@ -5,6 +5,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import fr from './fr.json';
 import en from './en.json';
+import { setNativeLanguage } from '../utils/platform';
 
 export type Language = 'fr' | 'en';
 export type TranslationSchema = typeof fr;
@@ -57,6 +58,8 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (typeof document !== 'undefined') {
       document.documentElement.lang = language;
     }
+    // App Android : langue des notifications construites par le code natif
+    setNativeLanguage(language);
     // Langue transmise au service worker (textes des notifications Push), cf. public/sw.js
     try {
       caches?.open('openwlm-prefs')

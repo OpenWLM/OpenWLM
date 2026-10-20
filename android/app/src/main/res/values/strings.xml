@@ -18,4 +18,23 @@
     <string name="lock_unlock">Unlock</string>
     <string name="lock_prompt_title">Unlock OpenWLM</string>
     <string name="lock_prompt_subtitle">Use your fingerprint, face or screen lock</string>
+
+    <string name="channel_messages">Messages</string>
+    <string name="channel_messages_desc">New messages, nudges and files</string>
+    <string name="channel_calls">Calls</string>
+    <string name="channel_calls_desc">Incoming voice and video calls (ringtone)</string>
+    <string name="notif_message">New message</string>
+    <string name="notif_private_message">🔒 New private message</string>
+    <string name="notif_voice">🎤 Voice message</string>
+    <string name="notif_file">📎 Shared file</string>
+    <string name="notif_encrypted">🔐 Encrypted message (E2EE)</string>
+    <string name="notif_nudge">💥 [Nudge!]</string>
+    <string name="notif_call_audio">📞 Incoming voice call</string>
+    <string name="notif_call_video">📹 Incoming video call</string>
+    <string name="notif_call_missed">📵 Missed call</string>
+    <string name="notif_call_answered">📞 Call answered on another device</string>
+    <string name="notif_call_declined">📵 Call declined</string>
+    <string name="notif_push_test">Android notifications are working!</string>
+    <string name="notif_answer">Answer</string>
+    <string name="notif_decline">Decline</string>
 </resources>

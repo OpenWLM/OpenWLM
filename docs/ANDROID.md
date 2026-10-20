@@ -36,8 +36,50 @@ Dans l'app, l'interface masque ce qui n'existe pas dans une WebView Android : in
 PWA, réglages des notifications du navigateur / Web Push, option « inactivité de tout
 l'ordinateur ». Détection : `isNativeApp()` dans `src/utils/platform.ts`.
 
-**Pas encore** (étapes suivantes) : notifications app fermée (Firebase Cloud Messaging), écran
-d'appel natif. Pour l'instant, messages et appels arrivent quand l'app est ouverte.
+**Pas encore** (étape suivante) : écran d'appel natif (plein écran, écran verrouillé).
+
+## Notifications (Firebase Cloud Messaging)
+
+Le Web Push ne fonctionne pas dans une WebView Android : l'app reçoit ses notifications par
+FCM, même fermée ou téléphone en veille. Le serveur envoie **les deux** (Web Push pour les
+navigateurs, FCM pour l'app) à chaque `dispatchPushNotification`.
+
+- **Contenu** : le même que le Web Push — nom de l'expéditeur et clé de traduction (`l10n`),
+  jamais le texte d'un message ni l'offre d'un appel. Messages FCM « data » uniquement : c'est
+  l'app qui construit la notification, dans la langue choisie dans l'app
+  (`OpenWLMNotifications.java`).
+- **Appels** : priorité haute, durée de vie 45 s (`CALL_PUSH_TTL_S`). Notification « Appels »
+  avec la sonnerie du téléphone répétée (`FLAG_INSISTENT`), boutons **Répondre** (ouvre la
+  conversation ; le serveur redonne l'appel en attente à la connexion) et **Refuser**
+  (`POST /api/calls/decline` sans ouvrir l'app). Fin d'appel (`call_cancel`) : la sonnerie est
+  remplacée par « Appel manqué » / « Appel pris sur un autre appareil » / « Appel refusé ».
+- **App à l'écran** : pas de notification système, l'interface affiche ses propres alertes.
+- **Toucher** : ouvre la conversation de l'expéditeur.
+- **Jetons** : table `fcm_tokens` (un par installation). L'interface enregistre le jeton après la
+  connexion (`POST /api/push/fcm/register`) et à chaque renouvellement, le retire à la
+  déconnexion (`POST /api/push/fcm/unregister`). Un jeton repris par un autre compte (changement
+  de compte sur le téléphone) change de propriétaire. « Déconnecter mes autres sessions »
+  supprime les jetons des autres appareils. 20 appareils au plus par compte.
+- **Autorisation** (Android 13+) : demandée une fois après la connexion ; état, bouton et test
+  dans Options → Alertes.
+
+### Mise en place
+
+1. **Projet Firebase** (console.firebase.google.com) : ajouter une app Android
+   `org.openwlm.dev`, télécharger `google-services.json`.
+2. **App** : copier ce fichier dans `~/.openwlm/google-services.json` sur la machine de
+   compilation (ou variable `OPENWLM_GOOGLE_SERVICES`). `android/app/build.gradle` le copie dans
+   `android/app/` à chaque compilation (ignoré par Git). Sans lui, l'APK fonctionne sans
+   notifications app fermée (indiqué dans les Options).
+3. **Serveur** : Paramètres du projet → Comptes de service → **Générer une nouvelle clé
+   privée**. Ce JSON est un **secret** : uniquement sur la machine de prod, hors du dépôt,
+   droits 600, puis dans `.env` :
+   ```
+   FIREBASE_SERVICE_ACCOUNT=/chemin/absolu/vers/firebase-service-account.json
+   ```
+   Sans cette variable (ou si le fichier est invalide), le serveur démarre normalement, sans
+   FCM. Au démarrage, le journal indique `[FCM] Configuré (projet …)` ou la raison de
+   l'absence. `GET /api/push/status` renvoie `hasFcm`.
 
 ### Session d'un appareil mémorisé
 

@@ -13,7 +13,10 @@ import type { Socket } from 'socket.io-client';
 import ConnectionDiagnostics from './ConnectionDiagnostics';
 import FormatPicker from './FormatPicker';
 import QuickTextsEditor from './QuickTextsEditor';
-import { isNativeApp, getNativeAppInfo, openServerSettings, type NativeAppInfo } from '../utils/platform';
+import {
+  isNativeApp, getNativeAppInfo, openServerSettings, getNativeNotificationPermission, requestNativeNotificationPermission,
+  openNativeNotificationSettings, type NativeAppInfo, type NativeNotificationPermission
+} from '../utils/platform';
 import { hasPlusFormatting, visibleLength } from '../utils/plusFormat';
 
 /**
@@ -128,11 +131,16 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   // App Android : serveur, version et verrouillage (fournis par le code natif)
   const nativeApp = isNativeApp();
   const [nativeInfo, setNativeInfo] = useState<NativeAppInfo | null>(null);
+  const [nativeNotif, setNativeNotif] = useState<NativeNotificationPermission | null>(null);
   useEffect(() => {
     if (!nativeApp) return;
     let cancelled = false;
     getNativeAppInfo().then(info => { if (!cancelled) setNativeInfo(info); });
-    return () => { cancelled = true; };
+    const refresh = () => getNativeNotificationPermission().then(p => { if (!cancelled) setNativeNotif(p); });
+    refresh();
+    // Retour des réglages Android : l'autorisation a pu changer
+    document.addEventListener('visibilitychange', refresh);
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', refresh); };
   }, [nativeApp]);
   // « Déconnecter mes autres sessions » : confirmation dans l'onglet (pas de fenêtre du navigateur)
   const [revokeStep, setRevokeStep] = useState<'idle' | 'confirm' | 'busy' | 'done' | 'error'>('idle');
@@ -550,9 +558,37 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                 </div>
 
                 {nativeApp ? (
-                  <div className="options-subsection" style={{ marginTop: '16px' }}>
-                    <label className="options-label">{t.settings.nativeAppSection}</label>
-                    <div className="options-hint">{t.settings.nativeNotifSoon}</div>
+                  <div className="options-subsection" style={{ marginTop: '16px' }} data-testid="native-notifications">
+                    <label className="options-label">{t.settings.nativeNotifSection}</label>
+                    <div className="options-hint">
+                      {nativeInfo?.push === false ? t.settings.nativeNotifNoFirebase
+                        : nativeNotif === 'granted' ? t.settings.nativeNotifGranted
+                        : nativeNotif === 'denied' ? t.settings.nativeNotifDenied
+                        : t.settings.nativeNotifPrompt}
+                    </div>
+                    {nativeNotif === 'prompt' && (
+                      <button type="button" className="win-btn" style={{ marginTop: '6px' }}
+                        onClick={async () => setNativeNotif(await requestNativeNotificationPermission())}>
+                        {t.settings.browserNotifPrompt}
+                      </button>
+                    )}
+                    {nativeNotif === 'denied' && (
+                      <button type="button" className="win-btn" style={{ marginTop: '6px' }} onClick={() => { openNativeNotificationSettings(); }}>
+                        {t.settings.nativeNotifOpenSettings}
+                      </button>
+                    )}
+                    {nativeNotif === 'granted' && nativeInfo?.push !== false && (
+                      <div style={{ marginTop: '8px' }}>
+                        <button type="button" className="win-btn" style={{ fontSize: '11px', padding: '3px 10px' }} onClick={handleTestPush}>
+                          🔔 {t.settings.pushTestButton}
+                        </button>
+                        {pushTestFeedback && (
+                          <div className="options-hint" style={{ marginTop: '6px', color: pushTestFeedback === t.settings.pushTestSuccess ? '#1b7d23' : '#c02717' }}>
+                            {pushTestFeedback}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                 <>

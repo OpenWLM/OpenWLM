@@ -12,13 +12,18 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 ## [Non publié]
 
 ### Mise à jour du serveur
-- Aucune migration de base, aucune nouvelle variable d'environnement, aucune nouvelle route HTTP (règles WAF Cloudflare inchangées). Redémarrer le service après le déploiement.
+- Nouvelle table `fcm_tokens`, créée automatiquement au démarrage.
+- Nouvelles routes `POST /api/push/fcm/register` et `POST /api/push/fcm/unregister` : **mettre à jour les règles WAF Cloudflare** ([docs/CLOUDFLARE_WAF.md](docs/CLOUDFLARE_WAF.md)).
+- Nouvelle variable facultative `FIREBASE_SERVICE_ACCOUNT` (chemin de la clé de compte de service Firebase, hors dépôt) pour les notifications de l'app Android. Sans elle, le serveur fonctionne comme avant.
+- Nouvelle dépendance `firebase-admin` (`npm ci`). Redémarrer le service après le déploiement.
 
 ### Nouveautés
-- **Application Android** (première étape) : coquille native Capacitor qui charge l'interface depuis le serveur choisi au premier lancement (par défaut messenger.guifort.ovh), modifiable dans Options → Sécurité ou depuis l'écran hors ligne. Verrouillage par empreinte, visage ou code du téléphone à l'ouverture et après une minute en arrière-plan ; fichiers reçus enregistrés dans Téléchargements ; sauvegarde Android désactivée pour que les clés mémorisées restent sur le téléphone. Les notifications app fermée viendront dans une prochaine étape. Dans l'app, l'installation PWA, les réglages Web Push et l'option d'inactivité de tout l'ordinateur sont masqués. Compilation, signature et installation : [docs/ANDROID.md](docs/ANDROID.md).
+- **Application Android** (première étape) : coquille native Capacitor qui charge l'interface depuis le serveur choisi au premier lancement (par défaut messenger.guifort.ovh), modifiable dans Options → Sécurité ou depuis l'écran hors ligne. Verrouillage par empreinte, visage ou code du téléphone à l'ouverture et après une minute en arrière-plan ; fichiers reçus enregistrés dans Téléchargements ; sauvegarde Android désactivée pour que les clés mémorisées restent sur le téléphone. Dans l'app, l'installation PWA, les réglages Web Push et l'option d'inactivité de tout l'ordinateur sont masqués. Compilation, signature et installation : [docs/ANDROID.md](docs/ANDROID.md).
+- **Notifications de l'app Android** (Firebase Cloud Messaging) : messages, Wizz, fichiers et appels notifiés même app fermée ou téléphone en veille, avec le même contenu que le Web Push (nom et type, jamais le texte), traduits dans la langue de l'app. Appels : sonnerie du téléphone répétée, boutons Répondre / Refuser, remplacée par « Appel manqué » ou « Appel pris sur un autre appareil » à la fin de l'appel. Toucher une notification ouvre la conversation. Autorisation demandée après la connexion, état et test dans Options → Alertes. « Déconnecter mes autres sessions » arrête aussi les notifications des autres téléphones.
 - **« Se souvenir de cet appareil » garde la session 30 jours glissants** (au lieu de 24 h) : le serveur renouvelle le cookie de session tant que l'appareil sert au moins une fois par mois, dans l'app comme dans le navigateur. Sans cette option, la session dure toujours 24 h. La révocation des sessions reste immédiate.
 
 ### Tests
+- `tests/test_fcm_push.js` : format des messages FCM (jamais de contenu, priorité, durée de vie des appels), jetons expirés supprimés, routes d'enregistrement (authentification, format, changement de compte, plafond), révocation des autres sessions, démarrage du serveur avec et sans clé Firebase.
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections

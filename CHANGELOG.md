@@ -12,13 +12,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
-- No database migration, no new environment variable, no new HTTP route (Cloudflare WAF rules unchanged). Restart the service after deploying.
+- New `fcm_tokens` table, created automatically at startup.
+- New routes `POST /api/push/fcm/register` and `POST /api/push/fcm/unregister`: **update the Cloudflare WAF rules** ([docs/CLOUDFLARE_WAF.md](docs/CLOUDFLARE_WAF.md)).
+- New optional variable `FIREBASE_SERVICE_ACCOUNT` (path to the Firebase service account key, outside the repository) for Android app notifications. Without it, the server works as before.
+- New dependency `firebase-admin` (`npm ci`). Restart the service after deploying.
 
 ### Added
-- **Android app** (first stage): a native Capacitor shell that loads the interface from the server chosen on first launch (messenger.guifort.ovh by default), changeable in Options → Security or from the offline screen. Locked with the phone's fingerprint, face or PIN when opened and after one minute in the background; received files are saved to Downloads; Android backup is disabled so remembered keys stay on the phone. Notifications while the app is closed will come in a later stage. In the app, PWA install, Web Push settings and the whole-computer inactivity option are hidden. Build, signing and install: [docs/ANDROID.md](docs/ANDROID.md).
+- **Android app** (first stage): a native Capacitor shell that loads the interface from the server chosen on first launch (messenger.guifort.ovh by default), changeable in Options → Security or from the offline screen. Locked with the phone's fingerprint, face or PIN when opened and after one minute in the background; received files are saved to Downloads; Android backup is disabled so remembered keys stay on the phone. In the app, PWA install, Web Push settings and the whole-computer inactivity option are hidden. Build, signing and install: [docs/ANDROID.md](docs/ANDROID.md).
+- **Android app notifications** (Firebase Cloud Messaging): messages, nudges, files and calls are notified even when the app is closed or the phone is asleep, with the same content as Web Push (name and type, never the text), translated into the app's language. Calls: the phone's ringtone repeats, Answer / Decline buttons, replaced by "Missed call" or "Call answered on another device" when the call ends. Tapping a notification opens the conversation. Permission requested after sign-in, status and test in Options → Alerts. "Sign out my other sessions" also stops notifications on other phones.
 - **"Remember this device" keeps the session for 30 rolling days** (instead of 24 h): the server renews the session cookie as long as the device is used at least once a month, in the app and in the browser. Without this option, the session still lasts 24 h. Session revocation remains immediate.
 
 ### Tests
+- `tests/test_fcm_push.js`: FCM message format (never any content, priority, call lifetime), expired tokens removed, registration routes (authentication, format, account switch, cap), revoking other sessions, server startup with and without a Firebase key.
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed

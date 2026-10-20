@@ -1,5 +1,6 @@
 package org.openwlm.dev;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.KeyguardManager;
 import android.content.ContentResolver;
@@ -10,23 +11,58 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.messaging.FirebaseMessaging;
 import java.io.OutputStream;
+import java.lang.ref.WeakReference;
 
 /**
  * Pont minimal entre l'interface web et l'app Android. La page chargée vient du serveur :
  * ce plugin n'expose donc rien de sensible (pas d'accès aux fichiers ni aux clés).
  */
-@CapacitorPlugin(name = "OpenWLMNative")
+@CapacitorPlugin(
+    name = "OpenWLMNative",
+    permissions = { @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }) }
+)
 public class OpenWLMNativePlugin extends Plugin {
+
+    private static WeakReference<OpenWLMNativePlugin> instance = new WeakReference<>(null);
+
+    @Override
+    public void load() {
+        instance = new WeakReference<>(this);
+        OpenWLMNotifications.ensureChannels(getContext());
+    }
+
+    /** Nouveau jeton FCM : l'interface le renvoie au serveur (événement « fcmToken »). */
+    static void onFcmTokenRefreshed(String token) {
+        OpenWLMNativePlugin plugin = instance.get();
+        if (plugin == null) return; // app fermée : le jeton sera lu au prochain démarrage
+        JSObject data = new JSObject();
+        data.put("token", token);
+        plugin.notifyListeners("fcmToken", data, true);
+    }
+
+    /** Toucher d'une notification : ouvrir la conversation (événement « openChat », gardé jusqu'à lecture). */
+    void openChat(int senderId) {
+        JSObject data = new JSObject();
+        data.put("senderId", senderId);
+        notifyListeners("openChat", data, true);
+    }
 
     /** Taille maximale d'un fichier enregistré (données base64 décodées). */
     private static final int MAX_SAVE_BYTES = 100 * 1024 * 1024;
@@ -45,7 +81,84 @@ public class OpenWLMNativePlugin extends Plugin {
         }
         KeyguardManager km = ContextCompat.getSystemService(getContext(), KeyguardManager.class);
         ret.put("appLock", km != null && km.isDeviceSecure());
+        ret.put("push", isFirebaseAvailable());
         call.resolve(ret);
+    }
+
+    private boolean isFirebaseAvailable() {
+        return !FirebaseApp.getApps(getContext()).isEmpty();
+    }
+
+    /** Jeton FCM de cette installation (null si Firebase n'est pas configuré dans l'APK). */
+    @PluginMethod
+    public void getFcmToken(PluginCall call) {
+        if (!isFirebaseAvailable()) {
+            JSObject ret = new JSObject();
+            ret.put("token", null);
+            call.resolve(ret);
+            return;
+        }
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+            if (!task.isSuccessful()) {
+                call.reject("fcm_token_unavailable");
+                return;
+            }
+            JSObject ret = new JSObject();
+            ret.put("token", task.getResult());
+            call.resolve(ret);
+        });
+    }
+
+    /** « granted », « denied » ou « prompt » (Android 13+ : autorisation pas encore demandée). */
+    @PluginMethod
+    public void getNotificationPermission(PluginCall call) {
+        call.resolve(notificationPermissionResult());
+    }
+
+    @PluginMethod
+    public void requestNotificationPermission(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && getPermissionState("notifications") != PermissionState.GRANTED) {
+            requestPermissionForAlias("notifications", call, "onNotificationPermission");
+            return;
+        }
+        call.resolve(notificationPermissionResult());
+    }
+
+    @PermissionCallback
+    private void onNotificationPermission(PluginCall call) {
+        call.resolve(notificationPermissionResult());
+    }
+
+    private JSObject notificationPermissionResult() {
+        String state;
+        if (NotificationManagerCompat.from(getContext()).areNotificationsEnabled()) {
+            state = "granted";
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && getPermissionState("notifications") == PermissionState.PROMPT) {
+            state = "prompt";
+        } else {
+            state = "denied";
+        }
+        JSObject ret = new JSObject();
+        ret.put("state", state);
+        return ret;
+    }
+
+    /** Réglages Android des notifications de l'app (autorisation refusée définitivement). */
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName())
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(intent);
+        call.resolve();
+    }
+
+    /** Langue de l'app, pour les textes des notifications. */
+    @PluginMethod
+    public void setLanguage(PluginCall call) {
+        OpenWLMNotifications.setLanguage(getContext(), call.getString("lang"));
+        OpenWLMNotifications.ensureChannels(getContext());
+        call.resolve();
     }
 
     /** Ouvre l'écran de choix du serveur. */

@@ -556,7 +556,12 @@
     "nativeVersionLabel": "Version de l'application :",
     "nativeLockOn": "L'application est protégée par le verrouillage du téléphone (empreinte, visage ou code) à l'ouverture et après une minute en arrière-plan.",
     "nativeLockOff": "Aucun verrouillage d'écran n'est configuré sur ce téléphone : l'application ne peut pas être protégée. Configurez un code ou une empreinte dans les paramètres Android.",
-    "nativeNotifSoon": "Dans l'application Android, les notifications quand l'application est fermée arriveront dans une prochaine version. Pour l'instant, les messages et les appels sont reçus quand l'application est ouverte."
+    "nativeNotifSection": "Notifications de l'application",
+    "nativeNotifGranted": "Activées : messages et appels sont notifiés même quand l'application est fermée ou le téléphone en veille.",
+    "nativeNotifDenied": "Désactivées dans les réglages Android : vous ne serez pas prévenu des messages et appels quand l'application est fermée.",
+    "nativeNotifPrompt": "Autorisez les notifications pour être prévenu des messages et appels quand l'application est fermée.",
+    "nativeNotifNoFirebase": "Cette version de l'application a été compilée sans Firebase : pas de notifications quand l'application est fermée.",
+    "nativeNotifOpenSettings": "Ouvrir les réglages des notifications"
   },
   "modals": {
     "addContactTitle": "Ajouter un contact",

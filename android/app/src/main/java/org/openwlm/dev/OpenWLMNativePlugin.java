@@ -4,14 +4,10 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.KeyguardManager;
 import android.app.NotificationManager;
-import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
-import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Base64;
 import android.view.WindowManager;
@@ -29,6 +25,10 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.messaging.FirebaseMessaging;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 
@@ -52,6 +52,7 @@ public class OpenWLMNativePlugin extends Plugin {
     public void load() {
         instance = new WeakReference<>(this);
         OpenWLMNotifications.ensureChannels(getContext());
+        ChunkedFileSaver.cleanTemp(getContext());
     }
 
     /** Nouveau jeton FCM : l'interface le renvoie au serveur (événement « fcmToken »). */
@@ -78,6 +79,14 @@ public class OpenWLMNativePlugin extends Plugin {
     static void onHangUpRequested() {
         OpenWLMNativePlugin plugin = instance.get();
         if (plugin != null) plugin.notifyListeners("hangUp", new JSObject());
+    }
+
+    /** L'app affiche son écran de verrouillage (l'interface est derrière). */
+    @PluginMethod
+    public void isAppLocked(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("locked", MainActivity.isAppLocked());
+        call.resolve(ret);
     }
 
     /** L'interface affiche l'appel de `callerId` : l'écran d'appel natif et sa sonnerie s'arrêtent. */
@@ -190,8 +199,7 @@ public class OpenWLMNativePlugin extends Plugin {
         return nm != null && nm.canUseFullScreenIntent();
     }
 
-    /** Taille maximale d'un fichier enregistré (données base64 décodées). */
-    private static final int MAX_SAVE_BYTES = 100 * 1024 * 1024;
+    private final ChunkedFileSaver saver = new ChunkedFileSaver();
 
     @PluginMethod
     public void getInfo(PluginCall call) {
@@ -287,9 +295,27 @@ public class OpenWLMNativePlugin extends Plugin {
         call.resolve();
     }
 
+    /** L'écran de choix du serveur est ouvert (cf. handleOnResume). */
+    private boolean serverChangeOpen;
+
+    /**
+     * Retour dans l'app sans changement de serveur (annulé, ou même serveur) : l'interface, qui
+     * avait retiré le jeton FCM avant d'ouvrir l'écran, le réenregistre (« serverChangeCancelled »).
+     * Un vrai changement relance l'app, sans revenir ici.
+     */
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        if (serverChangeOpen) {
+            serverChangeOpen = false;
+            notifyListeners("serverChangeCancelled", new JSObject());
+        }
+    }
+
     /** Ouvre l'écran de choix du serveur. */
     @PluginMethod
     public void changeServer(PluginCall call) {
+        serverChangeOpen = true;
         Intent intent = new Intent(getContext(), ServerActivity.class);
         intent.putExtra(ServerActivity.EXTRA_EDIT, true);
         getActivity().startActivity(intent);
@@ -306,91 +332,125 @@ public class OpenWLMNativePlugin extends Plugin {
     }
 
     /**
-     * Enregistre un fichier déchiffré par l'interface (la WebView ignore les liens
-     * « download » vers un blob). Android 10+ : dossier Téléchargements, sans permission ;
-     * avant : l'utilisateur choisit l'emplacement.
+     * Enregistrement d'un fichier déchiffré par l'interface (la WebView ignore les liens
+     * « download » vers un blob), par morceaux : beginSave → appendChunk… → finishSave
+     * (ou abortSave). Android 10+ : dossier Téléchargements, sans permission ; Android 8-9 :
+     * l'utilisateur choisit l'emplacement à la fin.
      */
     @PluginMethod
-    public void saveFile(PluginCall call) {
+    public void beginSave(PluginCall call) {
         String name = sanitizeFileName(call.getString("fileName", "fichier"));
         String mime = call.getString("mimeType", "application/octet-stream");
+        Long size = call.getLong("size");
+        if (size != null && size > ChunkedFileSaver.MAX_BYTES) {
+            call.reject("too_large");
+            return;
+        }
+        try {
+            JSObject ret = new JSObject();
+            ret.put("id", saver.begin(getContext(), name, mime));
+            ret.put("maxChunkBytes", ChunkedFileSaver.MAX_CHUNK_BYTES);
+            call.resolve(ret);
+        } catch (IOException e) {
+            call.reject("save_failed");
+        }
+    }
+
+    @PluginMethod
+    public void appendChunk(PluginCall call) {
+        String id = call.getString("id");
         String data = call.getString("data");
-        if (data == null) {
-            call.reject("missing_data");
+        // Contrôle avant décodage : un morceau trop gros n'est jamais décodé en mémoire
+        if (id == null || data == null || data.length() > (ChunkedFileSaver.MAX_CHUNK_BYTES / 3 + 1) * 4) {
+            if (id != null) saver.abort(getContext(), id);
+            call.reject("invalid_chunk");
             return;
         }
         byte[] bytes;
         try {
             bytes = Base64.decode(data, Base64.DEFAULT);
         } catch (IllegalArgumentException e) {
-            call.reject("invalid_data");
+            saver.abort(getContext(), id);
+            call.reject("invalid_chunk");
             return;
         }
-        if (bytes.length > MAX_SAVE_BYTES) {
+        try {
+            saver.append(getContext(), id, bytes);
+            call.resolve();
+        } catch (ChunkedFileSaver.TooLargeException e) {
             call.reject("too_large");
+        } catch (IOException e) {
+            call.reject("save_failed");
+        }
+    }
+
+    @PluginMethod
+    public void finishSave(PluginCall call) {
+        ChunkedFileSaver.Session session;
+        try {
+            session = saver.finish(getContext(), call.getString("id", ""));
+        } catch (IOException e) {
+            call.reject("save_failed");
             return;
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ContentResolver resolver = getContext().getContentResolver();
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Downloads.DISPLAY_NAME, name);
-            values.put(MediaStore.Downloads.MIME_TYPE, mime);
-            values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-            values.put(MediaStore.Downloads.IS_PENDING, 1);
-            Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-            if (uri == null) {
-                call.reject("save_failed");
-                return;
-            }
-            try (OutputStream out = resolver.openOutputStream(uri)) {
-                if (out == null) throw new IllegalStateException("no stream");
-                out.write(bytes);
-            } catch (Exception e) {
-                resolver.delete(uri, null, null);
-                call.reject("save_failed");
-                return;
-            }
-            values.clear();
-            values.put(MediaStore.Downloads.IS_PENDING, 0);
-            resolver.update(uri, values, null, null);
+        if (session.uri != null) {
             JSObject ret = new JSObject();
             ret.put("saved", true);
             ret.put("location", "downloads");
             call.resolve(ret);
             return;
         }
-
+        // Android 8-9 : choix de l'emplacement, puis copie du fichier temporaire
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType(mime);
-        intent.putExtra(Intent.EXTRA_TITLE, name);
-        pendingBytes = bytes;
+        intent.setType(session.mimeType);
+        intent.putExtra(Intent.EXTRA_TITLE, session.fileName);
+        pendingTemp = session.temp;
         startActivityForResult(call, intent, "onSaveDocumentResult");
     }
 
-    private byte[] pendingBytes;
+    @PluginMethod
+    public void abortSave(PluginCall call) {
+        saver.abort(getContext(), call.getString("id", ""));
+        call.resolve();
+    }
+
+    private File pendingTemp;
 
     @ActivityCallback
     private void onSaveDocumentResult(PluginCall call, ActivityResult result) {
-        byte[] bytes = pendingBytes;
-        pendingBytes = null;
-        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null || bytes == null) {
-            JSObject ret = new JSObject();
-            ret.put("saved", false);
-            call.resolve(ret);
-            return;
-        }
-        try (OutputStream out = getContext().getContentResolver().openOutputStream(result.getData().getData())) {
-            if (out == null) throw new IllegalStateException("no stream");
-            out.write(bytes);
-            JSObject ret = new JSObject();
+        File temp = pendingTemp;
+        pendingTemp = null;
+        JSObject ret = new JSObject();
+        try {
+            if (temp == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
+                ret.put("saved", false);
+                call.resolve(ret);
+                return;
+            }
+            try (InputStream in = new FileInputStream(temp); OutputStream out = getContext().getContentResolver().openOutputStream(result.getData().getData())) {
+                if (out == null) throw new IOException("no_stream");
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            }
             ret.put("saved", true);
             ret.put("location", "picker");
             call.resolve(ret);
-        } catch (Exception e) {
+        } catch (IOException e) {
             call.reject("save_failed");
+        } finally {
+            if (temp != null) {
+                // noinspection ResultOfMethodCallIgnored
+                temp.delete();
+            }
         }
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        saver.abortAll(getContext());
+        super.handleOnDestroy();
     }
 
     private static String sanitizeFileName(String name) {

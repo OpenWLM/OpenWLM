@@ -4,7 +4,9 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.util.Log;
 import android.webkit.CookieManager;
+import android.webkit.WebSettings;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -22,6 +24,7 @@ public class CallActionReceiver extends BroadcastReceiver {
     static final String ACTION_DECLINE = "org.openwlm.dev.DECLINE_CALL";
     static final String ACTION_HANGUP = "org.openwlm.dev.HANGUP_CALL";
     static final String EXTRA_CALLER_ID = "callerId";
+    private static final String TAG = "OpenWLM";
 
     static PendingIntent declineIntent(Context context, int callerId) {
         Intent intent = new Intent(context, CallActionReceiver.class)
@@ -69,12 +72,17 @@ public class CallActionReceiver extends BroadcastReceiver {
                 conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "application/json");
                 if (cookie != null) conn.setRequestProperty("Cookie", cookie);
+                // Même agent que la WebView : la requête ressemble à celles de l'app (Cloudflare)
+                conn.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(context));
                 try (OutputStream out = conn.getOutputStream()) {
                     out.write(("{\"callerId\":" + callerId + "}").getBytes(StandardCharsets.UTF_8));
                 }
-                conn.getResponseCode();
-            } catch (Exception ignored) {
+                // Diagnostic (ni cookie ni identité) : 200 refusé, 404 plus d'appel en attente,
+                // 401/403 session ou Cloudflare
+                Log.i(TAG, "Refus d'appel : HTTP " + conn.getResponseCode());
+            } catch (Exception e) {
                 // Hors ligne : l'appel expirera de lui-même
+                Log.w(TAG, "Refus d'appel impossible : " + e.getClass().getSimpleName());
             } finally {
                 if (conn != null) conn.disconnect();
                 pending.finish();

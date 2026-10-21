@@ -12,6 +12,12 @@ OpenWLM choisi au premier lancement (par défaut `messenger.guifort.ovh`).
 - **Choix du serveur** : écran natif au premier lancement ; à changer ensuite dans
   Options → Sécurité → Application Android, ou depuis l'écran hors ligne. L'app vérifie que
   l'adresse répond comme un serveur OpenWLM (`GET /api/push/status`) ; HTTPS uniquement.
+  Changer de serveur coupe tout lien avec l'ancien : l'interface retire le jeton FCM du compte
+  sur l'ancien serveur avant d'ouvrir l'écran, puis, si le serveur change vraiment, l'app
+  supprime ce jeton chez Firebase (même si le retrait a échoué hors ligne), arrête toute
+  sonnerie ou tout appel en cours et retire ses notifications. Les identifiants de contacts
+  n'ont pas le même sens d'un serveur à l'autre. Annulé (ou même serveur) : le jeton est
+  réenregistré.
 - **Hors ligne** : si le serveur est injoignable, l'app affiche une page intégrée
   (`android-web/offline.html`) avec « Réessayer » et « Changer de serveur ».
 - **Navigation** : limitée au serveur choisi ; les autres liens s'ouvrent dans le navigateur.
@@ -28,7 +34,7 @@ et pour Firebase).
 | Session | « Se souvenir de cet appareil » garde la session 30 jours glissants (cf. ci-dessous). |
 | Appels | Écran d'appel Android, même téléphone verrouillé ; service d'appel pendant la conversation (cf. « Appels natifs »). |
 | Messages vocaux | Permission micro demandée par Android au premier usage. |
-| Fichiers reçus | Enregistrés dans **Téléchargements** (la WebView ignore les liens de téléchargement). |
+| Fichiers reçus | Enregistrés dans **Téléchargements** (la WebView ignore les liens de téléchargement), par morceaux de 1,5 Mo (`beginSave` / `appendChunk` / `finishSave`, `ChunkedFileSaver.java`) : jusqu'à 100 Mo sans charger le fichier entier en mémoire ; marqué « en cours » pendant l'écriture, supprimé en cas d'échec. |
 | Bouton Retour | Revient en arrière dans l'app, sinon la passe en arrière-plan sans la fermer. |
 | Sauvegarde Android | Désactivée (y compris transfert d'appareil) : les clés E2EE mémorisées en IndexedDB ne quittent pas le téléphone. |
 | Débogage WebView | Uniquement dans l'APK de debug (`chrome://inspect`). |
@@ -50,11 +56,21 @@ redonne l'appel en attente à l'appareil qui se connecte (cf. docs/CALLS.md).
   silencieux ou « Ne pas déranger » (écran d'appel sans son) ;
 - **Répondre** : l'app s'ouvre sur la conversation et **prend l'appel automatiquement** dès que le
   serveur le lui redonne (pas de second appui). Téléphone verrouillé : Android demande d'abord
-  de le déverrouiller ; l'app ne redemande alors pas son propre déverrouillage ;
-- **Refuser** : `POST /api/calls/decline` avec le cookie de session, sans ouvrir l'app ;
+  de le déverrouiller. L'app ne redemande pas son propre déverrouillage **seulement** si le
+  téléphone exigeait réellement un code ou une empreinte quand l'appel a sonné
+  (`isDeviceLocked` : faux pendant le délai de grâce ou en Smart Lock), n'en exige plus, et que
+  la réponse concerne l'appel qui sonne encore ; ce passe-droit sert une seule fois et dure
+  10 s (`AppLockPolicy`, testé : `AppLockPolicyTest`). Sinon, l'écran de verrouillage de l'app
+  s'affiche normalement, et un appel **vidéo** pris derrière lui démarre **caméra coupée**
+  (le correspondant en est informé ; bouton caméra pour l'allumer après déverrouillage) ;
+- **Refuser** : `POST /api/calls/decline` avec le cookie de session et l'agent de la WebView,
+  sans ouvrir l'app ; le code HTTP reçu est journalisé (`adb logcat -s OpenWLM`) ;
 - arrêt de la sonnerie : `call_cancel` reçu (« Appel manqué », « Appel pris sur un autre
   appareil », « Appel refusé »), appel affiché par l'interface (app ouverte), ou expiration de
-  l'appel (`expiresAt`) → « Appel manqué ». Un FCM d'appel déjà expiré est ignoré.
+  l'appel → « Appel manqué ». Durée de sonnerie : `expiresAt` (horloge du serveur) moins
+  l'heure d'envoi Firebase, donc indépendante de l'horloge du téléphone, bornée entre 5 et
+  90 s ; un appel dont la fin est dépassée de plus d'une minute est ignoré (`CallTiming`,
+  testé : `CallTimingTest`).
 
 **Pendant l'appel** (`OngoingCallService`, types « phoneCall », « microphone » et, en vidéo,
 « camera ») : démarré par l'interface quand l'appel s'établit (`startNativeCall`,
@@ -146,6 +162,15 @@ android --sdk="$ANDROID_HOME" sdk install platform-tools platforms/android-36 bu
 ```
 
 Gradle utilise jusqu'à 4 Go (`android/gradle.properties`).
+
+## Tests
+
+- Serveur : `npm test` (dont `tests/test_fcm_push.js`, `tests/test_session_renewal.js`).
+- Web : `npm run test:e2e` ; `e2e/android-save.spec.ts` simule le pont natif (plugin
+  OpenWLMNative) pour l'enregistrement par morceaux.
+- Natif (JVM, sans téléphone) : `cd android && ./gradlew :app:testDebugUnitTest`
+  (`AppLockPolicyTest`, `CallTimingTest`) ; lint : `./gradlew :app:lintDebug`.
+- Sur le téléphone : `adb logcat` et `chrome://inspect` (APK de debug).
 
 ## Signature
 

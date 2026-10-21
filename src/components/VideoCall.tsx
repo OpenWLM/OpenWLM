@@ -5,7 +5,7 @@ import { useI18n } from '../i18n';
 import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 import { formatNickname } from '../utils/NicknameFormatter';
 import { startCallKeepAlive, keepScreenOn } from '../utils/callKeepAlive';
-import { isNativeApp, startNativeCall, setNativeCallVideo } from '../utils/platform';
+import { isNativeApp, isNativeAppLocked, startNativeCall, setNativeCallVideo } from '../utils/platform';
 import { stripPlusTags } from '../utils/plusFormat';
 import {
   encryptMessagePayload,
@@ -71,6 +71,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const [notice, setNotice] = useState<string | null>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(!audioOnly);
+  /** Démarrer caméra coupée (cf. réponse automatique, app Android verrouillée). */
+  const startCamOffRef = useRef(false);
   const [duration, setDuration] = useState(0);
   const [quality, setQuality] = useState<Quality>('good');
   const [showDevices, setShowDevices] = useState(false);
@@ -421,6 +423,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         finish();
         return;
       }
+
+      // Appel vidéo pris depuis l'écran d'appel natif alors que l'app est verrouillée : caméra
+      // coupée au départ (celui qui tient le téléphone n'a pas déverrouillé l'app) ; on peut
+      // l'allumer ensuite avec le bouton caméra
+      if (!audioOnly && startCamOffRef.current) stream.getVideoTracks().forEach((track) => { track.enabled = false; });
 
       setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
@@ -797,8 +804,19 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   useEffect(() => {
     if (!autoAnswer || autoAnsweredRef.current || !isReceivingCall || callStatus !== 'ringing') return;
     autoAnsweredRef.current = true;
-    handleAcceptCall();
+    isNativeAppLocked().then((locked) => {
+      startCamOffRef.current = locked;
+      handleAcceptCall();
+    });
   });
+
+  // Caméra coupée au départ : le correspondant en est informé une fois l'appel établi
+  const camOffSentRef = useRef(false);
+  useEffect(() => {
+    if (callStatus !== 'connected' || !startCamOffRef.current || camOffSentRef.current) return;
+    camOffSentRef.current = true;
+    sendMediaState();
+  }, [callStatus, sendMediaState]);
 
   const handleRejectCall = () => {
     if (socket) socket.emit('call_reject', { target: activeChatId });

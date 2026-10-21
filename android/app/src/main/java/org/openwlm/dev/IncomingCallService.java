@@ -41,15 +41,21 @@ public class IncomingCallService extends Service {
     private static final String EXTRA_CALLER_ID = "callerId";
     private static final String EXTRA_NAME = "name";
     private static final String EXTRA_VIDEO = "video";
-    private static final String EXTRA_EXPIRES_AT = "expiresAt";
+    private static final String EXTRA_RING_MS = "ringMs";
     static final int NOTIFICATION_ID = 1001;
-    private static final long DEFAULT_RING_MS = 60_000;
+    /** Champ ajouté aux données FCM : heure d'envoi par les serveurs de Firebase. */
+    static final String DATA_SENT_TIME = "_sentTime";
     private static final long[] VIBRATION = { 0, 1000, 1000 };
 
     /** Appelant qui sonne (0 : aucun). */
     private static volatile int ringingCallerId;
-    /** Le téléphone était verrouillé quand l'appel a sonné (cf. MainActivity : pas de double déverrouillage). */
-    private static volatile boolean lockedWhenRang;
+    /**
+     * Le téléphone exigeait un code ou une empreinte quand l'appel a sonné : isDeviceLocked, qui
+     * est faux pendant le délai de grâce ou en Smart Lock (contrairement à isKeyguardLocked).
+     * Consommé une seule fois par MainActivity (consumeAnswerUnlock), remis à zéro à la fin de
+     * la sonnerie.
+     */
+    private static volatile boolean deviceLockedWhenRang;
     private static volatile String ringingName;
     private static volatile boolean ringingVideo;
 
@@ -66,17 +72,21 @@ public class IncomingCallService extends Service {
         }
     };
 
-    /** Appel entrant (message FCM « call »). Ignoré s'il a déjà expiré. */
+    /** Appel entrant (message FCM « call »). Ignoré s'il est périmé. */
     static void ring(Context context, Map<String, String> data) {
         int callerId = OpenWLMNotifications.parseId(data.containsKey("callerId") ? data.get("callerId") : data.get("senderId"));
-        long expiresAt = OpenWLMNotifications.parseLong(data.get("expiresAt"));
-        if (callerId <= 0 || (expiresAt > 0 && expiresAt <= System.currentTimeMillis())) return;
+        Long ringMs = CallTiming.ringDurationMs(
+            OpenWLMNotifications.parseLong(data.get("expiresAt")),
+            OpenWLMNotifications.parseLong(data.get(DATA_SENT_TIME)),
+            System.currentTimeMillis()
+        );
+        if (callerId <= 0 || ringMs == null) return;
         Intent intent = new Intent(context, IncomingCallService.class)
             .setAction(ACTION_RING)
             .putExtra(EXTRA_CALLER_ID, callerId)
             .putExtra(EXTRA_NAME, OpenWLMNotifications.callerName(data.get("title")))
             .putExtra(EXTRA_VIDEO, "callVideo".equals(data.get("l10n")))
-            .putExtra(EXTRA_EXPIRES_AT, expiresAt > 0 ? expiresAt : System.currentTimeMillis() + DEFAULT_RING_MS);
+            .putExtra(EXTRA_RING_MS, ringMs.longValue());
         try {
             ContextCompat.startForegroundService(context, intent);
         } catch (RuntimeException e) {
@@ -108,8 +118,16 @@ public class IncomingCallService extends Service {
         return ringingVideo;
     }
 
-    static boolean wasLockedWhenRang() {
-        return lockedWhenRang;
+    /**
+     * « Répondre » à l'appel de `chatId` : vrai si l'app peut s'ouvrir sans redemander son
+     * déverrouillage (cf. AppLockPolicy). À usage unique : l'indicateur est remis à zéro.
+     */
+    static synchronized boolean consumeAnswerUnlock(Context context, int chatId) {
+        KeyguardManager km = ContextCompat.getSystemService(context, KeyguardManager.class);
+        boolean lockedNow = km == null || km.isDeviceLocked();
+        boolean skip = AppLockPolicy.skipLockForAnswer(true, chatId, ringingCallerId, deviceLockedWhenRang, lockedNow);
+        deviceLockedWhenRang = false;
+        return skip;
     }
 
     @Override
@@ -128,14 +146,14 @@ public class IncomingCallService extends Service {
         int callerId = intent.getIntExtra(EXTRA_CALLER_ID, 0);
         String name = intent.getStringExtra(EXTRA_NAME);
         boolean video = intent.getBooleanExtra(EXTRA_VIDEO, false);
-        long expiresAt = intent.getLongExtra(EXTRA_EXPIRES_AT, System.currentTimeMillis() + DEFAULT_RING_MS);
+        long ringMs = intent.getLongExtra(EXTRA_RING_MS, CallTiming.DEFAULT_RING_MS);
 
         stopSounds();
         ringingCallerId = callerId;
         ringingName = name;
         ringingVideo = video;
         KeyguardManager km = ContextCompat.getSystemService(this, KeyguardManager.class);
-        lockedWhenRang = km != null && km.isKeyguardLocked();
+        deviceLockedWhenRang = km != null && km.isDeviceLocked();
 
         OpenWLMNotifications.ensureChannels(this);
         Notification notification = buildNotification(callerId, name, video);
@@ -152,7 +170,7 @@ public class IncomingCallService extends Service {
         OpenWLMNotifications.cancel(this, OpenWLMNotifications.callTag(callerId));
         startSounds();
         handler.removeCallbacks(timeout);
-        handler.postDelayed(timeout, Math.max(5_000, expiresAt - System.currentTimeMillis()));
+        handler.postDelayed(timeout, ringMs);
     }
 
     private Notification buildNotification(int callerId, String name, boolean video) {
@@ -236,6 +254,7 @@ public class IncomingCallService extends Service {
         handler.removeCallbacks(timeout);
         stopSounds();
         ringingCallerId = 0;
+        deviceLockedWhenRang = false;
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
         IncomingCallActivity.finishIfShowing();
     }
@@ -245,6 +264,7 @@ public class IncomingCallService extends Service {
         handler.removeCallbacksAndMessages(null);
         stopSounds();
         ringingCallerId = 0;
+        deviceLockedWhenRang = false;
         IncomingCallActivity.finishIfShowing();
         super.onDestroy();
     }

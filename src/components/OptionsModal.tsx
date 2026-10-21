@@ -13,8 +13,9 @@ import type { Socket } from 'socket.io-client';
 import ConnectionDiagnostics from './ConnectionDiagnostics';
 import FormatPicker from './FormatPicker';
 import QuickTextsEditor from './QuickTextsEditor';
+import { changeNativeServer } from '../hooks/useNativePush';
 import {
-  isNativeApp, getNativeAppInfo, openServerSettings, getNativeNotificationPermission, requestNativeNotificationPermission,
+  isNativeApp, getNativeAppInfo, getNativeNotificationPermission, requestNativeNotificationPermission,
   openNativeNotificationSettings, getNativeCallPermissions, requestNativeCallPermission,
   type NativeAppInfo, type NativeNotificationPermission, type NativeCallPermissions
 } from '../utils/platform';
@@ -431,7 +432,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   <div className="options-subsection" data-testid="native-app">
                     <label className="options-label">{t.settings.nativeAppSection}</label>
                     <div className="options-hint">{t.settings.nativeServerLabel} <strong>{nativeInfo?.server ?? '…'}</strong></div>
-                    <button type="button" className="win-btn" style={{ marginTop: '5px' }} onClick={() => { openServerSettings(); }}>{t.settings.nativeChangeServer}</button>
+                    <button type="button" className="win-btn" style={{ marginTop: '5px' }} onClick={() => { changeNativeServer(); }}>{t.settings.nativeChangeServer}</button>
                     <div className="options-hint" style={{ marginTop: '6px' }}>{nativeInfo?.appLock === false ? t.settings.nativeLockOff : t.settings.nativeLockOn}</div>
                     {nativeInfo?.versionName && (
                       <div className="options-hint">{t.settings.nativeVersionLabel} {nativeInfo.versionName} ({nativeInfo.versionCode})</div>

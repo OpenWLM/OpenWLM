@@ -12,13 +12,17 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.splashscreen.SplashScreen;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.messaging.FirebaseMessaging;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
@@ -89,10 +93,15 @@ public class ServerActivity extends AppCompatActivity {
                     showError(getString(R.string.server_error_unreachable, host));
                     return;
                 }
-                boolean changed = !host.equals(ServerConfig.getHost(this));
+                String previous = ServerConfig.getHost(this);
+                boolean changed = !host.equals(previous);
                 ServerConfig.setHost(this, host);
                 if (!changed && getIntent().getBooleanExtra(EXTRA_EDIT, false)) {
                     finish();
+                    return;
+                }
+                if (changed && previous != null) {
+                    leavePreviousServer(() -> openApp(true));
                     return;
                 }
                 openApp(changed);
@@ -123,6 +132,31 @@ public class ServerActivity extends AppCompatActivity {
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /**
+     * Changement de serveur : plus rien de l'ancien ne doit arriver sur ce téléphone. Les
+     * identifiants de contacts n'ont pas le même sens d'un serveur à l'autre (une notification
+     * de l'ancien ouvrirait le mauvais contact sur le nouveau, « Refuser » y refuserait l'appel
+     * d'un autre). L'interface a déjà retiré le jeton du compte sur l'ancien serveur ; on le
+     * supprime aussi chez Firebase pour qu'il ne serve plus même si ce retrait a échoué (hors
+     * ligne). Un nouveau jeton est obtenu et enregistré au prochain démarrage.
+     */
+    private void leavePreviousServer(Runnable then) {
+        IncomingCallService.stop(this, 0);
+        OngoingCallService.stop(this);
+        NotificationManagerCompat.from(this).cancelAll();
+        AtomicBoolean done = new AtomicBoolean(false);
+        Runnable once = () -> {
+            if (done.compareAndSet(false, true) && !isFinishing()) then.run();
+        };
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            once.run();
+            return;
+        }
+        setBusy(true);
+        FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener(task -> main.post(once));
+        main.postDelayed(once, 5_000);
     }
 
     private void openApp(boolean restart) {

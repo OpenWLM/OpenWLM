@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider : seulement les photos prises depuis un champ de fichier de l'interface
+     (Capacitor les écrit dans getExternalFilesDir(Pictures) avant de les transmettre à
+     l'appareil photo). Rien d'autre n'est partageable. -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <external-files-path name="captures" path="Pictures/" />
 </paths>

@@ -28,7 +28,10 @@ export interface NativeCallPermissions {
 interface OpenWLMNativePlugin {
   getInfo(): Promise<NativeAppInfo>;
   changeServer(): Promise<void>;
-  saveFile(options: { fileName: string; mimeType: string; data: string }): Promise<{ saved: boolean; location?: string }>;
+  beginSave(options: { fileName: string; mimeType: string; size: number }): Promise<{ id: string; maxChunkBytes: number }>;
+  appendChunk(options: { id: string; data: string }): Promise<void>;
+  finishSave(options: { id: string }): Promise<{ saved: boolean; location?: string }>;
+  abortSave(options: { id: string }): Promise<void>;
   getFcmToken(): Promise<{ token: string | null }>;
   getNotificationPermission(): Promise<{ state: NativeNotificationPermission }>;
   requestNotificationPermission(): Promise<{ state: NativeNotificationPermission }>;
@@ -37,12 +40,14 @@ interface OpenWLMNativePlugin {
   addListener(event: 'fcmToken', handler: (data: { token: string }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'openChat', handler: (data: { senderId: number; answer?: boolean }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'hangUp', handler: () => void): Promise<PluginListenerHandle>;
+  addListener(event: 'serverChangeCancelled', handler: () => void): Promise<PluginListenerHandle>;
   dismissIncomingCall(options: { callerId: number }): Promise<void>;
   startOngoingCall(options: { peerName: string; video: boolean }): Promise<void>;
   updateOngoingCall(options: { video: boolean }): Promise<void>;
   stopOngoingCall(): Promise<void>;
   setKeepScreenOn(options: { on: boolean }): Promise<void>;
   getCallPermissions(): Promise<NativeCallPermissions>;
+  isAppLocked(): Promise<{ locked: boolean }>;
   requestCallPermission(options: { kind: 'microphone' | 'camera' | 'fullScreen' }): Promise<void>;
 }
 
@@ -69,16 +74,35 @@ const blobToBase64 = (blob: Blob): Promise<string> =>
     reader.readAsDataURL(blob);
   });
 
+/** Taille des morceaux envoyés au code natif (multiple de 3 : base64 sans remplissage au milieu). */
+export const SAVE_CHUNK_BYTES = 3 * 512 * 1024;
+
+/** Découpe [0, size) en morceaux de `chunk` octets (dernier morceau plus court). */
+export const chunkRanges = (size: number, chunk: number = SAVE_CHUNK_BYTES): Array<[number, number]> => {
+  const ranges: Array<[number, number]> = [];
+  for (let start = 0; start < size; start += chunk) ranges.push([start, Math.min(size, start + chunk)]);
+  return ranges;
+};
+
 /**
  * Enregistre un fichier sur l'appareil.
  * Navigateur : lien de téléchargement. App Android : la WebView ignore ces liens, le fichier
- * passe par le code natif (dossier Téléchargements). Renvoie false si l'utilisateur a annulé.
+ * passe par le code natif (dossier Téléchargements), par morceaux de 1,5 Mo pour ne jamais
+ * charger un gros fichier entier dans le pont ni en mémoire native. Renvoie false si
+ * l'utilisateur a annulé (Android 8-9 : choix de l'emplacement).
  */
 export const saveBlob = async (blob: Blob, fileName: string): Promise<boolean> => {
   if (isNativeApp()) {
-    const data = await blobToBase64(blob);
-    const res = await OpenWLMNative.saveFile({ fileName, mimeType: blob.type || 'application/octet-stream', data });
-    return res.saved;
+    const { id } = await OpenWLMNative.beginSave({ fileName, mimeType: blob.type || 'application/octet-stream', size: blob.size });
+    try {
+      for (const [start, end] of chunkRanges(blob.size)) {
+        await OpenWLMNative.appendChunk({ id, data: await blobToBase64(blob.slice(start, end)) });
+      }
+    } catch (err) {
+      await OpenWLMNative.abortSave({ id }).catch(() => { /* déjà abandonné côté natif */ });
+      throw err;
+    }
+    return (await OpenWLMNative.finishSave({ id })).saved;
   }
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -115,6 +139,10 @@ export const setNativeLanguage = (lang: string): void => {
   if (isNativeApp()) OpenWLMNative.setLanguage({ lang }).catch(() => { /* ignore */ });
 };
 
+/** Retour de l'écran de choix du serveur sans changement (annulé ou même serveur). */
+export const onNativeServerChangeCancelled = (handler: () => void): Promise<PluginListenerHandle> | null =>
+  isNativeApp() ? OpenWLMNative.addListener('serverChangeCancelled', handler) : null;
+
 export const onNativeFcmToken = (handler: (token: string) => void): Promise<PluginListenerHandle> | null =>
   isNativeApp() ? OpenWLMNative.addListener('fcmToken', (data) => handler(data.token)) : null;
 
@@ -148,6 +176,16 @@ export const setNativeCallVideo = (video: boolean): void => {
   if (!isNativeApp()) return;
   OpenWLMNative.updateOngoingCall({ video }).catch(() => { /* ignore */ });
   OpenWLMNative.setKeepScreenOn({ on: video }).catch(() => { /* ignore */ });
+};
+
+/** L'app Android affiche son écran de verrouillage (empreinte / code pas encore donnés). */
+export const isNativeAppLocked = async (): Promise<boolean> => {
+  if (!isNativeApp()) return false;
+  try {
+    return (await OpenWLMNative.isAppLocked()).locked;
+  } catch {
+    return false;
+  }
 };
 
 export const getNativeCallPermissions = (): Promise<NativeCallPermissions | null> =>

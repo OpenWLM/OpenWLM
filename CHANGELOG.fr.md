@@ -25,10 +25,17 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **« Se souvenir de cet appareil » garde la session 30 jours glissants** (au lieu de 24 h) : le serveur renouvelle le cookie de session tant que l'appareil sert au moins une fois par mois, dans l'app comme dans le navigateur. Sans cette option, la session dure toujours 24 h. La révocation des sessions reste immédiate.
 
 ### Tests
+- `e2e/android-save.spec.ts` : app Android simulée, fichier reçu enregistré par morceaux et identique à l'original. Tests JVM de l'app (`AppLockPolicyTest`, `CallTimingTest`).
 - `tests/test_fcm_push.js` : format des messages FCM (jamais de contenu, priorité, durée de vie des appels), jetons expirés supprimés, routes d'enregistrement (authentification, format, changement de compte, plafond), révocation des autres sessions, démarrage du serveur avec et sans clé Firebase.
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections
+- **App Android, après revue de code** :
+  - « Répondre » à un appel ne dispense plus du déverrouillage de l'app que si le téléphone exigeait vraiment un code ou une empreinte à la sonnerie (pas pendant le délai de grâce ni en Smart Lock), une seule fois et pour l'appel qui sonne encore ; un appel vidéo pris derrière l'écran de verrouillage de l'app démarre caméra coupée.
+  - Changer de serveur retire le jeton de notifications du compte sur l'ancien serveur et le supprime chez Firebase, arrête sonnerie et appel en cours et retire les notifications : l'ancien serveur ne peut plus réveiller le téléphone ni faire refuser un appel sur le nouveau.
+  - Les fichiers reçus sont enregistrés par morceaux de 1,5 Mo : un fichier de 100 Mo ne risque plus de faire planter l'app.
+  - La durée de sonnerie ne dépend plus de l'horloge du téléphone (5 à 90 s) ; un appel n'est plus ignoré quand le téléphone avance.
+  - « Refuser » journalise la réponse du serveur ; le partage de fichiers interne (FileProvider) est limité aux photos prises depuis l'app.
 - **Inactivité de tout l'ordinateur** (Chrome / Edge) : quand le navigateur refusait de démarrer la détection alors que l'autorisation était accordée (PWA ouverte au démarrage de Windows ou à la sortie de veille, par exemple), l'option restait inopérante jusqu'à ce qu'on retire puis rende l'autorisation, et annonçait à tort une autorisation retirée. La détection est maintenant relancée quand la fenêtre revient au premier plan (et après 5 s, 15 s et 60 s), les Options affichent un message dédié et l'erreur du navigateur est écrite dans la console.
 - `scripts/openwlm-service.sh install` refuse un dossier sans `.env` : lancé depuis un dépôt de développement, il faisait tourner le service depuis ce dossier (sans secrets ni base de prod).
 

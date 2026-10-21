@@ -106,8 +106,16 @@ public class MainActivity extends BridgeActivity {
         return userVisible;
     }
 
+    /** Écran de verrouillage de l'app affiché. */
+    private static volatile boolean appLocked;
+
+    static boolean isAppLocked() {
+        return appLocked;
+    }
+
     private void updateVisibility() {
         userVisible = started && !locked;
+        appLocked = locked;
     }
 
     @Override
@@ -124,11 +132,10 @@ public class MainActivity extends BridgeActivity {
         intent.removeExtra(OpenWLMNotifications.EXTRA_CHAT_ID);
         intent.removeExtra(OpenWLMNotifications.EXTRA_ANSWER);
         if (answer) {
-            // Le téléphone verrouillé pendant la sonnerie vient d'être déverrouillé par son
-            // propriétaire pour répondre : pas de second déverrouillage de l'app
-            KeyguardManager km = ContextCompat.getSystemService(this, KeyguardManager.class);
-            if (IncomingCallService.wasLockedWhenRang() && km != null && !km.isKeyguardLocked()) {
-                skipLockUntil = SystemClock.elapsedRealtime() + 10_000;
+            // Téléphone verrouillé par code pendant la sonnerie, déverrouillé par son propriétaire
+            // pour répondre à CET appel : pas de second déverrouillage de l'app (AppLockPolicy)
+            if (IncomingCallService.consumeAnswerUnlock(this, chatId)) {
+                skipLockUntil = SystemClock.elapsedRealtime() + AppLockPolicy.SKIP_LOCK_MS;
                 if (locked) unlock();
             }
             IncomingCallService.stop(this, chatId);

@@ -11,7 +11,9 @@ import {
   getNativeNotificationPermission,
   requestNativeNotificationPermission,
   onNativeFcmToken,
-  onNativeOpenChat
+  onNativeOpenChat,
+  onNativeServerChangeCancelled,
+  openServerSettings
 } from '../utils/platform';
 
 /**
@@ -32,6 +34,16 @@ const registerToken = (token: string) =>
   axios.post('/api/push/fcm/register', { token }).catch((err) => {
     console.warn('[FCM] Enregistrement du jeton impossible:', err);
   });
+
+/**
+ * Changer de serveur : le jeton est d'abord retiré du compte sur le serveur actuel (sinon il
+ * continuerait d'y réveiller le téléphone). Si l'utilisateur annule, il est réenregistré
+ * (cf. useNativePush) ; s'il change de serveur, l'app supprime aussi le jeton chez Firebase.
+ */
+export const changeNativeServer = async (): Promise<void> => {
+  await unregisterNativePush();
+  await openServerSettings();
+};
 
 /** Retire le jeton de cet appareil du compte (à appeler avant la déconnexion). */
 export const unregisterNativePush = async (): Promise<void> => {
@@ -92,9 +104,14 @@ export function useNativePush(options: {
       if (perms.fullScreen !== 'granted') await requestNativeCallPermission('fullScreen');
     })();
     const handle = onNativeFcmToken((token) => { registerToken(token); });
+    // Écran de choix du serveur fermé sans changement : le jeton retiré est réenregistré
+    const cancelHandle = onNativeServerChangeCancelled(() => {
+      getNativeFcmToken().then((token) => { if (token) registerToken(token); });
+    });
     return () => {
       cancelled = true;
       handle?.then(h => h.remove());
+      cancelHandle?.then(h => h.remove());
     };
   }, [userId]);
 }

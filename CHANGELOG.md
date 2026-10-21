@@ -25,10 +25,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **"Remember this device" keeps the session for 30 rolling days** (instead of 24 h): the server renews the session cookie as long as the device is used at least once a month, in the app and in the browser. Without this option, the session still lasts 24 h. Session revocation remains immediate.
 
 ### Tests
+- `e2e/android-save.spec.ts`: simulated Android app, received file saved in chunks and identical to the original. JVM tests of the app (`AppLockPolicyTest`, `CallTimingTest`).
 - `tests/test_fcm_push.js`: FCM message format (never any content, priority, call lifetime), expired tokens removed, registration routes (authentication, format, account switch, cap), revoking other sessions, server startup with and without a Firebase key.
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Android app, after code review**:
+  - "Answer" only skips the app lock when the phone really required a PIN or fingerprint when the call rang (not during the grace period or with Smart Lock), once, and for the call still ringing; a video call taken behind the app lock screen starts with the camera off.
+  - Changing server removes the notification token from the account on the old server and deletes it at Firebase, stops ringing and any ongoing call, and clears notifications: the old server can no longer wake the phone or have a call declined on the new one.
+  - Received files are saved in 1.5 MB chunks: a 100 MB file no longer risks crashing the app.
+  - The ring duration no longer depends on the phone's clock (5 to 90 s); a call is no longer ignored when the phone's clock runs fast.
+  - "Decline" logs the server's response; the internal file sharing (FileProvider) is limited to photos taken from the app.
 - **Whole-computer inactivity** (Chrome / Edge): when the browser refused to start the detection although the permission was granted (e.g. a PWA opened at Windows startup or on resume from sleep), the option stayed off until the permission was toggled in the browser, and claimed the permission had been withdrawn. The detection now retries when the window comes back to the foreground (and after 5 s, 15 s and 60 s), Options shows a dedicated message, and the browser's error is logged to the console.
 - `scripts/openwlm-service.sh install` refuses a folder without `.env`: run from a development checkout, it pointed the service at that folder (no production secrets or database).
 

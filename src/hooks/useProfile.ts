@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import axios from 'axios';
+import { getExistingPushSubscription } from '../utils/PushNotificationManager';
+import { getNativeFcmToken } from '../utils/platform';
+import { useI18n } from '../i18n';
+import { notify } from '../utils/dialogs';
 import E2EEKeyStorage from '../utils/E2EEKeyStorage';
 import {
   deriveZeroKnowledgeKeys,
@@ -88,6 +92,7 @@ export interface ProfileApi {
 const SYSTEM_IDLE_RETRY_DELAYS_MS = [5_000, 15_000, 60_000];
 
 export function useProfile(options: UseProfileOptions): ProfileApi {
+  const { t } = useI18n();
   const {
     user,
     setUser,
@@ -145,8 +150,10 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       }
     } catch (err) {
       console.error("Échec de synchronisation du profil:", err);
+      // Refus du serveur (pseudo / message perso trop long…) : le dire, plutôt qu'en console
+      notify(t.notices.profileSaveFailed, { icon: '⚠️' });
     }
-  }, [user, setUser, myNickname, myPSM, myAvatar, myScene]);
+  }, [user, setUser, myNickname, myPSM, myAvatar, myScene, t]);
 
   /**
    * DÉTECTION D'INACTIVITÉ (AUTO-AWAY)
@@ -328,11 +335,16 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       // 5. Envoyer { oldAuthKeyHex, newAuthKeyHex, newEncryptedPrivateKey }. Le serveur vérifie
       //    l'ancien mot de passe, renouvelle le cookie de CET appareil et coupe les connexions
       //    des autres (ils reviennent à l'écran de connexion).
+      // Les autres appareils sont déconnectés et ne reçoivent plus de notifications : on indique
+      // au serveur les cibles Push de CET appareil, à garder
+      const [pushSub, fcmToken] = await Promise.all([getExistingPushSubscription().catch(() => null), getNativeFcmToken()]);
       const res = await axios.post('/api/user/change-password', {
         oldAuthKeyHex,
         newAuthKeyHex,
         newEncryptedPrivateKey,
-        socketId
+        socketId,
+        keepPushEndpoint: pushSub?.endpoint,
+        keepFcmToken: fcmToken ?? undefined
       });
       if (res.data && res.data.success) {
         setUser(prev => prev ? { ...prev, encrypted_private_key: JSON.stringify(newEncryptedPrivateKey) } : null);

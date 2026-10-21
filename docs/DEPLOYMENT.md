@@ -69,12 +69,18 @@ remplace pm2 (le processus pm2 `openwlm` est arrêté et retiré à l'installati
 
 ```bash
 ./scripts/openwlm-service.sh install     # installe et démarre
-./scripts/openwlm-service.sh restart     # après un déploiement
+./scripts/openwlm-service.sh restart     # après un déploiement (npm ci + npm run build d'abord)
 ./scripts/openwlm-service.sh status      # état + réponse HTTP
 ./scripts/openwlm-service.sh logs [-f]   # journaux
 ./scripts/openwlm-service.sh uninstall   # arrête et supprime
 ./scripts/openwlm-service.sh unit        # affiche le fichier de service sans rien installer
 ```
+
+`restart` relance seulement le processus : il ne reconstruit pas l'interface. Après une mise à
+jour des fichiers, faire `npm ci` (si `package-lock.json` a changé) puis `npm run build` (si
+`src/` ou `public/` ont changé) **avant** `restart`. Une modification limitée à `src/` ne demande
+même pas de redémarrage : le serveur sert `dist/` tel quel. Le serveur s'arrête proprement sur
+SIGTERM (connexions temps réel et base fermées).
 
 ## Option 3 — Docker
 

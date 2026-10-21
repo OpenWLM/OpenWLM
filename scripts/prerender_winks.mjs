@@ -53,6 +53,17 @@ function startServer(port) {
 const args = process.argv.slice(2);
 const ids = args.length ? args : fs.readdirSync(winksDir).filter((d) => fs.existsSync(path.join(winksDir, d, `${d}.swf`)));
 
+// Les .swf d'origine ne sont plus dans le dépôt (retirés par f887997, seuls les rendus WebP/WebM
+// sont servis) : les récupérer depuis l'historique avant de relancer le pré-rendu
+const missing = ids.filter((id) => !fs.existsSync(path.join(winksDir, id, `${id}.swf`)));
+if (ids.length === 0 || missing.length > 0) {
+  console.error(`Aucun fichier .swf source${missing.length ? ` pour : ${missing.join(', ')}` : ''}.`);
+  console.error('Les sources ont été retirées du dépôt (commit f887997). Pour un wink :');
+  console.error('  git checkout f887997^ -- public/assets/winks/<id>/<id>.swf');
+  console.error('puis : npm run winks:prerender <id>  (et ne pas commiter le .swf).');
+  process.exit(1);
+}
+
 const PORT = 3199;
 const server = await startServer(PORT);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'winkpr-'));

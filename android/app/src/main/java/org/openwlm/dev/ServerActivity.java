@@ -11,6 +11,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.splashscreen.SplashScreen;
@@ -94,22 +95,43 @@ public class ServerActivity extends AppCompatActivity {
                     return;
                 }
                 String previous = ServerConfig.getHost(this);
-                boolean changed = !host.equals(previous);
-                ServerConfig.setHost(this, host);
-                if (!changed && getIntent().getBooleanExtra(EXTRA_EDIT, false)) {
-                    finish();
+                // Autre serveur que celui par défaut, choisi pour la première fois : rien ne prouve
+                // qui l'exploite, l'utilisateur doit confirmer qu'il lui fait confiance
+                if (!host.equals(ServerConfig.DEFAULT_HOST) && !host.equals(previous)) {
+                    new AlertDialog.Builder(this)
+                        .setTitle(R.string.server_trust_title)
+                        .setMessage(getString(R.string.server_trust_message, host))
+                        .setPositiveButton(R.string.server_trust_confirm, (d, w) -> applyServer(host, previous))
+                        .setNegativeButton(R.string.server_cancel, null)
+                        .show();
                     return;
                 }
-                if (changed && previous != null) {
-                    leavePreviousServer(() -> openApp(true));
-                    return;
-                }
-                openApp(changed);
+                applyServer(host, previous);
             });
         });
     }
 
-    /** Vérifie que l'hôte répond comme un serveur OpenWLM (GET /api/push/status, public). */
+    private void applyServer(String host, String previous) {
+        boolean changed = !host.equals(previous);
+        ServerConfig.setHost(this, host);
+        if (!changed && getIntent().getBooleanExtra(EXTRA_EDIT, false)) {
+            finish();
+            return;
+        }
+        if (changed && previous != null) {
+            leavePreviousServer(() -> openApp(true));
+            return;
+        }
+        openApp(changed);
+    }
+
+    /**
+     * Vérifie seulement que l'hôte répond comme un serveur OpenWLM (GET /api/push/status,
+     * public). Ce n'est PAS une authentification : n'importe quel serveur HTTPS peut imiter
+     * cette réponse. D'où l'avertissement et la confirmation pour un serveur autre que celui
+     * par défaut (le serveur choisi affiche l'interface, reçoit l'identifiant et la clé de
+     * connexion, et accède au pont natif).
+     */
     private static boolean isOpenWlmServer(String host) {
         HttpURLConnection conn = null;
         try {

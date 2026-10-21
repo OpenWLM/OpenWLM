@@ -45,16 +45,22 @@ export const FormatPicker: React.FC<{ onWrap: (open: string, close: string) => v
     const inside = (target: EventTarget | null) =>
       !!target && (rootRef.current?.contains(target as Node) || panelRef.current?.contains(target as Node));
     const onDown = (e: PointerEvent) => { if (!inside(e.target)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    // Échap ferme seulement le panneau : écouté en capture et arrêté, pour que la fenêtre qui
+    // le contient (Options…) ne se ferme pas aussi
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setOpen(false);
+    };
     // Le panneau est positionné une fois pour toutes : on le ferme si la page bouge
     const onMove = (e: Event) => { if (!inside(e.target)) setOpen(false); };
     document.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     window.addEventListener('resize', onMove);
     window.addEventListener('scroll', onMove, true);
     return () => {
       document.removeEventListener('pointerdown', onDown);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('resize', onMove);
       window.removeEventListener('scroll', onMove, true);
     };

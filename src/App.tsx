@@ -41,7 +41,7 @@ import { AvatarModal } from './components/AvatarModal';
 import { WinksModal } from './components/WinksModal';
 import { BgModal } from './components/BgModal';
 import { PasswordModal } from './components/PasswordModal';
-import { getExistingPushSubscription, closeCallPushNotifications, subscribeToWebPush } from './utils/PushNotificationManager';
+import { getExistingPushSubscription, closeCallPushNotifications, subscribeToWebPush, unsubscribeFromWebPush } from './utils/PushNotificationManager';
 import { AddContactModal } from './components/AddContactModal';
 import { FontModal, type FontSettings } from './components/FontModal';
 import { AllEmoticonsModal } from './components/AllEmoticonsModal';
@@ -53,7 +53,7 @@ import { ChatMessageLog } from './components/ChatMessageLog';
 import { ChatWindow } from './components/ChatWindow';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
-import { isNativeApp, getNativeFcmToken, dismissNativeIncomingCall } from './utils/platform';
+import { isNativeApp, getNativeFcmToken, dismissNativeIncomingCall, resetNativePushToken } from './utils/platform';
 import { useNativePush, unregisterNativePush } from './hooks/useNativePush';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
@@ -104,7 +104,7 @@ import { useAppPrefs, getAppPrefs, updateAppPrefs, setPresenceForSounds } from '
 import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
 import { systemLine } from './utils/systemLine';
 import { commandSuggestions, isTestContactCommand } from './utils/chatCommands';
-import { hasPlusFormatting, renderPlusText, stripPlusTags } from './utils/plusFormat';
+import { hasPlusFormatting, renderPlusText, stripPlusTags, visibleLength } from './utils/plusFormat';
 import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
 import { notify } from './utils/dialogs';
 
@@ -949,6 +949,30 @@ const App: React.FC = () => {
     setOpenChatIds,
     setActiveChatId
   });
+
+  // Édition en place du pseudo et du message perso : mêmes limites que les Options et le
+  // serveur (50 / 150 caractères visibles) ; trop long → message et retour à la valeur enregistrée
+  // Valeur au début de l'édition (focus du champ), rétablie si la saisie est trop longue
+  const nicknameBeforeEditRef = useRef('');
+  const psmBeforeEditRef = useRef('');
+  const commitNickname = () => {
+    setIsEditingNickname(false);
+    if (visibleLength(myNickname) > 50) {
+      notify(t.extras.nickTooLong, { icon: '⚠️' });
+      setMyNickname(nicknameBeforeEditRef.current);
+      return;
+    }
+    syncProfile({ nickname: myNickname });
+  };
+  const commitPSM = () => {
+    setIsEditingPSM(false);
+    if (visibleLength(myPSM) > 150) {
+      notify(t.extras.psmTooLong, { icon: '⚠️' });
+      setMyPSM(psmBeforeEditRef.current);
+      return;
+    }
+    syncProfile({ psm: myPSM });
+  };
 
   // App Android : « Répondre » sur l'écran d'appel natif. L'appel est pris dès que l'interface
   // l'affiche (le serveur le redonne à la connexion), sans second appui sur « Répondre ».
@@ -2073,7 +2097,9 @@ const App: React.FC = () => {
           hasSystemPermission
         });
 
-        let previewText = decryptedData.text || '';
+        // Aperçu en texte simple : les balises de mise en forme ([c=4]…[/c]) ne s'affichent pas
+        // dans une notification ou un toast
+        let previewText = stripPlusTags(decryptedData.text || '');
         if (decryptedData.type === 'file' && fileData) {
           previewText = tRef.current.notices.previewFile.replace('{name}', fileData.fileName || tRef.current.notices.fileDefaultName);
         } else if (decryptedData.audio || decryptedData.type === 'audio') {
@@ -3523,8 +3549,10 @@ const App: React.FC = () => {
       if (socket) {
         socket.emit('manual_disconnect');
       }
-      // App Android : cet appareil ne doit plus recevoir les notifications du compte
+      // Cet appareil ne doit plus recevoir les notifications du compte (le serveur supprime
+      // aussi, à la déconnexion, les abonnements Push et jetons FCM de tous les appareils)
       await unregisterNativePush();
+      await unsubscribeFromWebPush().catch(() => false);
       // SÉCURITÉ : Révocation du token côté serveur via l'endpoint dédié et suppression du cookie HttpOnly
       try {
         await fetch('/api/logout', {
@@ -3535,8 +3563,12 @@ const App: React.FC = () => {
       } catch (e) {
         console.warn('[Logout] Erreur appel /api/logout:', e);
       }
-    } else if (socket) {
-      socket.disconnect();
+    } else {
+      socket?.disconnect();
+      // Session révoquée ailleurs : le serveur a déjà supprimé les cibles Push de cet appareil ;
+      // on se désabonne aussi localement (navigateur, et jeton FCM supprimé chez Firebase)
+      await unsubscribeFromWebPush().catch(() => false);
+      await resetNativePushToken();
     }
     draftsRef.current = {};
     // SÉCURITÉ : Purge complète du stockage JS
@@ -4133,8 +4165,9 @@ const App: React.FC = () => {
                     maxLength={300}
                     autoFocus 
                     onChange={e => setMyNickname(e.target.value)} 
-                    onBlur={() => { setIsEditingNickname(false); syncProfile({ nickname: myNickname }); }} 
-                    onKeyDown={e => e.key === 'Enter' && (setIsEditingNickname(false), syncProfile({ nickname: myNickname }))} 
+                    onFocus={() => { nicknameBeforeEditRef.current = myNickname; }}
+                    onBlur={commitNickname} 
+                    onKeyDown={e => e.key === 'Enter' && commitNickname()} 
                   />
                 ) : (
                   <span className="nickname-display" onClick={() => setIsEditingNickname(true)} title={t.roster.editTooltip}>{formatNickname(myNickname)}</span>
@@ -4200,8 +4233,9 @@ const App: React.FC = () => {
                   maxLength={600}
                   autoFocus 
                   onChange={e => setMyPSM(e.target.value)} 
-                  onBlur={() => { setIsEditingPSM(false); syncProfile({ psm: myPSM }); }} 
-                  onKeyDown={e => e.key === 'Enter' && (setIsEditingPSM(false), syncProfile({ psm: myPSM }))} 
+                  onFocus={() => { psmBeforeEditRef.current = myPSM; }}
+                  onBlur={commitPSM} 
+                  onKeyDown={e => e.key === 'Enter' && commitPSM()} 
                 />
               ) : (
                 <div className="user-psm-display" onClick={() => setIsEditingPSM(true)} title={t.roster.editTooltip}>

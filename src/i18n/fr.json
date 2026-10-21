@@ -727,7 +727,8 @@
     "previewNudge": "💥 [Wizz !]",
     "toastOpenHint": "Cliquer pour ouvrir la conversation",
     "winkAlt": "Clin d'œil {name}",
-    "pushTestNotConfigured": "Le Push n'est pas configuré sur le serveur (clés VAPID manquantes)."
+    "pushTestNotConfigured": "Le Push n'est pas configuré sur le serveur (clés VAPID manquantes).",
+    "profileSaveFailed": "Le profil n'a pas pu être enregistré (pseudo ou message perso refusé par le serveur, ou connexion perdue)."
   },
   "errors": {
     "invalid_credentials": "Identifiants invalides.",

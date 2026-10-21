@@ -10,8 +10,14 @@ OpenWLM choisi au premier lancement (par défaut `messenger.guifort.ovh`).
   le navigateur, sans CORS ni changement des en-têtes, et reçoit les mises à jour de
   l'interface sans nouvel APK.
 - **Choix du serveur** : écran natif au premier lancement ; à changer ensuite dans
-  Options → Sécurité → Application Android, ou depuis l'écran hors ligne. L'app vérifie que
-  l'adresse répond comme un serveur OpenWLM (`GET /api/push/status`) ; HTTPS uniquement.
+  Options → Sécurité → Application Android, ou depuis l'écran hors ligne. L'app vérifie
+  seulement que l'adresse répond comme un serveur OpenWLM (`GET /api/push/status`, HTTPS) :
+  **ce n'est pas une authentification**, n'importe quel serveur peut imiter cette réponse. Or le
+  serveur choisi affiche l'interface, reçoit l'identifiant et la clé de connexion (qu'il
+  pourrait rejouer sur le vrai serveur) et accède au pont natif. L'écran le dit donc
+  explicitement (« serveur de confiance uniquement »), et tout serveur autre que celui par
+  défaut demande une confirmation la première fois. Durcissement possible plus tard : empreinte
+  ou QR code du serveur, ou liste de serveurs autorisés.
   Changer de serveur coupe tout lien avec l'ancien : l'interface retire le jeton FCM du compte
   sur l'ancien serveur avant d'ouvrir l'écran, puis, si le serveur change vraiment, l'app
   supprime ce jeton chez Firebase (même si le retrait a échoué hors ligne), arrête toute
@@ -104,10 +110,17 @@ navigateurs, FCM pour l'app) à chaque `dispatchPushNotification`.
 - **App à l'écran** : pas de notification système, l'interface affiche ses propres alertes.
 - **Toucher** : ouvre la conversation de l'expéditeur.
 - **Jetons** : table `fcm_tokens` (un par installation). L'interface enregistre le jeton après la
-  connexion (`POST /api/push/fcm/register`) et à chaque renouvellement, le retire à la
-  déconnexion (`POST /api/push/fcm/unregister`). Un jeton repris par un autre compte (changement
-  de compte sur le téléphone) change de propriétaire. « Déconnecter mes autres sessions »
-  supprime les jetons des autres appareils. 20 appareils au plus par compte.
+  connexion (`POST /api/push/fcm/register`) et à chaque renouvellement, **seulement si les
+  notifications sont autorisées** ; sinon elle le retire (`POST /api/push/fcm/unregister`) :
+  le serveur ne compte pas un appareil qui ne peut rien afficher comme « réveillable » pour un
+  appel. L'état est revérifié au retour dans l'app. Un jeton repris par un autre compte
+  (changement de compte sur le téléphone) change de propriétaire. 20 appareils au plus.
+- **Révocation** : les notifications suivent les sessions (`server/utils/pushTargets.js`).
+  Déconnexion (`/api/logout`, qui révoque toutes les sessions du compte) : tous les abonnements
+  Web Push et jetons FCM du compte sont supprimés. Changement de mot de passe et « Déconnecter
+  mes autres sessions » : ceux des autres appareils (l'appareil courant envoie les siens,
+  `keepPushEndpoint` / `keepFcmToken`). Un appareil dont la session a été révoquée se désabonne
+  aussi de son côté (Web Push `unsubscribe`, jeton FCM supprimé chez Firebase).
 - **Autorisation** (Android 13+) : demandée une fois après la connexion ; état, bouton et test
   dans Options → Alertes.
 
@@ -163,13 +176,25 @@ android --sdk="$ANDROID_HOME" sdk install platform-tools platforms/android-36 bu
 
 Gradle utilise jusqu'à 4 Go (`android/gradle.properties`).
 
+## Compatibilité entre l'interface et l'APK
+
+L'interface est servie par le serveur et peut être plus récente (ou plus ancienne, en cache)
+que l'APK installé. Elle teste les méthodes réellement exposées par l'APK
+(`hasNativeMethod`, liste publiée par le pont natif de Capacitor) au lieu de supposer une
+version : APK v3 → enregistrement des fichiers en un bloc (`saveFile`), pas de retrait du
+jeton avant un changement de serveur. Côté natif, les méthodes des versions précédentes sont
+gardées (`saveFile` en v5). Règle pour la suite : **ne jamais retirer une méthode native
+utilisée par une interface déjà déployée**, et tester toute nouvelle méthode avant de
+l'appeler.
+
 ## Tests
 
-- Serveur : `npm test` (dont `tests/test_fcm_push.js`, `tests/test_session_renewal.js`).
+- Serveur : `npm test` (dont `tests/test_fcm_push.js`, `tests/test_push_revocation.js`,
+  `tests/test_session_renewal.js`).
 - Web : `npm run test:e2e` ; `e2e/android-save.spec.ts` simule le pont natif (plugin
-  OpenWLMNative) pour l'enregistrement par morceaux.
+  OpenWLMNative) : enregistrement par morceaux (APK v4+) et repli sur `saveFile` (APK v3).
 - Natif (JVM, sans téléphone) : `cd android && ./gradlew :app:testDebugUnitTest`
-  (`AppLockPolicyTest`, `CallTimingTest`) ; lint : `./gradlew :app:lintDebug`.
+  (`AppLockPolicyTest`, `CallTimingTest`, `FileNamesTest`) ; lint : `./gradlew :app:lintDebug`.
 - Sur le téléphone : `adb logcat` et `chrome://inspect` (APK de debug).
 
 ## Signature

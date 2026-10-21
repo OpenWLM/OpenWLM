@@ -20,9 +20,12 @@ const CHUNK = 3 * 512 * 1024;
 
 const fakeClientIp = () => `10.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}`;
 
-/** Faux plugin natif, injecté avant le chargement de l'app. */
-const fakeAndroidBridge = () => {
-  type Saved = { id: string; fileName: string; mimeType: string; size: number; chunks: string[]; finished: boolean; aborted: boolean };
+/**
+ * Faux plugin natif, injecté avant le chargement de l'app. `legacy` : APK v3 (méthode saveFile,
+ * pas d'enregistrement par morceaux), pour vérifier que l'interface s'adapte à l'APK installé.
+ */
+const fakeAndroidBridge = ({ legacy }: { legacy: boolean }) => {
+  type Saved = { id: string; fileName: string; mimeType: string; size: number; chunks: string[]; finished: boolean; aborted: boolean; legacy?: boolean };
   const w = window as unknown as Record<string, unknown> & { __saves: Saved[] };
   w.__saves = [];
   const promise = (name: string) => ({ name, rtype: 'promise' });
@@ -38,8 +41,13 @@ const fakeAndroidBridge = () => {
     },
     appendChunk: (o) => { w.__saves.find((s) => s.id === o.id)!.chunks.push(String(o.data)); },
     finishSave: (o) => { w.__saves.find((s) => s.id === o.id)!.finished = true; return { saved: true, location: 'downloads' }; },
-    abortSave: (o) => { const s = w.__saves.find((x) => x.id === o.id); if (s) s.aborted = true; }
+    abortSave: (o) => { const s = w.__saves.find((x) => x.id === o.id); if (s) s.aborted = true; },
+    saveFile: (o) => {
+      w.__saves.push({ id: 'legacy', fileName: String(o.fileName), mimeType: String(o.mimeType), size: -1, chunks: [String(o.data)], finished: true, aborted: false, legacy: true });
+      return { saved: true, location: 'downloads' };
+    }
   };
+  const chunked = ['beginSave', 'appendChunk', 'finishSave', 'abortSave', 'isAppLocked', 'resetPushToken'];
   w.CapacitorCustomPlatform = { name: 'android', plugins: {} };
   let nextCallback = 1;
   w.Capacitor = {
@@ -47,8 +55,9 @@ const fakeAndroidBridge = () => {
       name: 'OpenWLMNative',
       methods: [
         ...['getInfo', 'getFcmToken', 'getNotificationPermission', 'requestNotificationPermission', 'getCallPermissions', 'requestCallPermission',
-          'setLanguage', 'dismissIncomingCall', 'isAppLocked', 'startOngoingCall', 'updateOngoingCall', 'stopOngoingCall', 'setKeepScreenOn',
-          'beginSave', 'appendChunk', 'finishSave', 'abortSave', 'changeServer', 'openNotificationSettings', 'removeListener'].map(promise),
+          'setLanguage', 'dismissIncomingCall', 'startOngoingCall', 'updateOngoingCall', 'stopOngoingCall', 'setKeepScreenOn',
+          'changeServer', 'openNotificationSettings', 'removeListener',
+          ...(legacy ? ['saveFile'] : [...chunked, 'saveFile'])].map(promise),
         { name: 'addListener', rtype: 'callback' }
       ]
     }],
@@ -77,21 +86,21 @@ const registerAndLogin = async (page: Page, username: string) => {
   await expect(page.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
 };
 
-const newUserPage = async (browser: Browser, username: string, android: boolean) => {
+const newUserPage = async (browser: Browser, username: string, android: false | 'v4' | 'v3') => {
   const ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
-  if (android) await ctx.addInitScript(fakeAndroidBridge);
+  if (android) await ctx.addInitScript(fakeAndroidBridge, { legacy: android === 'v3' });
   const page = await ctx.newPage();
   await registerAndLogin(page, username);
   return page;
 };
 
-test('app Android : un fichier reçu est enregistré par morceaux, identique à l\'original', async ({ browser }) => {
-  test.setTimeout(180000);
+/** A (navigateur) et B (app Android simulée), contacts, conversation ouverte des deux côtés. */
+const pair = async (browser: Browser, apk: 'v4' | 'v3') => {
   const stamp = Date.now();
   const nameA = `andsa_${stamp}`;
   const nameB = `andsb_${stamp}`;
   const a = await newUserPage(browser, nameA, false);
-  const b = await newUserPage(browser, nameB, true);
+  const b = await newUserPage(browser, nameB, apk);
   expect(await b.evaluate(() => (window as unknown as { Capacitor: { isNativePlatform(): boolean } }).Capacitor.isNativePlatform())).toBe(true);
 
   expect((await a.request.post('/api/invite', { data: { receiverUsername: nameB } })).ok()).toBeTruthy();
@@ -102,6 +111,19 @@ test('app Android : un fichier reçu est enregistré par morceaux, identique à 
   await expect(b.locator('.contact-row', { hasText: nameA })).toBeVisible({ timeout: 45000 });
   await a.locator('.contact-row', { hasText: nameB }).click();
   await b.locator('.contact-row', { hasText: nameA }).click();
+  return { a, b, stamp };
+};
+
+const cleanUploads = (since: number) => {
+  for (const f of fs.readdirSync(UPLOADS_DIR).filter((f) => f.startsWith('enc_'))) {
+    const full = path.join(UPLOADS_DIR, f);
+    if (fs.statSync(full).mtimeMs >= since - 1000) fs.rmSync(full, { force: true });
+  }
+};
+
+test('app Android : un fichier reçu est enregistré par morceaux, identique à l\'original', async ({ browser }) => {
+  test.setTimeout(180000);
+  const { a, b, stamp } = await pair(browser, 'v4');
 
   // ~4,6 Mo aléatoires : 4 morceaux (3 pleins + 1 partiel)
   const startedAt = Date.now();
@@ -127,8 +149,24 @@ test('app Android : un fichier reçu est enregistré par morceaux, identique à 
   const received = Buffer.concat(parts);
   expect(crypto.createHash('sha256').update(received).digest('hex')).toBe(crypto.createHash('sha256').update(original).digest('hex'));
 
-  for (const f of fs.readdirSync(UPLOADS_DIR).filter((f) => f.startsWith('enc_'))) {
-    const full = path.join(UPLOADS_DIR, f);
-    if (fs.statSync(full).mtimeMs >= startedAt - 1000) fs.rmSync(full, { force: true });
-  }
+  cleanUploads(startedAt);
+});
+
+test('APK v3 (sans enregistrement par morceaux) : l\'interface se replie sur saveFile', async ({ browser }) => {
+  test.setTimeout(180000);
+  const { a, b, stamp } = await pair(browser, 'v3');
+  const startedAt = Date.now();
+  const original = crypto.randomBytes(200_000);
+  const fileName = `ancien_${stamp}.bin`;
+  await a.locator('input[type="file"]').first().setInputFiles({ name: fileName, mimeType: 'application/octet-stream', buffer: original });
+  const card = b.locator('.wlm-file-card', { hasText: fileName });
+  await expect(card).toBeVisible({ timeout: 60000 });
+  await card.locator('.wlm-file-download-btn').last().click();
+  await expect(b.locator('.wlm-aero-dialog', { hasText: 'Downloads' })).toBeVisible({ timeout: 60000 });
+  const saves = await b.evaluate(() => (window as unknown as { __saves: unknown[] }).__saves) as Array<{ fileName: string; chunks: string[]; legacy?: boolean }>;
+  expect(saves).toHaveLength(1);
+  expect(saves[0].legacy).toBe(true);
+  expect(saves[0].fileName).toBe(fileName);
+  expect(Buffer.from(saves[0].chunks[0], 'base64').equals(original)).toBe(true);
+  cleanUploads(startedAt);
 });

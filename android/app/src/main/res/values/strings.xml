@@ -43,4 +43,8 @@
     <string name="call_ongoing_video">Video call in progress</string>
     <string name="call_speaker">Speaker</string>
     <string name="call_earpiece">Earpiece</string>
+    <string name="server_trust_hint">Only use a server you trust: it displays the app, receives your username and sign-in key, and can use the app\'s phone features (notifications, calls, saving files). The check below only verifies that the address answers like OpenWLM.</string>
+    <string name="server_trust_title">Trusted server only</string>
+    <string name="server_trust_message">%1$s is not the default server. Whoever runs it will receive your username and sign-in key and will display the app on this phone. Connect only if you trust this server.</string>
+    <string name="server_trust_confirm">I trust this server</string>
 </resources>

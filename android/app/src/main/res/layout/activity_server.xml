@@ -37,6 +37,15 @@
             android:textColor="@color/openwlm_text"
             android:textSize="15sp" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/server_trust_hint"
+            android:textColor="@color/openwlm_text"
+            android:textSize="13sp"
+            android:textStyle="italic" />
+
         <EditText
             android:id="@+id/server_input"
             android:layout_width="match_parent"

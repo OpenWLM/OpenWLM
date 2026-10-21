@@ -28,6 +28,9 @@ export interface NativeCallPermissions {
 interface OpenWLMNativePlugin {
   getInfo(): Promise<NativeAppInfo>;
   changeServer(): Promise<void>;
+  /** APK v3 : enregistrement en un seul bloc (gardé pour la compatibilité). */
+  saveFile(options: { fileName: string; mimeType: string; data: string }): Promise<{ saved: boolean; location?: string }>;
+  resetPushToken(): Promise<void>;
   beginSave(options: { fileName: string; mimeType: string; size: number }): Promise<{ id: string; maxChunkBytes: number }>;
   appendChunk(options: { id: string; data: string }): Promise<void>;
   finishSave(options: { id: string }): Promise<{ saved: boolean; location?: string }>;
@@ -52,6 +55,17 @@ interface OpenWLMNativePlugin {
 }
 
 const OpenWLMNative = registerPlugin<OpenWLMNativePlugin>('OpenWLMNative');
+
+/**
+ * Méthodes réellement exposées par l'APK installé (liste publiée par le pont natif de
+ * Capacitor). L'interface est servie par le serveur et peut être plus récente que l'APK :
+ * elle s'adapte à ce qu'il sait faire (APK v3 : `saveFile`, pas d'enregistrement par morceaux).
+ */
+export const hasNativeMethod = (name: string): boolean => {
+  const headers = (window as unknown as { Capacitor?: { PluginHeaders?: Array<{ name: string; methods: Array<{ name: string }> }> } })
+    .Capacitor?.PluginHeaders;
+  return !!headers?.find((h) => h.name === 'OpenWLMNative')?.methods.some((m) => m.name === name);
+};
 
 /** Vrai dans l'app Android, faux dans un navigateur (y compris la PWA installée). */
 export const isNativeApp = (): boolean => Capacitor.isNativePlatform();
@@ -92,6 +106,11 @@ export const chunkRanges = (size: number, chunk: number = SAVE_CHUNK_BYTES): Arr
  * l'utilisateur a annulé (Android 8-9 : choix de l'emplacement).
  */
 export const saveBlob = async (blob: Blob, fileName: string): Promise<boolean> => {
+  if (isNativeApp() && !hasNativeMethod('beginSave')) {
+    // APK v3 : pas d'enregistrement par morceaux (fichiers de quelques dizaines de Mo au plus)
+    const data = await blobToBase64(blob);
+    return (await OpenWLMNative.saveFile({ fileName, mimeType: blob.type || 'application/octet-stream', data })).saved;
+  }
   if (isNativeApp()) {
     const { id } = await OpenWLMNative.beginSave({ fileName, mimeType: blob.type || 'application/octet-stream', size: blob.size });
     try {
@@ -133,6 +152,14 @@ export const requestNativeNotificationPermission = async (): Promise<NativeNotif
 
 export const openNativeNotificationSettings = (): Promise<void> =>
   isNativeApp() ? OpenWLMNative.openNotificationSettings() : Promise.resolve();
+
+/**
+ * Session révoquée : le jeton FCM de cette installation est supprimé chez Firebase (il ne
+ * sert plus à rien côté serveur, qui l'a déjà effacé). Un nouveau est créé à la connexion.
+ */
+export const resetNativePushToken = async (): Promise<void> => {
+  if (isNativeApp() && hasNativeMethod('resetPushToken')) await OpenWLMNative.resetPushToken().catch(() => { /* ignore */ });
+};
 
 /** Langue de l'app, pour les notifications construites par le code natif. */
 export const setNativeLanguage = (lang: string): void => {
@@ -186,6 +213,10 @@ export const isNativeAppLocked = async (): Promise<boolean> => {
   } catch {
     return false;
   }
+};
+
+export const setNativeKeepScreenOn = (on: boolean): void => {
+  if (isNativeApp()) OpenWLMNative.setKeepScreenOn({ on }).catch(() => { /* ignore */ });
 };
 
 export const getNativeCallPermissions = (): Promise<NativeCallPermissions | null> =>

@@ -337,9 +337,55 @@ public class OpenWLMNativePlugin extends Plugin {
      * (ou abortSave). Android 10+ : dossier Téléchargements, sans permission ; Android 8-9 :
      * l'utilisateur choisit l'emplacement à la fin.
      */
+    /**
+     * Ancienne interface web (avant l'enregistrement par morceaux) : fichier entier en base64.
+     * Gardé pour qu'une interface en cache plus ancienne que l'APK fonctionne encore ; taille
+     * contrôlée AVANT décodage.
+     */
+    @PluginMethod
+    public void saveFile(PluginCall call) {
+        String data = call.getString("data");
+        if (data == null || data.length() > (ChunkedFileSaver.MAX_BYTES / 3 + 1) * 4) {
+            call.reject(data == null ? "missing_data" : "too_large");
+            return;
+        }
+        String id;
+        try {
+            id = saver.begin(getContext(), FileNames.sanitize(call.getString("fileName", "fichier")), call.getString("mimeType", "application/octet-stream"));
+        } catch (ChunkedFileSaver.TooManyException e) {
+            call.reject("too_many_saves");
+            return;
+        } catch (IOException e) {
+            call.reject("save_failed");
+            return;
+        }
+        try {
+            saver.append(getContext(), id, Base64.decode(data, Base64.DEFAULT));
+        } catch (IllegalArgumentException e) {
+            saver.abort(getContext(), id);
+            call.reject("invalid_data");
+            return;
+        } catch (IOException e) {
+            call.reject("save_failed");
+            return;
+        }
+        call.getData().put("id", id);
+        finishSave(call);
+    }
+
+    /** Session révoquée : jeton FCM supprimé chez Firebase (un nouveau sera créé à la connexion). */
+    @PluginMethod
+    public void resetPushToken(PluginCall call) {
+        if (!isFirebaseAvailable()) {
+            call.resolve();
+            return;
+        }
+        FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener(task -> call.resolve());
+    }
+
     @PluginMethod
     public void beginSave(PluginCall call) {
-        String name = sanitizeFileName(call.getString("fileName", "fichier"));
+        String name = FileNames.sanitize(call.getString("fileName", "fichier"));
         String mime = call.getString("mimeType", "application/octet-stream");
         Long size = call.getLong("size");
         if (size != null && size > ChunkedFileSaver.MAX_BYTES) {
@@ -351,6 +397,8 @@ public class OpenWLMNativePlugin extends Plugin {
             ret.put("id", saver.begin(getContext(), name, mime));
             ret.put("maxChunkBytes", ChunkedFileSaver.MAX_CHUNK_BYTES);
             call.resolve(ret);
+        } catch (ChunkedFileSaver.TooManyException e) {
+            call.reject("too_many_saves");
         } catch (IOException e) {
             call.reject("save_failed");
         }
@@ -421,41 +469,40 @@ public class OpenWLMNativePlugin extends Plugin {
     private void onSaveDocumentResult(PluginCall call, ActivityResult result) {
         File temp = pendingTemp;
         pendingTemp = null;
-        JSObject ret = new JSObject();
-        try {
-            if (temp == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
-                ret.put("saved", false);
-                call.resolve(ret);
-                return;
-            }
-            try (InputStream in = new FileInputStream(temp); OutputStream out = getContext().getContentResolver().openOutputStream(result.getData().getData())) {
-                if (out == null) throw new IOException("no_stream");
-                byte[] buf = new byte[64 * 1024];
-                int n;
-                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-            }
-            ret.put("saved", true);
-            ret.put("location", "picker");
-            call.resolve(ret);
-        } catch (IOException e) {
-            call.reject("save_failed");
-        } finally {
+        if (temp == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
             if (temp != null) {
                 // noinspection ResultOfMethodCallIgnored
                 temp.delete();
             }
+            JSObject ret = new JSObject();
+            ret.put("saved", false);
+            call.resolve(ret);
+            return;
         }
+        Uri target = result.getData().getData();
+        // Copie (jusqu'à 100 Mo) hors du thread d'interface
+        new Thread(() -> {
+            try (InputStream in = new FileInputStream(temp); OutputStream out = getContext().getContentResolver().openOutputStream(target)) {
+                if (out == null) throw new IOException("no_stream");
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                JSObject ret = new JSObject();
+                ret.put("saved", true);
+                ret.put("location", "picker");
+                call.resolve(ret);
+            } catch (IOException e) {
+                call.reject("save_failed");
+            } finally {
+                // noinspection ResultOfMethodCallIgnored
+                temp.delete();
+            }
+        }, "openwlm-save").start();
     }
 
     @Override
     protected void handleOnDestroy() {
         saver.abortAll(getContext());
         super.handleOnDestroy();
-    }
-
-    private static String sanitizeFileName(String name) {
-        String s = name == null ? "" : name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim();
-        if (s.isEmpty() || s.equals(".") || s.equals("..")) s = "fichier";
-        return s.length() > 120 ? s.substring(0, 120) : s;
     }
 }

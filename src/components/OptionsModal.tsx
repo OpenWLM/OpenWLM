@@ -13,7 +13,7 @@ import type { Socket } from 'socket.io-client';
 import ConnectionDiagnostics from './ConnectionDiagnostics';
 import FormatPicker from './FormatPicker';
 import QuickTextsEditor from './QuickTextsEditor';
-import { changeNativeServer } from '../hooks/useNativePush';
+import { changeNativeServer, NATIVE_PUSH_SYNC_EVENT } from '../hooks/useNativePush';
 import {
   isNativeApp, getNativeAppInfo, getNativeNotificationPermission, requestNativeNotificationPermission,
   openNativeNotificationSettings, getNativeCallPermissions, requestNativeCallPermission,
@@ -576,7 +576,10 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     </div>
                     {nativeNotif === 'prompt' && (
                       <button type="button" className="win-btn" style={{ marginTop: '6px' }}
-                        onClick={async () => setNativeNotif(await requestNativeNotificationPermission())}>
+                        onClick={async () => {
+                          setNativeNotif(await requestNativeNotificationPermission());
+                          window.dispatchEvent(new Event(NATIVE_PUSH_SYNC_EVENT));
+                        }}>
                         {t.settings.browserNotifPrompt}
                       </button>
                     )}

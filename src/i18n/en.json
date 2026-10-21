@@ -727,7 +727,8 @@
     "previewNudge": "💥 [Nudge!]",
     "toastOpenHint": "Click to open the conversation",
     "winkAlt": "Wink {name}",
-    "pushTestNotConfigured": "Push is not configured on the server (missing VAPID keys)."
+    "pushTestNotConfigured": "Push is not configured on the server (missing VAPID keys).",
+    "profileSaveFailed": "Your profile could not be saved (nickname or personal message refused by the server, or connection lost)."
   },
   "errors": {
     "invalid_credentials": "Invalid sign-in address or password.",

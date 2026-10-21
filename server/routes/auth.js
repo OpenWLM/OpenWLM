@@ -1,4 +1,5 @@
 import { isValidFormattedField } from '../utils/plusText.js';
+import { removePushTargets } from '../utils/pushTargets.js';
 import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -69,7 +70,12 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
       try {
         const payload = jwt.verify(token, SECRET, { algorithms: ['HS256'] });
         if (payload && payload.id) {
-          db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', payload.id);
+          // Toutes les sessions du compte sont révoquées : plus aucun appareil ne doit recevoir
+          // de notification (Web Push, FCM)
+          db.transaction(() => {
+            db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', payload.id);
+            removePushTargets(payload.id);
+          })();
           broadcastStatusToContacts(payload.id, { id: payload.id, userId: payload.id, status: 'offline' });
           // SÉCURITÉ : couper réellement toutes les sockets actives de l'utilisateur
           io.in(getUserRoom(payload.id)).disconnectSockets(true);

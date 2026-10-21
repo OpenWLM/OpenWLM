@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- Sign-out and password change remove the relevant Push subscriptions / FCM tokens: server files `server/routes/auth.js`, `server/routes/users.js`, `server/index.js`, new `server/utils/pushTargets.js`. No new route or variable (WAF rules unchanged). `package-lock.json` changes (`npm ci`), then restart the service.
 - New `fcm_tokens` table, created automatically at startup.
 - New routes `POST /api/push/fcm/register` and `POST /api/push/fcm/unregister`: **update the Cloudflare WAF rules** ([docs/CLOUDFLARE_WAF.md](docs/CLOUDFLARE_WAF.md)).
 - New optional variable `FIREBASE_SERVICE_ACCOUNT` (path to the Firebase service account key, outside the repository) for Android app notifications. Without it, the server works as before.
@@ -25,11 +26,23 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **"Remember this device" keeps the session for 30 rolling days** (instead of 24 h): the server renews the session cookie as long as the device is used at least once a month, in the app and in the browser. Without this option, the session still lasts 24 h. Session revocation remains immediate.
 
 ### Tests
+- `tests/test_push_revocation.js`: Web Push subscriptions and FCM tokens removed on sign-out (whole account) and password change (except the current device), other accounts untouched. `e2e/android-save.spec.ts`: fallback to `saveFile` with an APK v3. JVM test `FileNamesTest`.
 - `e2e/android-save.spec.ts`: simulated Android app, received file saved in chunks and identical to the original. JVM tests of the app (`AppLockPolicyTest`, `CallTimingTest`).
 - `tests/test_fcm_push.js`: FCM message format (never any content, priority, call lifetime), expired tokens removed, registration routes (authentication, format, account switch, cap), revoking other sessions, server startup with and without a Firebase key.
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Notifications and sessions**: signing out now removes all of the account's Web Push subscriptions and Android app tokens (it already revokes all its sessions), and changing the password removes those of the other devices, like "Sign out my other sessions". A signed-out device no longer receives sender names or call rings. The device also unsubscribes on its side, including when its session was revoked elsewhere.
+- **Android app, after the second review**:
+  - The interface adapts to the installed APK: with APK v3, received files are saved again (in one block) and changing server keeps notifications; APK v5 also keeps the old method for a cached interface.
+  - The notification token is only registered when notifications are allowed: a call no longer "rings" into the void on a phone that turned them off.
+  - Server choice: "trusted server only" warning and confirmation for any server other than the default one (checking the address is not authentication).
+  - Files: at most two saves at once, invisible and bidirectional characters removed from names, copy off the UI thread on Android 8-9.
+  - The screen can turn off again after a video call; the call timer no longer resets when toggling the speaker.
+- **Profile**: in-place editing of the nickname and personal message respects the 50 / 150 visible-character limits (message when too long instead of a silent server refusal); a failed profile save is reported.
+- **Previews**: formatting tags no longer show in message notifications and toasts.
+- **Escape** in the colour picker no longer also closes the Options window.
+- **Server**: clean shutdown on SIGTERM / SIGINT (connections and database closed). `follow-redirects` updated (high vulnerability reported by `npm audit`), `npm audit` check added to CI. `npm run winks:prerender` explains how to restore the `.swf` sources instead of doing nothing.
 - **Android app, after code review**:
   - "Answer" only skips the app lock when the phone really required a PIN or fingerprint when the call rang (not during the grace period or with Smart Lock), once, and for the call still ringing; a video call taken behind the app lock screen starts with the camera off.
   - Changing server removes the notification token from the account on the old server and deletes it at Firebase, stops ringing and any ongoing call, and clears notifications: the old server can no longer wake the phone or have a call declined on the new one.

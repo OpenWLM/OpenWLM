@@ -13,7 +13,8 @@ import {
   onNativeFcmToken,
   onNativeOpenChat,
   onNativeServerChangeCancelled,
-  openServerSettings
+  openServerSettings,
+  hasNativeMethod
 } from '../utils/platform';
 
 /**
@@ -21,7 +22,8 @@ import {
  *
  * Dans l'app native uniquement :
  * - après la connexion, demande l'autorisation d'afficher des notifications (Android 13+,
- *   une fois) puis enregistre le jeton FCM de l'appareil pour le compte connecté ;
+ *   une fois) puis enregistre le jeton FCM de l'appareil pour le compte connecté, seulement
+ *   si les notifications sont autorisées (sinon il le retire) ; revérifié au retour dans l'app ;
  * - réenregistre le jeton quand Firebase le renouvelle ;
  * - une fois par appareil, explique puis demande les autorisations des appels (micro, écran
  *   d'appel plein écran) ;
@@ -35,13 +37,34 @@ const registerToken = (token: string) =>
     console.warn('[FCM] Enregistrement du jeton impossible:', err);
   });
 
+/** Demande de resynchronisation du jeton avec l'autorisation (cf. OptionsModal). */
+export const NATIVE_PUSH_SYNC_EVENT = 'openwlm-native-push-sync';
+
+/**
+ * Le jeton n'est enregistré que si l'app peut afficher des notifications : sinon le serveur
+ * compterait un appareil « réveillable » pour les appels (l'appelant attendrait une sonnerie
+ * qui ne s'affiche pas). Notifications refusées : le jeton est retiré du compte.
+ * Renvoie l'état appliqué, pour ne rien renvoyer au serveur tant qu'il ne change pas.
+ */
+const syncTokenWithPermission = async (previous: 'registered' | 'unregistered' | null): Promise<'registered' | 'unregistered' | null> => {
+  const [permission, token] = await Promise.all([getNativeNotificationPermission(), getNativeFcmToken()]);
+  if (!token) return previous;
+  const wanted = permission === 'granted' ? 'registered' : 'unregistered';
+  if (wanted === previous) return previous;
+  if (wanted === 'registered') await registerToken(token);
+  else await axios.post('/api/push/fcm/unregister', { token }).catch(() => { /* déjà absent */ });
+  return wanted;
+};
+
 /**
  * Changer de serveur : le jeton est d'abord retiré du compte sur le serveur actuel (sinon il
  * continuerait d'y réveiller le téléphone). Si l'utilisateur annule, il est réenregistré
  * (cf. useNativePush) ; s'il change de serveur, l'app supprime aussi le jeton chez Firebase.
  */
 export const changeNativeServer = async (): Promise<void> => {
-  await unregisterNativePush();
+  // APK v3 : ne signale pas l'annulation (serverChangeCancelled), le jeton ne serait pas
+  // réenregistré ; on le laisse donc en place (comportement de la v3)
+  if (hasNativeMethod('beginSave')) await unregisterNativePush();
   await openServerSettings();
 };
 
@@ -84,12 +107,15 @@ export function useNativePush(options: {
   useEffect(() => {
     if (!userId || !isNativeApp()) return;
     let cancelled = false;
+    let synced: 'registered' | 'unregistered' | null = null;
+    const sync = async () => {
+      if (!cancelled) synced = await syncTokenWithPermission(synced);
+    };
     (async () => {
       if (await getNativeNotificationPermission() === 'prompt') {
         await requestNativeNotificationPermission();
       }
-      const token = await getNativeFcmToken();
-      if (token && !cancelled) await registerToken(token);
+      await sync();
 
       // Appels : micro et écran d'appel plein écran (Android 14+, dans les réglages), expliqués
       // avant les demandes d'Android
@@ -103,15 +129,21 @@ export function useNativePush(options: {
       if (perms.microphone === 'prompt') await requestNativeCallPermission('microphone');
       if (perms.fullScreen !== 'granted') await requestNativeCallPermission('fullScreen');
     })();
-    const handle = onNativeFcmToken((token) => { registerToken(token); });
-    // Écran de choix du serveur fermé sans changement : le jeton retiré est réenregistré
-    const cancelHandle = onNativeServerChangeCancelled(() => {
-      getNativeFcmToken().then((token) => { if (token) registerToken(token); });
-    });
+    // Nouveau jeton, ou retour de l'écran de choix du serveur sans changement (le jeton retiré
+    // avant de l'ouvrir est réenregistré) : nouvelle synchronisation
+    const handle = onNativeFcmToken(() => { synced = null; sync(); });
+    const cancelHandle = onNativeServerChangeCancelled(() => { synced = null; sync(); });
+    // Retour dans l'app : les notifications ont pu être autorisées ou coupées dans les réglages
+    const onVisible = () => { if (document.visibilityState === 'visible') sync(); };
+    document.addEventListener('visibilitychange', onVisible);
+    // Autorisation accordée depuis les Options (la boîte d'Android ne change pas la visibilité)
+    window.addEventListener(NATIVE_PUSH_SYNC_EVENT, sync);
     return () => {
+      window.removeEventListener(NATIVE_PUSH_SYNC_EVENT, sync);
       cancelled = true;
       handle?.then(h => h.remove());
       cancelHandle?.then(h => h.remove());
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [userId]);
 }

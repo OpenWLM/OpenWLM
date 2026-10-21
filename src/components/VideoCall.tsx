@@ -5,7 +5,7 @@ import { useI18n } from '../i18n';
 import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 import { formatNickname } from '../utils/NicknameFormatter';
 import { startCallKeepAlive, keepScreenOn } from '../utils/callKeepAlive';
-import { isNativeApp, isNativeAppLocked, startNativeCall, setNativeCallVideo } from '../utils/platform';
+import { isNativeApp, isNativeAppLocked, startNativeCall, setNativeCallVideo, setNativeKeepScreenOn } from '../utils/platform';
 import { stripPlusTags } from '../utils/plusFormat';
 import {
   encryptMessagePayload,
@@ -605,9 +605,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
   const videoFlowing = callActive && (camOn || sharingScreen || remoteVideoOn);
   useEffect(() => {
     if (nativeApp) {
-      // Haut-parleur et écran allumé en vidéo ; écouteur et capteur de proximité sinon
-      if (callActive) setNativeCallVideo(videoFlowing);
-      return;
+      // Haut-parleur et écran allumé en vidéo ; écouteur et capteur de proximité sinon.
+      // Fin de la vidéo ou de l'appel : l'écran peut de nouveau s'éteindre
+      if (!callActive) return;
+      setNativeCallVideo(videoFlowing);
+      return videoFlowing ? () => setNativeKeepScreenOn(false) : undefined;
     }
     if (!videoFlowing) return;
     return keepScreenOn();

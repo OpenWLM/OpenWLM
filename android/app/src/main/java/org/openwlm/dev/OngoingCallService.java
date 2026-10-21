@@ -39,6 +39,8 @@ public class OngoingCallService extends Service {
     private static volatile boolean running;
 
     private String peerName = "OpenWLM";
+    /** Début de l'appel (chronomètre de la notification, inchangé quand elle est mise à jour). */
+    private long startedAt;
     private boolean video;
     private boolean speaker;
     private boolean speakerChosen;
@@ -89,6 +91,7 @@ public class OngoingCallService extends Service {
             video = intent.getBooleanExtra(EXTRA_VIDEO, false);
             if (!running) {
                 speakerChosen = false;
+                startedAt = System.currentTimeMillis();
                 if (!goForeground()) {
                     stopSelf();
                     return START_NOT_STICKY;
@@ -149,7 +152,7 @@ public class OngoingCallService extends Service {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setOngoing(true)
             .setUsesChronometer(true)
-            .setWhen(System.currentTimeMillis())
+            .setWhen(startedAt)
             .setContentIntent(OpenWLMNotifications.openChatIntent(this, 0, false))
             .setStyle(NotificationCompat.CallStyle.forOngoingCall(peer, CallActionReceiver.hangUpIntent(this)).setIsVideo(video))
             .addAction(0, loc.getString(speaker ? R.string.call_earpiece : R.string.call_speaker), CallActionReceiver.speakerIntent(this))

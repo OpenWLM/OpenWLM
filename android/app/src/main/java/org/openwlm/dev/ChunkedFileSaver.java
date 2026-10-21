@@ -31,6 +31,8 @@ final class ChunkedFileSaver {
     /** Taille maximale d'un morceau (données décodées). */
     static final int MAX_CHUNK_BYTES = 4 * 1024 * 1024;
     private static final String TEMP_DIR = "pending-saves";
+    /** Enregistrements simultanés au plus (une interface compromise ne peut pas en ouvrir 50). */
+    static final int MAX_SESSIONS = 2;
 
     static final class Session {
         final String fileName;
@@ -46,6 +48,12 @@ final class ChunkedFileSaver {
             this.uri = uri;
             this.temp = temp;
             this.out = out;
+        }
+    }
+
+    static final class TooManyException extends IOException {
+        TooManyException() {
+            super("too_many_saves");
         }
     }
 
@@ -67,7 +75,8 @@ final class ChunkedFileSaver {
         }
     }
 
-    String begin(Context context, String fileName, String mimeType) throws IOException {
+    synchronized String begin(Context context, String fileName, String mimeType) throws IOException {
+        if (sessions.size() >= MAX_SESSIONS) throw new TooManyException();
         String id = UUID.randomUUID().toString();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContentResolver resolver = context.getContentResolver();

@@ -58,6 +58,26 @@ const fatalShutdown = (kind, err) => {
 process.on('uncaughtException', (err) => fatalShutdown('uncaughtException', err));
 process.on('unhandledRejection', (reason) => fatalShutdown('unhandledRejection', reason));
 
+// Arrêt demandé (systemd stop/restart, Ctrl+C) : fermeture propre des connexions temps réel,
+// du serveur HTTP et de la base, puis sortie normale. Filet : sortie forcée après 10 s (le
+// service systemd laisse 15 s avant de tuer le processus).
+const gracefulShutdown = (signal) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[Arrêt] ${signal} reçu : fermeture des connexions…`);
+  setTimeout(() => process.exit(0), 10000).unref();
+  try {
+    io.close(() => {
+      try { db.close(); } catch { /* ignore */ }
+      process.exit(0);
+    });
+  } catch {
+    process.exit(0);
+  }
+};
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 const app = express();
 const httpServer = createServer(app);
 

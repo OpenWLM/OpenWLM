@@ -37,4 +37,8 @@
     <string name="call_ongoing_video">Appel vidéo en cours</string>
     <string name="call_speaker">Haut-parleur</string>
     <string name="call_earpiece">Écouteur</string>
+    <string name="server_trust_hint">N\'utilisez qu\'un serveur de confiance : il affiche l\'application, reçoit votre identifiant et votre clé de connexion, et peut utiliser les fonctions du téléphone ouvertes à l\'app (notifications, appels, enregistrement de fichiers). La vérification ci-dessous contrôle seulement que l\'adresse répond comme OpenWLM.</string>
+    <string name="server_trust_title">Serveur de confiance uniquement</string>
+    <string name="server_trust_message">%1$s n\'est pas le serveur par défaut. Celui qui l\'exploite recevra votre identifiant et votre clé de connexion, et affichera l\'application sur ce téléphone. Ne continuez que si vous faites confiance à ce serveur.</string>
+    <string name="server_trust_confirm">Je fais confiance à ce serveur</string>
 </resources>

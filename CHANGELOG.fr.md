@@ -12,6 +12,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 ## [Non publié]
 
 ### Mise à jour du serveur
+- Déconnexion et changement de mot de passe suppriment les abonnements Push / jetons FCM concernés : fichiers serveur `server/routes/auth.js`, `server/routes/users.js`, `server/index.js`, nouveau `server/utils/pushTargets.js`. Aucune route ni variable nouvelle (règles WAF inchangées). `package-lock.json` change (`npm ci`), puis redémarrer le service.
 - Nouvelle table `fcm_tokens`, créée automatiquement au démarrage.
 - Nouvelles routes `POST /api/push/fcm/register` et `POST /api/push/fcm/unregister` : **mettre à jour les règles WAF Cloudflare** ([docs/CLOUDFLARE_WAF.md](docs/CLOUDFLARE_WAF.md)).
 - Nouvelle variable facultative `FIREBASE_SERVICE_ACCOUNT` (chemin de la clé de compte de service Firebase, hors dépôt) pour les notifications de l'app Android. Sans elle, le serveur fonctionne comme avant.
@@ -25,11 +26,23 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **« Se souvenir de cet appareil » garde la session 30 jours glissants** (au lieu de 24 h) : le serveur renouvelle le cookie de session tant que l'appareil sert au moins une fois par mois, dans l'app comme dans le navigateur. Sans cette option, la session dure toujours 24 h. La révocation des sessions reste immédiate.
 
 ### Tests
+- `tests/test_push_revocation.js` : abonnements Web Push et jetons FCM supprimés à la déconnexion (tout le compte) et au changement de mot de passe (sauf l'appareil courant), autres comptes intacts. `e2e/android-save.spec.ts` : repli sur `saveFile` avec un APK v3. Test JVM `FileNamesTest`.
 - `e2e/android-save.spec.ts` : app Android simulée, fichier reçu enregistré par morceaux et identique à l'original. Tests JVM de l'app (`AppLockPolicyTest`, `CallTimingTest`).
 - `tests/test_fcm_push.js` : format des messages FCM (jamais de contenu, priorité, durée de vie des appels), jetons expirés supprimés, routes d'enregistrement (authentification, format, changement de compte, plafond), révocation des autres sessions, démarrage du serveur avec et sans clé Firebase.
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections
+- **Notifications et sessions** : la déconnexion supprime désormais tous les abonnements Web Push et jetons de l'app Android du compte (elle révoque déjà toutes ses sessions), et le changement de mot de passe ceux des autres appareils, comme « Déconnecter mes autres sessions ». Un appareil déconnecté ne reçoit plus le nom des expéditeurs ni la sonnerie des appels. L'appareil se désabonne aussi de son côté, y compris quand sa session a été révoquée ailleurs.
+- **App Android, après la seconde revue** :
+  - L'interface s'adapte à l'APK installé : avec l'APK v3, les fichiers reçus sont de nouveau enregistrés (en un bloc) et le changement de serveur garde les notifications ; l'APK v5 garde aussi l'ancienne méthode pour une interface en cache.
+  - Le jeton de notifications n'est enregistré que si les notifications sont autorisées : un appel ne « sonne » plus dans le vide sur un téléphone qui les a coupées.
+  - Choix du serveur : avertissement « serveur de confiance uniquement » et confirmation pour tout serveur autre que celui par défaut (la vérification de l'adresse n'est pas une authentification).
+  - Fichiers : deux enregistrements simultanés au plus, caractères invisibles et bidirectionnels retirés des noms (un nom comme « facture » + U+202E + « gnp.exe » ne peut plus se faire passer pour une image), copie hors du fil de l'interface sur Android 8-9.
+  - L'écran peut de nouveau s'éteindre après un appel vidéo ; la durée d'appel ne repart plus de zéro quand on bascule le haut-parleur.
+- **Profil** : l'édition en place du pseudo et du message perso respecte les limites de 50 et 150 caractères visibles (message si trop long, au lieu d'un refus silencieux du serveur) ; un échec d'enregistrement du profil est signalé.
+- **Aperçus** : les balises de mise en forme ne s'affichent plus dans les notifications et toasts de message.
+- **Échap** dans le sélecteur de couleur ne ferme plus aussi la fenêtre Options.
+- **Serveur** : arrêt propre sur SIGTERM / SIGINT (connexions et base fermées). `follow-redirects` mis à jour (vulnérabilité haute signalée par `npm audit`), vérification `npm audit` ajoutée à la CI. `npm run winks:prerender` explique comment récupérer les sources `.swf` au lieu de ne rien faire.
 - **App Android, après revue de code** :
   - « Répondre » à un appel ne dispense plus du déverrouillage de l'app que si le téléphone exigeait vraiment un code ou une empreinte à la sonnerie (pas pendant le délai de grâce ni en Smart Lock), une seule fois et pour l'appel qui sonne encore ; un appel vidéo pris derrière l'écran de verrouillage de l'app démarre caméra coupée.
   - Changer de serveur retire le jeton de notifications du compte sur l'ancien serveur et le supprime chez Firebase, arrête sonnerie et appel en cours et retire les notifications : l'ancien serveur ne peut plus réveiller le téléphone ni faire refuser un appel sur le nouveau.

@@ -201,7 +201,7 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ src, title, onClose, onSave }
   const c = center();
 
   return (
-    <div className="wlm-viewer" role="dialog" aria-modal="true" aria-label={title} data-testid="image-viewer">
+    <div className="wlm-viewer" role="dialog" aria-modal="true" aria-label={title} data-testid="image-viewer" data-zoom={Math.round(view.s * 100)}>
       <div className="wlm-viewer-bar">
         <span className="wlm-viewer-title" title={title}>📷 {title}</span>
         <div className="wlm-viewer-tools">
@@ -235,6 +235,8 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ src, title, onClose, onSave }
           style={natural ? { width: natural.w, height: natural.h, transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.s})` } : { visibility: 'hidden' }}
         />
       </div>
+      {/* Téléphone : pas de barre, seulement une croix de fermeture flottante */}
+      <button type="button" className="wlm-viewer-close-float" onClick={onClose} title={t.common.close} aria-label={t.common.close}>✕</button>
       <div className="wlm-viewer-hint">{t.fileTransfer.zoomHint}</div>
     </div>
   );

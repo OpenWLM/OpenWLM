@@ -5,7 +5,8 @@ import sharp from 'sharp';
  * E2E — visionneuse d'image : une grande capture d'écran reçue s'ouvre en grand, entière
  * (« ajustée »), et se zoome pour être lue sans l'enregistrer.
  * - Ordinateur : fenêtre presque plein écran, double-clic (taille réelle), molette, touche 0.
- * - Téléphone : plein écran, pincement à deux doigts, double-tap, bouton Retour.
+ * - Téléphone : plein écran sans barre (croix rouge flottante), pincement à deux doigts,
+ *   double-tap, bouton Retour.
  * Serveur + base temporaires (jamais la prod).
  */
 
@@ -65,7 +66,7 @@ const receiveScreenshot = async (browser: Browser, mobile: boolean) => {
   return { b, thumb };
 };
 
-const zoomPercent = async (page: Page) => Number((await page.getByTestId('image-viewer-zoom').innerText()).replace(/\D/g, ''));
+const zoomPercent = async (page: Page) => Number(await page.getByTestId('image-viewer').getAttribute('data-zoom'));
 const imageBox = async (page: Page) => (await page.locator('.wlm-viewer-image').boundingBox())!;
 const stageBox = async (page: Page) => (await page.locator('.wlm-viewer-stage').boundingBox())!;
 
@@ -92,7 +93,8 @@ test('visionneuse sur ordinateur : en grand, double-clic taille réelle, molette
   // Fin de l'animation d'ouverture (léger agrandissement) avant de mesurer
   await viewer.evaluate((el) => Promise.all(el.getAnimations().map((an) => an.finished)));
 
-  // Presque tout l'écran, pas une petite fenêtre
+  // Presque tout l'écran, pas une petite fenêtre ; barre d'outils, pas de croix flottante
+  await expect(b.locator('.wlm-viewer-close-float')).toBeHidden();
   const vb = (await viewer.boundingBox())!;
   expect(vb.width).toBeGreaterThan(1280 * 0.9);
   expect(vb.height).toBeGreaterThan(800 * 0.9);
@@ -169,8 +171,18 @@ test('visionneuse sur téléphone : plein écran, pincement, double-tap, bouton 
   await b.touchscreen.tap(x, y);
   await expect.poll(() => zoomPercent(b)).toBe(100);
 
+  // Pas de barre d'outils sur téléphone : seulement la croix flottante
+  await expect(b.locator('.wlm-viewer-bar')).toBeHidden();
+  await expect(b.locator('.wlm-viewer-close-float')).toBeVisible();
+
   // Retour (Android) : ferme la visionneuse, la conversation reste ouverte
   await b.goBack();
   await expect(viewer).toHaveCount(0);
   await expect(b.locator('.chat-input-rich')).toBeVisible();
+
+  // Croix rouge : ferme aussi
+  await thumb.tap();
+  await expect(viewer).toBeVisible();
+  await b.locator('.wlm-viewer-close-float').tap();
+  await expect(viewer).toHaveCount(0);
 });

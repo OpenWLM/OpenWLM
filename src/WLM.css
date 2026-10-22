@@ -3439,6 +3439,7 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 }
 
 .wlm-viewer {
+  position: relative;
   width: 96vw;
   height: 94vh;
   height: 94dvh;
@@ -3518,6 +3519,39 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   -webkit-user-drag: none;
 }
 
+/* Croix rouge Aero, flottante (téléphone uniquement) */
+.wlm-viewer-close-float {
+  display: none;
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: 10px;
+  z-index: 2;
+  width: 44px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 3px rgba(80, 0, 0, 0.9);
+  border: 1px solid #6e1208;
+  border-radius: 5px;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.15) 48%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(to bottom, #e9846f 0%, #cf3a22 50%, #a81c08 51%, #d4502f 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 2px 8px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wlm-viewer-close-float:active {
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.05) 48%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(to bottom, #c9624d 0%, #a82a15 50%, #851404 51%, #b23b1e 100%);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
 .wlm-viewer-hint {
   padding: 3px 8px;
   font-size: 10px;
@@ -3537,8 +3571,10 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  .wlm-viewer-hint { display: none; }
-  .wlm-viewer-tools .win-btn { padding: 4px 10px; }
+  .wlm-viewer-hint,
+  .wlm-viewer-bar { display: none; }
+  .wlm-viewer-stage { background: #000; }
+  .wlm-viewer-close-float { display: flex; }
 }
 
 /* --- ÉMOTICÔNES PERSONNALISÉES (E2EE) --- */

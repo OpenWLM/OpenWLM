@@ -257,10 +257,11 @@ const memoryCleanupInterval = setInterval(cleanupMemoryMaps, 5 * 60 * 1000);
 if (memoryCleanupInterval.unref) memoryCleanupInterval.unref();
 
 // Santé du service (supervision, scripts/openwlm-service.sh) : le processus répond ET la base
-// est lisible. Aucune information sur les comptes ni la configuration. Volontairement définie
-// ici et non dans server/routes/ : elle n'entre pas dans les règles WAF générées, Cloudflare la
-// bloque donc depuis Internet ; elle ne sert qu'en local (localhost).
-app.get('/api/health', (req, res) => {
+// est lisible. Réservée aux appels locaux : une requête venue d'Internet passe par Cloudflare
+// (en-têtes cf-ray / cf-connecting-ip, ajoutés par le tunnel) et reçoit 404, comme une route
+// inconnue. Définie ici et non dans server/routes/ : hors des règles WAF générées.
+app.get('/api/health', (req, res, next) => {
+  if (req.headers['cf-ray'] || req.headers['cf-connecting-ip']) return next();
   try {
     db.prepare('SELECT 1').get();
     res.json({ ok: true });

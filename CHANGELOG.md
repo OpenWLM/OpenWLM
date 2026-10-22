@@ -12,7 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
-- `GET /api/health` (new local route, outside the WAF rules), `server/routes/auth.js` (sign-out) and `server/index.js` changed: copy, then restart the service.
+- `GET /api/health` (new route, local calls only), `server/routes/auth.js` (sign-out) and `server/index.js` changed: copy, then restart the service.
 - Sign-out and password change remove the relevant Push subscriptions / FCM tokens: server files `server/routes/auth.js`, `server/routes/users.js`, `server/index.js`, new `server/utils/pushTargets.js`. No new route or variable (WAF rules unchanged). `package-lock.json` changes (`npm ci`), then restart the service.
 - New `fcm_tokens` table, created automatically at startup.
 - New routes `POST /api/push/fcm/register` and `POST /api/push/fcm/unregister`: **update the Cloudflare WAF rules** ([docs/CLOUDFLARE_WAF.md](docs/CLOUDFLARE_WAF.md)).
@@ -36,7 +36,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 - **Notifications, review follow-up**: a failed app token registration (offline, server unavailable) is no longer treated as successful: it is retried when the network comes back or on returning to the app, one sync at a time. Signing out no longer waits forever for the service worker (private browsing, failed registration): server-side revocation goes first, local unsubscribes are bounded to a few seconds and keys are purged in every case; password change is no longer blocked either. Changing server from APK v3: the token is now removed from the old server, and registered again if cancelled.
 - **Received files**: the name shown in the conversation is stripped of invisible and bidirectional characters (an extension can no longer be disguised).
-- **Server**: `/api/logout` returns an error if revocation fails in the database instead of ignoring it; new local route `GET /api/health` (database readable) used by `openwlm-service.sh`. CI: Android job (JVM tests, Android lint, debug APK).
+- **Server**: `/api/logout` returns an error if revocation fails in the database instead of ignoring it; new route `GET /api/health` (database readable), local calls only (404 for a request coming through Cloudflare), used by `openwlm-service.sh`. CI: Android job (JVM tests, Android lint, debug APK).
 - **Notifications and sessions**: signing out now removes all of the account's Web Push subscriptions and Android app tokens (it already revokes all its sessions), and changing the password removes those of the other devices, like "Sign out my other sessions". A signed-out device no longer receives sender names or call rings. The device also unsubscribes on its side, including when its session was revoked elsewhere.
 - **Android app, after the second review**:
   - The interface adapts to the installed APK: with APK v3, received files are saved again (in one block) and changing server keeps notifications; APK v5 also keeps the old method for a cached interface.

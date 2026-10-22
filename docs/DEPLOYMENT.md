@@ -82,7 +82,8 @@ jour des fichiers, faire `npm ci` (si `package-lock.json` a changé) puis `npm r
 même pas de redémarrage : le serveur sert `dist/` tel quel. Le serveur s'arrête proprement sur
 SIGTERM (connexions temps réel et base fermées). Santé : `GET /api/health` (`{ "ok": true }`
 si le serveur répond et que la base est lisible, 503 sinon), utilisé par `openwlm-service.sh` ;
-réservé à un usage local (hors des règles WAF, donc bloqué par Cloudflare).
+réservé aux appels locaux : une requête venue d'Internet (passée par Cloudflare, en-têtes
+`cf-ray` / `cf-connecting-ip`) reçoit 404.
 
 ## Déploiement d'une version : `scripts/deploy.sh`
 

@@ -147,3 +147,15 @@ test('GET /api/health : le serveur répond et sa base est lisible', async () => 
   assert.equal(r.status, 200);
   assert.deepEqual(r.data, { ok: true });
 });
+
+test('GET /api/health : 404 pour une requête venue d\'Internet (via Cloudflare)', async () => {
+  for (const header of ['cf-ray', 'cf-connecting-ip']) {
+    const r = await new Promise((resolve) => {
+      const req = http.request({ hostname: '127.0.0.1', port, path: '/api/health', method: 'GET', headers: { [header]: header === 'cf-ray' ? '8f00000000000000-CDG' : '203.0.113.7' } },
+        (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+      req.on('error', () => resolve(0));
+      req.end();
+    });
+    assert.equal(r, 404, header);
+  }
+});

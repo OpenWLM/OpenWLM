@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- `server/routes/users.js` and `server/middleware/auth.js` changed (E2E reset, blocking, profile change limit): restart the service. No new route or WAF rule.
 - `GET /api/health` (new route, local calls only), `server/routes/auth.js` (sign-out) and `server/index.js` changed: copy, then restart the service.
 - Sign-out and password change remove the relevant Push subscriptions / FCM tokens: server files `server/routes/auth.js`, `server/routes/users.js`, `server/index.js`, new `server/utils/pushTargets.js`. No new route or variable (WAF rules unchanged). `package-lock.json` changes (`npm ci`), then restart the service.
 - New `fcm_tokens` table, created automatically at startup.
@@ -27,6 +28,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **"Remember this device" keeps the session for 30 rolling days** (instead of 24 h): the server renews the session cookie as long as the device is used at least once a month, in the app and in the browser. Without this option, the session still lasts 24 h. Session revocation remains immediate.
 
 ### Tests
+- `tests/test_review_hardening.js`: Push targets removed by the E2E reset, blocking a non-contact refused without event, unblocking, profile change limit.
 - `e2e/push-robustness.spec.ts`: sign-out refused then cancelled (real-time still works, slow response simulated), session already ended (401).
 - `e2e/push-robustness.spec.ts`: sign-out refused by the server (session kept, retry); token registered again after "Sign out my other devices". `tests/test_push_revocation.js`: `/api/health` refused to a non-local call.
 - `e2e/socket-resilience.spec.ts`: silent connection on returning to the foreground, lost acknowledgement (automatic resend without duplicate); both fail on the previous version.
@@ -37,6 +39,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Security, review follow-up**: the emergency E2E key reset also removes the Web Push subscriptions and Android app tokens of all the account's devices (a device offline at reset time no longer receives notifications). Block / unblock now only accepts an existing contact (no status event sent to an arbitrary ID) and is rate-limited. Profile, status and private-mode changes, broadcast to all contacts, are limited to 30 per minute per account.
 - **Sign-out, follow-up**: if the server could not revoke the session, the real-time connection (closed at the start of sign-out) is restored at once, whether or not one retries; if the session no longer existed (401 / 403: expired, or revoked from another device), the local sign-out completes instead of offering a pointless retry. Web Push subscription is time-bounded too. `scripts/deploy.sh` builds the interface with `npm run build` itself (output folder via `OPENWLM_BUILD_OUT_DIR`) and does without `mv --exchange` on an older coreutils.
 - **Review follow-up**: sign-out checks the server's response (10 s limit); if the session could not be revoked, the app stays signed in and offers to retry instead of acting as if it were done. After "Sign out my other devices" or a password change, this device registers its notifications again (Web Push and Android app) in case reading them failed. Bounded timeouts for notification-related calls. Displayed file names without path separators. `GET /api/health` now requires a local call (loopback address). `scripts/deploy.sh` only records the version after a successful restart, resumes an interrupted deployment, and builds the interface alongside before swapping it with `dist/`.
 - **Intermittent "Not sent" messages (mostly on mobile)**: after waking up or a network change, the real-time connection could look open while carrying nothing, for up to 85 s; a message sent in that window failed after 15 s and had to be resent. On returning to the app (or to the network), the connection is now checked within 3 s and re-established at once if it does not answer; a message sent during a reconnection waits for the connection (30 s at most) instead of failing; a missing acknowledgement triggers a reconnection and an automatic resend of the same message (deduplicated, no duplicate for the recipient). No server change.

@@ -12,6 +12,7 @@ import {
   changePasswordAccountLimiter, 
   resetE2eAccountLimiter, 
   revokeSessionsAccountLimiter,
+  profileUpdateAccountLimiter,
   canInteract, 
   isValidPath, 
   hashPassword, 
@@ -197,12 +198,19 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
   /**
    * Bloquer / débloquer un contact
    */
-  router.post('/contacts/block', authenticateToken, (req, res) => {
-    const { contactId, block } = req.body;
+  router.post('/contacts/block', authenticateToken, sensitiveRateLimiter, (req, res) => {
+    const { block } = req.body || {};
+    const contactId = Number(req.body?.contactId);
     const userId = req.user.id;
+    if (!Number.isInteger(contactId) || contactId <= 0 || contactId === userId) {
+      return res.status(400).json({ error: 'Contact invalide.' });
+    }
 
     try {
-      db.prepare('UPDATE contacts SET blocked = ? WHERE user_id = ? AND contact_id = ?').run(block ? 1 : 0, userId, contactId);
+      // Seul un contact existant peut être bloqué / débloqué (pas canInteract : il refuserait
+      // le déblocage d'un contact bloqué). Aucun événement vers un identifiant arbitraire.
+      const result = db.prepare('UPDATE contacts SET blocked = ? WHERE user_id = ? AND contact_id = ?').run(block ? 1 : 0, userId, contactId);
+      if (result.changes === 0) return res.status(404).json({ error: 'Contact introuvable.' });
 
       const blocker = db.prepare('SELECT status FROM users WHERE id = ?').get(userId);
       io.to(getUserRoom(contactId)).emit('user_status_changed', { 
@@ -335,6 +343,10 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
 
         db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?')
           .run(userId);
+
+        // Toutes les sessions sont révoquées : plus aucun appareil (même hors ligne en ce moment)
+        // ne doit recevoir de notification
+        removePushTargets(userId);
       })();
 
       const updatedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
@@ -360,6 +372,9 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
   router.post('/user/global-private', authenticateToken, (req, res) => {
     const { globalPrivate } = req.body;
     const userId = req.user.id;
+    if (!profileUpdateAccountLimiter.attempt(userId).allowed) {
+      return res.status(429).json({ error: 'Trop de modifications, réessayez dans un instant.', code: 'profile_rate_limited' });
+    }
 
     try {
       db.prepare('UPDATE users SET global_private = ? WHERE id = ?').run(globalPrivate ? 1 : 0, userId);
@@ -378,6 +393,10 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
   router.post('/user/update', authenticateToken, (req, res) => {
     const { nickname, psm, avatar, scene, status } = req.body;
     const userId = req.user.id;
+    // Chaque modification est diffusée aux contacts : limite par compte contre une boucle de spam
+    if (!profileUpdateAccountLimiter.attempt(userId).allowed) {
+      return res.status(429).json({ error: 'Trop de modifications, réessayez dans un instant.', code: 'profile_rate_limited' });
+    }
 
     // Longueur VISIBLE (sans balises de mise en forme) : 50 / 150 ; brute bornée à 300 / 600
     if (nickname !== undefined && !isValidFormattedField(nickname, 50, 300)) return res.status(400).json({ error: "Surnom invalide (max 50 caractères).", code: 'nickname_invalid' });

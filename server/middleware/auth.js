@@ -264,13 +264,17 @@ export const signupAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60
 export const changePasswordAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 export const resetE2eAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 export const revokeSessionsAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+// Profil, statut et mode privé : chaque modification est diffusée à tous les contacts.
+// Large pour un usage normal (absence automatique, édition), mais bloque une boucle de spam.
+export const profileUpdateAccountLimiter = createAccountRateLimiter({ windowMs: 60 * 1000, limit: 30 });
 
 export const accountLimiters = [
   loginAccountLimiter,
   signupAccountLimiter,
   changePasswordAccountLimiter,
   resetE2eAccountLimiter,
-  revokeSessionsAccountLimiter
+  revokeSessionsAccountLimiter,
+  profileUpdateAccountLimiter
 ];
 
 export const createIpRateLimiter = ({ windowMs, limit, message }) => {

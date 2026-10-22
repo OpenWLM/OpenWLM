@@ -84,6 +84,35 @@ SIGTERM (connexions temps réel et base fermées). Santé : `GET /api/health` (`
 si le serveur répond et que la base est lisible, 503 sinon), utilisé par `openwlm-service.sh` ;
 réservé à un usage local (hors des règles WAF, donc bloqué par Cloudflare).
 
+## Déploiement d'une version : `scripts/deploy.sh`
+
+La prod (`~/OpenWLM`) n'est pas un dépôt git : on y **déploie** une version du clone git
+(`~/OpenWLM_github_prep`), sans jamais y développer. Sur la machine de prod :
+
+```bash
+cd ~/OpenWLM_github_prep
+git pull --ff-only                      # ou intégration d'un bundle / de patches
+scripts/deploy.sh --dry-run             # ce qui changerait (HEAD par défaut)
+scripts/deploy.sh                       # déploie, après confirmation
+scripts/deploy.sh v1.7.1                # une version précise (tag, branche, commit)
+scripts/deploy.sh <commit précédent>    # retour arrière
+```
+
+- Le contenu déployé est celui du **commit** (`git archive`), pas l'état du dossier de travail.
+- Jamais touchés : `.env*` (sauf `.env.example`), `.jwt_secret`, `.vapid_keys.json`,
+  `messenger.db*`, `uploads/`, `node_modules/`, `dist/`, `.ruffle/`, `public/ruffle/`.
+- Copie les fichiers suivis par git qui diffèrent et supprime ceux que git a supprimés depuis
+  la version déployée, notée dans `~/OpenWLM/.deployed-version` (commit, date, sauvegarde).
+  Premier déploiement sans ce fichier : `--from <commit actuellement en prod>`.
+- Avant d'écrire : sauvegarde des fichiers remplacés / supprimés et de la base (copie
+  cohérente SQLite) dans `~/Archives/deploiements/<date>-<commit>/` (droits 600).
+- Puis seulement si nécessaire : `npm ci` (package*.json), `npm run build` (src/, public/…),
+  redémarrage (`server/`, dépendances) via `openwlm-service.sh restart`, qui attend
+  `/api/health`.
+- Rappel si `docs/cloudflare-waf.generated.json` a changé : mettre à jour Cloudflare d'abord.
+- Options : `--yes` (sans confirmation), `--no-restart`, `--target <dossier>` (ex. une copie
+  de test), `--from <commit>`.
+
 ## Option 3 — Docker
 
 Utiliser une politique de redémarrage : `--restart unless-stopped` (ou

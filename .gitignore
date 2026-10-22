@@ -170,6 +170,9 @@ keystore.properties
 *firebase-adminsdk*.json
 service-account*.json
 
+# Version déployée en prod (écrite par scripts/deploy.sh dans le dossier de prod)
+.deployed-version
+
 # Backups and scratch
 *.tar.gz
 scratch/

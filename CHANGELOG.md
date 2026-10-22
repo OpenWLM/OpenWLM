@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- `GET /api/health` (new local route, outside the WAF rules), `server/routes/auth.js` (sign-out) and `server/index.js` changed: copy, then restart the service.
 - Sign-out and password change remove the relevant Push subscriptions / FCM tokens: server files `server/routes/auth.js`, `server/routes/users.js`, `server/index.js`, new `server/utils/pushTargets.js`. No new route or variable (WAF rules unchanged). `package-lock.json` changes (`npm ci`), then restart the service.
 - New `fcm_tokens` table, created automatically at startup.
 - New routes `POST /api/push/fcm/register` and `POST /api/push/fcm/unregister`: **update the Cloudflare WAF rules** ([docs/CLOUDFLARE_WAF.md](docs/CLOUDFLARE_WAF.md)).
@@ -26,12 +27,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **"Remember this device" keeps the session for 30 rolling days** (instead of 24 h): the server renews the session cookie as long as the device is used at least once a month, in the app and in the browser. Without this option, the session still lasts 24 h. Session revocation remains immediate.
 
 ### Tests
+- `e2e/push-robustness.spec.ts`: sign-out with a service worker that never activates; FCM token retried after a network failure, without duplicate sends. `tests/test_push_revocation.js`: `/api/health`.
 - `tests/test_push_revocation.js`: Web Push subscriptions and FCM tokens removed on sign-out (whole account) and password change (except the current device), other accounts untouched. `e2e/android-save.spec.ts`: fallback to `saveFile` with an APK v3. JVM test `FileNamesTest`.
 - `e2e/android-save.spec.ts`: simulated Android app, received file saved in chunks and identical to the original. JVM tests of the app (`AppLockPolicyTest`, `CallTimingTest`).
 - `tests/test_fcm_push.js`: FCM message format (never any content, priority, call lifetime), expired tokens removed, registration routes (authentication, format, account switch, cap), revoking other sessions, server startup with and without a Firebase key.
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Notifications, review follow-up**: a failed app token registration (offline, server unavailable) is no longer treated as successful: it is retried when the network comes back or on returning to the app, one sync at a time. Signing out no longer waits forever for the service worker (private browsing, failed registration): server-side revocation goes first, local unsubscribes are bounded to a few seconds and keys are purged in every case; password change is no longer blocked either. Changing server from APK v3: the token is now removed from the old server, and registered again if cancelled.
+- **Received files**: the name shown in the conversation is stripped of invisible and bidirectional characters (an extension can no longer be disguised).
+- **Server**: `/api/logout` returns an error if revocation fails in the database instead of ignoring it; new local route `GET /api/health` (database readable) used by `openwlm-service.sh`. CI: Android job (JVM tests, Android lint, debug APK).
 - **Notifications and sessions**: signing out now removes all of the account's Web Push subscriptions and Android app tokens (it already revokes all its sessions), and changing the password removes those of the other devices, like "Sign out my other sessions". A signed-out device no longer receives sender names or call rings. The device also unsubscribes on its side, including when its session was revoked elsewhere.
 - **Android app, after the second review**:
   - The interface adapts to the installed APK: with APK v3, received files are saved again (in one block) and changing server keeps notifications; APK v5 also keeps the old method for a cached interface.

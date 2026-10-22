@@ -80,7 +80,9 @@ remplace pm2 (le processus pm2 `openwlm` est arrêté et retiré à l'installati
 jour des fichiers, faire `npm ci` (si `package-lock.json` a changé) puis `npm run build` (si
 `src/` ou `public/` ont changé) **avant** `restart`. Une modification limitée à `src/` ne demande
 même pas de redémarrage : le serveur sert `dist/` tel quel. Le serveur s'arrête proprement sur
-SIGTERM (connexions temps réel et base fermées).
+SIGTERM (connexions temps réel et base fermées). Santé : `GET /api/health` (`{ "ok": true }`
+si le serveur répond et que la base est lisible, 503 sinon), utilisé par `openwlm-service.sh` ;
+réservé à un usage local (hors des règles WAF, donc bloqué par Cloudflare).
 
 ## Option 3 — Docker
 

@@ -3,6 +3,7 @@
  * fonctions natives. Dans un navigateur, tout se replie sur le comportement web.
  */
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { withTimeout } from './withTimeout';
 
 export interface NativeAppInfo {
   server: string | null;
@@ -137,11 +138,9 @@ export const saveBlob = async (blob: Blob, fileName: string): Promise<boolean> =
 /** Jeton FCM de cette installation de l'app (null hors app ou sans Firebase). */
 export const getNativeFcmToken = async (): Promise<string | null> => {
   if (!isNativeApp()) return null;
-  try {
-    return (await OpenWLMNative.getFcmToken()).token;
-  } catch {
-    return null;
-  }
+  // Firebase peut ne pas répondre hors ligne : ne jamais bloquer (déconnexion, mot de passe…)
+  const res = await withTimeout(OpenWLMNative.getFcmToken(), 5000, { token: null });
+  return res.token;
 };
 
 export const getNativeNotificationPermission = async (): Promise<NativeNotificationPermission | null> =>
@@ -158,7 +157,7 @@ export const openNativeNotificationSettings = (): Promise<void> =>
  * sert plus à rien côté serveur, qui l'a déjà effacé). Un nouveau est créé à la connexion.
  */
 export const resetNativePushToken = async (): Promise<void> => {
-  if (isNativeApp() && hasNativeMethod('resetPushToken')) await OpenWLMNative.resetPushToken().catch(() => { /* ignore */ });
+  if (isNativeApp() && hasNativeMethod('resetPushToken')) await withTimeout(OpenWLMNative.resetPushToken(), 5000, undefined);
 };
 
 /** Langue de l'app, pour les notifications construites par le code natif. */

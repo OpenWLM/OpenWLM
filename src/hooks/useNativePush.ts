@@ -13,8 +13,7 @@ import {
   onNativeFcmToken,
   onNativeOpenChat,
   onNativeServerChangeCancelled,
-  openServerSettings,
-  hasNativeMethod
+  openServerSettings
 } from '../utils/platform';
 
 /**
@@ -32,13 +31,21 @@ import {
  * Le Web Push (service worker) n'existe pas dans la WebView : c'est la voie de remplacement.
  */
 
-const registerToken = (token: string) =>
-  axios.post('/api/push/fcm/register', { token }).catch((err) => {
+/** Enregistre / retire le jeton sur le serveur. Vrai si le serveur a confirmé. */
+const registerToken = (token: string): Promise<boolean> =>
+  axios.post('/api/push/fcm/register', { token }).then(() => true, (err) => {
     console.warn('[FCM] Enregistrement du jeton impossible:', err);
+    return false;
   });
+const unregisterToken = (token: string): Promise<boolean> =>
+  axios.post('/api/push/fcm/unregister', { token }).then(() => true, () => false);
 
-/** Demande de resynchronisation du jeton avec l'autorisation (cf. OptionsModal). */
+/**
+ * Demande de resynchronisation du jeton avec l'autorisation (cf. OptionsModal), ou après son
+ * retrait avant l'écran de changement de serveur (l'état mémorisé est oublié).
+ */
 export const NATIVE_PUSH_SYNC_EVENT = 'openwlm-native-push-sync';
+export const NATIVE_PUSH_RESET_EVENT = 'openwlm-native-push-reset';
 
 /**
  * Le jeton n'est enregistré que si l'app peut afficher des notifications : sinon le serveur
@@ -51,9 +58,10 @@ const syncTokenWithPermission = async (previous: 'registered' | 'unregistered' |
   if (!token) return previous;
   const wanted = permission === 'granted' ? 'registered' : 'unregistered';
   if (wanted === previous) return previous;
-  if (wanted === 'registered') await registerToken(token);
-  else await axios.post('/api/push/fcm/unregister', { token }).catch(() => { /* déjà absent */ });
-  return wanted;
+  const ok = wanted === 'registered' ? await registerToken(token) : await unregisterToken(token);
+  // Échec (hors ligne, serveur indisponible) : rien n'est mémorisé, nouvel essai au prochain
+  // retour du réseau ou dans l'app
+  return ok ? wanted : previous;
 };
 
 /**
@@ -62,9 +70,11 @@ const syncTokenWithPermission = async (previous: 'registered' | 'unregistered' |
  * (cf. useNativePush) ; s'il change de serveur, l'app supprime aussi le jeton chez Firebase.
  */
 export const changeNativeServer = async (): Promise<void> => {
-  // APK v3 : ne signale pas l'annulation (serverChangeCancelled), le jeton ne serait pas
-  // réenregistré ; on le laisse donc en place (comportement de la v3)
-  if (hasNativeMethod('beginSave')) await unregisterNativePush();
+  await unregisterNativePush();
+  // L'état mémorisé est oublié : au retour dans l'app sans changement (annulé, même serveur),
+  // le jeton est réenregistré par la synchronisation du retour au premier plan — y compris
+  // avec un APK v3, qui ne signale pas l'annulation (serverChangeCancelled)
+  window.dispatchEvent(new Event(NATIVE_PUSH_RESET_EVENT));
   await openServerSettings();
 };
 
@@ -72,7 +82,7 @@ export const changeNativeServer = async (): Promise<void> => {
 export const unregisterNativePush = async (): Promise<void> => {
   const token = await getNativeFcmToken();
   if (!token) return;
-  await axios.post('/api/push/fcm/unregister', { token }).catch(() => { /* déjà retiré ou hors ligne */ });
+  await unregisterToken(token);
 };
 
 // Explication des autorisations d'appel déjà montrée sur cet appareil (une seule fois)
@@ -108,8 +118,22 @@ export function useNativePush(options: {
     if (!userId || !isNativeApp()) return;
     let cancelled = false;
     let synced: 'registered' | 'unregistered' | null = null;
-    const sync = async () => {
-      if (!cancelled) synced = await syncTokenWithPermission(synced);
+    // Une synchronisation à la fois (retour au premier plan, réseau, Options…) : une demande
+    // reçue pendant qu'une autre tourne relance une passe à la fin, au lieu d'envoyer deux fois
+    let inFlight: Promise<void> | null = null;
+    let again = false;
+    const sync = (): Promise<void> => {
+      if (inFlight) {
+        again = true;
+        return inFlight;
+      }
+      inFlight = (async () => {
+        do {
+          again = false;
+          if (!cancelled) synced = await syncTokenWithPermission(synced);
+        } while (again && !cancelled);
+      })().finally(() => { inFlight = null; });
+      return inFlight;
     };
     (async () => {
       if (await getNativeNotificationPermission() === 'prompt') {
@@ -138,8 +162,15 @@ export function useNativePush(options: {
     document.addEventListener('visibilitychange', onVisible);
     // Autorisation accordée depuis les Options (la boîte d'Android ne change pas la visibilité)
     window.addEventListener(NATIVE_PUSH_SYNC_EVENT, sync);
+    // Jeton retiré avant le changement de serveur : à réenregistrer au retour
+    const onReset = () => { synced = null; };
+    window.addEventListener(NATIVE_PUSH_RESET_EVENT, onReset);
+    // Retour du réseau : nouvel essai si le dernier a échoué
+    window.addEventListener('online', sync);
     return () => {
       window.removeEventListener(NATIVE_PUSH_SYNC_EVENT, sync);
+      window.removeEventListener(NATIVE_PUSH_RESET_EVENT, onReset);
+      window.removeEventListener('online', sync);
       cancelled = true;
       handle?.then(h => h.remove());
       cancelHandle?.then(h => h.remove());

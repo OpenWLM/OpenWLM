@@ -141,3 +141,9 @@ test('changement de mot de passe sans cible à garder : toutes les cibles du com
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.deepEqual(targetsOf(aliceId), { web: [], fcm: [] });
 });
+
+test('GET /api/health : le serveur répond et sa base est lisible', async () => {
+  const r = await reqJson('/api/health', 'GET');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.data, { ok: true });
+});

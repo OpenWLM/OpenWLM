@@ -4,6 +4,7 @@ import { type EncryptedFileKeys, decryptFileBinary } from '../utils/Security';
 import { useI18n } from '../i18n';
 import { notify } from '../utils/dialogs';
 import { isNativeApp, saveBlob } from '../utils/platform';
+import { safeFileName } from '../utils/fileNames';
 
 export interface FileDataPayload {
   type: 'file';
@@ -53,7 +54,7 @@ export const isImageFile = (fileData?: FileDataPayload | null): boolean => {
   if (!fileData) return false;
   const mime = (fileData.fileType || '').toLowerCase();
   if (mime.startsWith('image/')) return true;
-  const name = (fileData.fileName || '').toLowerCase();
+  const name = safeFileName(fileData.fileName).toLowerCase();
   return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name);
 };
 
@@ -63,6 +64,8 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
   isSender
 }) => {
   const { t, language } = useI18n();
+  // Nom affiché et enregistré sans caractères invisibles / bidirectionnels (nom trompeur)
+  const fileName = safeFileName(fileData.fileName);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
@@ -184,7 +187,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
     // Optimisation : si l'image est déjà déchiffrée en local, téléchargement immédiat sans requête réseau
     if (imageUrl && imageBlobRef.current) {
       try {
-        if (await saveBlob(imageBlobRef.current, fileData.fileName || 'image_recue.png')) {
+        if (await saveBlob(imageBlobRef.current, fileName || 'image_recue.png')) {
           setIsDownloaded(true);
           if (isNativeApp()) notify(t.fileTransfer.savedToDownloads, { icon: '✅' });
         }
@@ -241,7 +244,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
         setImageUrl(URL.createObjectURL(blob));
       }
 
-      if (await saveBlob(blob, fileData.fileName || 'fichier_dechiffre')) {
+      if (await saveBlob(blob, fileName || 'fichier_dechiffre')) {
         setIsDownloaded(true);
         if (isNativeApp()) notify(t.fileTransfer.savedToDownloads, { icon: '✅' });
       }
@@ -259,7 +262,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
     }
   };
 
-  const ext = getExtension(fileData.fileName);
+  const ext = getExtension(fileName);
 
   // ========================================================
   // BRANCHE 1 : RENDU SPÉCIFIQUE POUR LES IMAGES
@@ -276,7 +279,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
           >
             <img 
               src={imageUrl} 
-              alt={fileData.fileName} 
+              alt={fileName} 
               className="wlm-image-thumbnail" 
             />
             <div className="wlm-image-zoom-overlay">
@@ -311,8 +314,8 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
         {/* Pied de carte de l'image (Métadonnées & Actions) */}
         <div className="wlm-image-card-footer">
           <div className="wlm-image-info">
-            <div className="wlm-image-name" title={fileData.fileName}>
-              {fileData.fileName}
+            <div className="wlm-image-name" title={fileName}>
+              {fileName}
             </div>
             <div className="wlm-file-meta">
               <span>{formatBytes(fileData.fileSize, language)}</span>
@@ -367,7 +370,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
               <div className="wlm-paste-modal-header">
                 <div className="wlm-paste-title-area">
                   <span className="wlm-paste-icon">📷</span>
-                  <span className="wlm-paste-title">{fileData.fileName} ({formatBytes(fileData.fileSize, language)})</span>
+                  <span className="wlm-paste-title">{fileName} ({formatBytes(fileData.fileSize, language)})</span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <button 
@@ -389,7 +392,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
                 </div>
               </div>
               <div className="wlm-lightbox-content">
-                <img src={imageUrl} alt={fileData.fileName} className="wlm-lightbox-image" />
+                <img src={imageUrl} alt={fileName} className="wlm-lightbox-image" />
               </div>
             </div>
           </div>
@@ -408,8 +411,8 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
           {ext}
         </div>
         <div className="wlm-file-info">
-          <div className="wlm-file-name" title={fileData.fileName}>
-            {fileData.fileName}
+          <div className="wlm-file-name" title={fileName}>
+            {fileName}
           </div>
           <div className="wlm-file-meta">
             <span>{formatBytes(fileData.fileSize, language)}</span>

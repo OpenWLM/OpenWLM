@@ -2,12 +2,9 @@ import { isValidFormattedField } from '../utils/plusText.js';
 import { removePushTargets } from '../utils/pushTargets.js';
 import { Router } from 'express';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
 import { db, toPrivateUserDTO } from '../db.js';
 import { getUserRoom } from '../sessionStore.js';
 import { 
-  SECRET, 
-  parseCookies, 
   authRateLimiter, 
   authenticateToken, 
   loginAccountLimiter, 
@@ -60,28 +57,21 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
    * Déconnexion explicite
    */
   router.post('/logout', authenticateToken, (req, res) => {
-    let token = req.headers['authorization']?.split(' ')[1];
-    if (!token && req.headers.cookie) {
-      const cookies = parseCookies(req.headers.cookie);
-      token = cookies.token;
+    const userId = req.user.id;
+    // Toutes les sessions du compte sont révoquées : plus aucun appareil ne doit recevoir de
+    // notification (Web Push, FCM). Route de sécurité : un échec n'est pas passé sous silence.
+    try {
+      db.transaction(() => {
+        db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', userId);
+        removePushTargets(userId);
+      })();
+    } catch (err) {
+      console.error('[Auth] Échec de la révocation des sessions à la déconnexion:', err);
+      return res.status(500).json({ error: 'Erreur serveur : déconnexion non effectuée.', code: 'logout_failed' });
     }
-
-    if (token) {
-      try {
-        const payload = jwt.verify(token, SECRET, { algorithms: ['HS256'] });
-        if (payload && payload.id) {
-          // Toutes les sessions du compte sont révoquées : plus aucun appareil ne doit recevoir
-          // de notification (Web Push, FCM)
-          db.transaction(() => {
-            db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1, status = ? WHERE id = ?').run('offline', payload.id);
-            removePushTargets(payload.id);
-          })();
-          broadcastStatusToContacts(payload.id, { id: payload.id, userId: payload.id, status: 'offline' });
-          // SÉCURITÉ : couper réellement toutes les sockets actives de l'utilisateur
-          io.in(getUserRoom(payload.id)).disconnectSockets(true);
-        }
-      } catch (err) {}
-    }
+    broadcastStatusToContacts(userId, { id: userId, userId, status: 'offline' });
+    // SÉCURITÉ : couper réellement toutes les sockets actives de l'utilisateur
+    io.in(getUserRoom(userId)).disconnectSockets(true);
 
     const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
     const isCloudflare = Boolean(req.headers['cf-ray'] || isHttps);

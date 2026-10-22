@@ -58,3 +58,46 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # App Android : tests JVM (verrouillage, durée de sonnerie, noms de fichiers), lint Android et
+  # compilation de l'APK de debug. Sans aucun secret : ni keystore (APK de publication signé
+  # sur la machine de développement Android), ni google-services.json (Firebase non inclus).
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: SDK Android (plateforme 36, build-tools 36.0.0)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Synchronisation Capacitor (page hors ligne, configuration)
+        run: npx cap sync android
+
+      - name: Tests JVM, lint Android et APK de debug
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug assembleDebug --console=plain
+
+      - name: Rapports Android (si échec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            android/app/build/reports/
+            android/app/build/test-results/
+          retention-days: 7

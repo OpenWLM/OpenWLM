@@ -12,6 +12,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 ## [Non publié]
 
 ### Mise à jour du serveur
+- `GET /api/health` (nouvelle route locale, hors des règles WAF), `server/routes/auth.js` (déconnexion) et `server/index.js` modifiés : copier, puis redémarrer le service.
 - Déconnexion et changement de mot de passe suppriment les abonnements Push / jetons FCM concernés : fichiers serveur `server/routes/auth.js`, `server/routes/users.js`, `server/index.js`, nouveau `server/utils/pushTargets.js`. Aucune route ni variable nouvelle (règles WAF inchangées). `package-lock.json` change (`npm ci`), puis redémarrer le service.
 - Nouvelle table `fcm_tokens`, créée automatiquement au démarrage.
 - Nouvelles routes `POST /api/push/fcm/register` et `POST /api/push/fcm/unregister` : **mettre à jour les règles WAF Cloudflare** ([docs/CLOUDFLARE_WAF.md](docs/CLOUDFLARE_WAF.md)).
@@ -26,12 +27,16 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **« Se souvenir de cet appareil » garde la session 30 jours glissants** (au lieu de 24 h) : le serveur renouvelle le cookie de session tant que l'appareil sert au moins une fois par mois, dans l'app comme dans le navigateur. Sans cette option, la session dure toujours 24 h. La révocation des sessions reste immédiate.
 
 ### Tests
+- `e2e/push-robustness.spec.ts` : déconnexion avec un service worker qui ne s'active jamais ; jeton FCM réessayé après un échec réseau, sans envoi en double. `tests/test_push_revocation.js` : `/api/health`.
 - `tests/test_push_revocation.js` : abonnements Web Push et jetons FCM supprimés à la déconnexion (tout le compte) et au changement de mot de passe (sauf l'appareil courant), autres comptes intacts. `e2e/android-save.spec.ts` : repli sur `saveFile` avec un APK v3. Test JVM `FileNamesTest`.
 - `e2e/android-save.spec.ts` : app Android simulée, fichier reçu enregistré par morceaux et identique à l'original. Tests JVM de l'app (`AppLockPolicyTest`, `CallTimingTest`).
 - `tests/test_fcm_push.js` : format des messages FCM (jamais de contenu, priorité, durée de vie des appels), jetons expirés supprimés, routes d'enregistrement (authentification, format, changement de compte, plafond), révocation des autres sessions, démarrage du serveur avec et sans clé Firebase.
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections
+- **Notifications, suite de la revue** : un enregistrement du jeton de l'app qui échoue (hors ligne, serveur indisponible) n'est plus considéré comme réussi : il est réessayé au retour du réseau ou dans l'app, une synchronisation à la fois. La déconnexion n'attend plus indéfiniment le service worker (navigation privée, enregistrement échoué) : la révocation côté serveur passe d'abord, les désabonnements locaux sont bornés à quelques secondes et la purge des clés a lieu dans tous les cas ; le changement de mot de passe n'est plus bloqué non plus. Changement de serveur depuis l'APK v3 : le jeton est désormais retiré de l'ancien serveur, et réenregistré si l'on annule.
+- **Fichiers reçus** : le nom affiché dans la conversation est nettoyé des caractères invisibles et bidirectionnels (une extension ne peut plus être déguisée).
+- **Serveur** : `/api/logout` renvoie une erreur si la révocation échoue en base au lieu de l'ignorer ; nouvelle route locale `GET /api/health` (base lisible) utilisée par `openwlm-service.sh`. CI : job Android (tests JVM, lint Android, APK de debug).
 - **Notifications et sessions** : la déconnexion supprime désormais tous les abonnements Web Push et jetons de l'app Android du compte (elle révoque déjà toutes ses sessions), et le changement de mot de passe ceux des autres appareils, comme « Déconnecter mes autres sessions ». Un appareil déconnecté ne reçoit plus le nom des expéditeurs ni la sonnerie des appels. L'appareil se désabonne aussi de son côté, y compris quand sa session a été révoquée ailleurs.
 - **App Android, après la seconde revue** :
   - L'interface s'adapte à l'APK installé : avec l'APK v3, les fichiers reçus sont de nouveau enregistrés (en un bloc) et le changement de serveur garde les notifications ; l'APK v5 garde aussi l'ancienne méthode pour une interface en cache.

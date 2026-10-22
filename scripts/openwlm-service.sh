@@ -66,10 +66,16 @@ WantedBy=default.target
 EOF
 }
 
-responds() { curl -fs -o /dev/null --max-time 3 "http://localhost:$PORT/"; }
+# Le serveur répond et sa base est lisible (GET /api/health) ; repli sur / pour un serveur
+# antérieur à cette route
+responds() {
+  curl -fs -o /dev/null --max-time 3 "http://localhost:$PORT/api/health" \
+    || { [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://localhost:$PORT/api/health")" = "404" ] \
+         && curl -fs -o /dev/null --max-time 3 "http://localhost:$PORT/"; }
+}
 
 wait_healthy() {
-  info "attente de la réponse de http://localhost:$PORT/ (${HEALTH_TIMEOUT} s max)…"
+  info "attente de la réponse de http://localhost:$PORT/api/health (${HEALTH_TIMEOUT} s max)…"
   for _ in $(seq 1 "$HEALTH_TIMEOUT"); do
     if systemctl --user is-active --quiet "$SERVICE" && responds; then
       ok "OpenWLM est en ligne ($(cd "$APP_DIR" && node -p "require('./package.json').version"), port $PORT)."

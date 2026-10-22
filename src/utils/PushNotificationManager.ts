@@ -3,6 +3,8 @@
  * Gestion de l'architecture Web Push & Service Worker pour les notifications Android et arrière-plan.
  */
 
+import { withTimeout } from './withTimeout';
+
 export interface PushBackendStatus {
   available: boolean;
   hasVapid: boolean;
@@ -42,11 +44,21 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
 /**
  * Récupère l'abonnement Push actif auprès du Service Worker
  */
+/**
+ * Service worker actif, ou null au bout de 3 s : `navigator.serviceWorker.ready` ne se résout
+ * jamais si aucun service worker ne s'active (enregistrement échoué, navigation privée…), et
+ * la déconnexion ou le changement de mot de passe ne doivent pas rester bloqués.
+ */
+const SW_READY_TIMEOUT_MS = 3000;
+const readyRegistration = (): Promise<ServiceWorkerRegistration | null> =>
+  withTimeout<ServiceWorkerRegistration | null>(navigator.serviceWorker.ready, SW_READY_TIMEOUT_MS, null);
+
 export async function getExistingPushSubscription(): Promise<PushSubscription | null> {
   if (!isPushSupported()) return null;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    return await reg.pushManager.getSubscription();
+    const reg = await readyRegistration();
+    if (!reg) return null;
+    return await withTimeout(reg.pushManager.getSubscription(), SW_READY_TIMEOUT_MS, null);
   } catch (err) {
     console.warn('[PushNotificationManager] Erreur récupération subscription:', err);
     return null;
@@ -134,12 +146,13 @@ export async function subscribeToWebPush(vapidPublicKey?: string): Promise<{ suc
 export async function unsubscribeFromWebPush(): Promise<boolean> {
   if (!isPushSupported()) return false;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const subscription = await reg.pushManager.getSubscription();
+    const reg = await readyRegistration();
+    if (!reg) return false;
+    const subscription = await withTimeout(reg.pushManager.getSubscription(), SW_READY_TIMEOUT_MS, null);
     if (!subscription) return true;
 
     // Désabonner du navigateur
-    await subscription.unsubscribe();
+    await withTimeout(subscription.unsubscribe(), SW_READY_TIMEOUT_MS, false);
 
     // Informer le serveur
     await fetch('/api/push/unsubscribe', {

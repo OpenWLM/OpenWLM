@@ -54,7 +54,8 @@ import { ChatWindow } from './components/ChatWindow';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { isNativeApp, getNativeFcmToken, dismissNativeIncomingCall, resetNativePushToken } from './utils/platform';
-import { useNativePush, unregisterNativePush } from './hooks/useNativePush';
+import { useNativePush } from './hooks/useNativePush';
+import { withTimeout } from './utils/withTimeout';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
 import DesktopToastContainer from './components/DesktopToast';
@@ -3545,31 +3546,34 @@ const App: React.FC = () => {
     loggingOutRef.current = true;
     if (reason) console.warn("[Session] Déconnexion:", reason); 
     const currentToken = user?.token;
-    if (!opts.local) {
-      if (socket) {
-        socket.emit('manual_disconnect');
+    try {
+      if (!opts.local) {
+        if (socket) {
+          socket.emit('manual_disconnect');
+        }
+        // SÉCURITÉ : révocation côté serveur d'abord (toutes les sessions du compte, et ses
+        // abonnements Push / jetons FCM) et suppression du cookie HttpOnly
+        try {
+          await fetch('/api/logout', {
+            method: 'POST',
+            headers: currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {},
+            credentials: 'include'
+          });
+        } catch (e) {
+          console.warn('[Logout] Erreur appel /api/logout:', e);
+        }
+      } else {
+        socket?.disconnect();
       }
-      // Cet appareil ne doit plus recevoir les notifications du compte (le serveur supprime
-      // aussi, à la déconnexion, les abonnements Push et jetons FCM de tous les appareils)
-      await unregisterNativePush();
-      await unsubscribeFromWebPush().catch(() => false);
-      // SÉCURITÉ : Révocation du token côté serveur via l'endpoint dédié et suppression du cookie HttpOnly
-      try {
-        await fetch('/api/logout', {
-          method: 'POST',
-          headers: currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {},
-          credentials: 'include'
-        });
-      } catch (e) {
-        console.warn('[Logout] Erreur appel /api/logout:', e);
-      }
-    } else {
-      socket?.disconnect();
-      // Session révoquée ailleurs : le serveur a déjà supprimé les cibles Push de cet appareil ;
-      // on se désabonne aussi localement (navigateur, et jeton FCM supprimé chez Firebase)
-      await unsubscribeFromWebPush().catch(() => false);
-      await resetNativePushToken();
+      // Puis désabonnement de cet appareil de son côté (navigateur ; app : jeton FCM supprimé
+      // chez Firebase), borné dans le temps : jamais bloquant pour la purge qui suit
+      await withTimeout(Promise.allSettled([unsubscribeFromWebPush(), resetNativePushToken()]).then(() => undefined), 5000, undefined);
+    } finally {
+      await purgeLocalSession(reason);
     }
+  };
+  // SÉCURITÉ : purge de tout ce que la session a laissé sur l'appareil, quoi qu'il arrive avant
+  const purgeLocalSession = async (reason?: string) => {
     draftsRef.current = {};
     // SÉCURITÉ : Purge complète du stockage JS
     try {

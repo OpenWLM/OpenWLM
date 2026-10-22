@@ -86,7 +86,7 @@ test('connexion d\'un contact → toast « has just signed in »', async ({ brow
   await a.mouse.move(0, 0);
   await expect(a.locator('.wlm-desktop-toast')).toHaveCount(0);
 
-  // « Apparaître hors ligne » puis « Disponible » : même notification (comme sur MSN)
+  // « Apparaître hors ligne » puis « Disponible » : même notification
   await b.locator('.status-trigger').click();
   await b.locator('.dropdown-item', { hasText: 'Appear offline' }).click();
   await a.waitForTimeout(1500);

@@ -1,6 +1,6 @@
 /**
  * Gestionnaire de sons pour l'application
- * Centralise le chargement et la reproduction des effets sonores MSN/WLM.
+ * Centralise le chargement et la reproduction des effets sonores de l'app.
  */
 
 import { getAppPrefs, isSoundAllowed, soundVolume, type SoundCategory } from './appPrefs';

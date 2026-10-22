@@ -3,7 +3,7 @@ import { isSoundAllowed, soundVolume } from '../utils/appPrefs';
 import { useI18n } from '../i18n';
 
 /**
- * Lecteur de Clins d'œil (Winks) MSN.
+ * Lecteur de Clins d'œil (Winks).
  * Joue l'animation pré-rendue depuis les .swf ORIGINAUX de WLM 2009 (WebP animé) + le SON
  * ORIGINAL (extrait du SWF via Ruffle, capturé en WebM) — synchronisés.
  */

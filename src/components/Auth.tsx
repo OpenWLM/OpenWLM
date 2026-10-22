@@ -244,7 +244,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
           </button>
         </div>
 
-        {/* En-tête avec logo style MSN */}
+        {/* En-tête avec logo */}
         <div className="wlm-auth-logo">
            <img src="/assets/openwlm_logo.png" alt="OpenWLM Logo" className="wlm-auth-logo-img" />
            <div className="wlm-logo-text-large">OpenWLM</div>
@@ -276,7 +276,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
             {!isLogin && <PasswordStrengthMeter password={password} />}
           </div>
 
-          {/* Sélecteur de statut MSN classique (uniquement à la connexion) */}
+          {/* Sélecteur de statut (uniquement à la connexion) */}
           {isLogin && (
             <>
               <div className="auth-field">

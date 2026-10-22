@@ -3,7 +3,7 @@ import { hasPlusFormatting, renderPlusText, stripPlusTags } from './plusFormat';
 import { getAppPrefs } from './appPrefs';
 
 /**
- * Dictionnaire officiel des raccourcis d'émoticônes rétro Windows Live Messenger / MSN
+ * Dictionnaire officiel des raccourcis d'émoticônes rétro Windows Live Messenger
  * Mappé vers les fichiers GIF authentiques dans /assets/emoticons/
  */
 export const NICKNAME_EMOTICON_MAP: Record<string, string> = {
@@ -53,7 +53,7 @@ export const NICKNAME_EMOTICON_MAP: Record<string, string> = {
   ':-*': 'kiss.png',
   '^o)': 'eye-rolling.png',
 
-  // Objets et symboles emblématiques MSN
+  // Objets et symboles emblématiques
   '(L)': 'heart.png',
   '(U)': 'broken_heart.png',
   '(u)': 'broken_heart.png',

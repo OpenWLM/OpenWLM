@@ -9,7 +9,7 @@ import { notify } from '../utils/dialogs';
 /**
  * DOMAINE JEUX MULTI-JOUEURS (Morpion, Dames, Puissance 4, Démineur)
  *
- * Regroupe l'état et les actions des activités MSN :
+ * Regroupe l'état et les actions des activités :
  * - partie active, invitations entrante/sortante, parties reprenables, résumé de partie ;
  * - actions associées (inviter, accepter/refuser, annuler, quitter, réduire/fermer) ;
  * - reprise automatique d'une partie à l'ouverture de la conversation.

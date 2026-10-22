@@ -40,7 +40,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <>
         {hasOpenChats && tabs}
         <div className="empty-chat-state">
-          <div className="msn-butterfly giant"></div>
+          <div className="wlm-logo giant"></div>
           <div className="welcome-text">{t.roster.emptyStateTitle}</div>
           <div className="sub-welcome">{t.roster.emptyStateSubtitle}</div>
           <div style={{ marginTop: '16px' }}>

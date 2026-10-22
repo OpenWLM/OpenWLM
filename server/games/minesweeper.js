@@ -1,14 +1,14 @@
 import crypto from 'crypto';
 
 /**
- * DÉMINEUR À DEUX (« Minesweeper Flags » de MSN) — logique pure, côté serveur uniquement.
+ * DÉMINEUR À DEUX (« Minesweeper Flags ») — logique pure, côté serveur uniquement.
  *
  * Le but est de TROUVER les mines : 16 × 16 cases, 51 mines, le premier à 26 gagne
  * (51 étant impair, le match nul est impossible).
  * - Mine cliquée : drapeau du joueur, +1 point, il rejoue.
  * - Chiffre : la case se révèle, la main passe.
  * - Case vide : remplissage par diffusion (cases vides + bordure de chiffres), la main passe.
- * - Bombe (une par joueur et par manche — comme sur MSN, où une partie est une manche —,
+ * - Bombe (une par joueur et par manche — une partie est une manche —,
  *   seulement avec au moins 3 points de retard) :
  *   ouvre un carré 5 × 5 centré sur la case ; +1 point par mine ; le joueur garde la main
  *   s'il a trouvé au moins une mine.

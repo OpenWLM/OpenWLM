@@ -2406,7 +2406,7 @@ const App: React.FC = () => {
         refreshData();
       });
 
-      // --- ÉVÉNEMENTS JEUX & ACTIVITÉS MSN (MORPION) ---
+      // --- ÉVÉNEMENTS JEUX & ACTIVITÉS (MORPION) ---
       newSocket.on('game_invite_received', (data: { from: number; fromName: string; gameType: string }) => {
         setIncomingGameInvite(data);
         try { SoundManager.play('ONLINE'); } catch {}
@@ -4275,7 +4275,7 @@ const App: React.FC = () => {
         
         {/* Logo et Branding */}
         <div className="wlm-branding">
-          <div className="msn-butterfly"></div>
+          <div className="wlm-logo"></div>
           <div className="wlm-logo-text">Open<span>WLM</span></div>
           {canInstallPWA && !isNativeApp() && (
             <button 
@@ -5220,7 +5220,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Modale: Options (Style MSN classique) */}
+      {/* Modale: Options */}
       {showOptionsModal && (
         <OptionsModal
           myNickname={myNickname}

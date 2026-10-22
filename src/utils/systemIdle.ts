@@ -3,8 +3,8 @@
  * (https://developer.mozilla.org/docs/Web/API/Idle_Detection_API)
  *
  * Sans cette API, OpenWLM ne voit que l'activité dans sa propre page : quelqu'un qui travaille
- * dans une autre application passe « Absent » au bout du délai. Avec elle (opt-in), comme sur
- * MSN, c'est l'inactivité du système (clavier/souris dans n'importe quelle application) et le
+ * dans une autre application passe « Absent » au bout du délai. Avec elle (opt-in),
+ * c'est l'inactivité du système (clavier/souris dans n'importe quelle application) et le
  * verrouillage de l'écran qui comptent.
  *
  * Disponibilité : navigateurs Chromium de bureau (Chrome, Edge, Opera, Electron) ; ni Firefox

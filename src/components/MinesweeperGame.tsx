@@ -6,7 +6,7 @@ import { formatNickname } from '../utils/NicknameFormatter';
 import GameDialog from './GameDialog';
 
 /**
- * DÉMINEUR À DEUX (« Minesweeper Flags » de MSN) — il faut TROUVER les mines.
+ * DÉMINEUR À DEUX (« Minesweeper Flags ») — il faut TROUVER les mines.
  * 16 × 16, 51 mines, premier à 26. Une mine trouvée = 1 point et on rejoue ; une bombe 5 × 5
  * par manche, utilisable avec au moins 3 points de retard.
  *

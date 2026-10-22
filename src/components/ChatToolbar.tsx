@@ -70,7 +70,7 @@ export const ChatToolbar: React.FC<ChatToolbarProps> = ({
                 onClick={() => onInviteGame('puissance4')}
                 title={t.games.puissance4Title.replace('{name}', contactName)}
               >
-                <span className="msn-game-icon">🔴</span>
+                <span className="wlm-game-icon">🔴</span>
                 <span>{t.games.puissance4}</span>
               </div>
               <div
@@ -78,7 +78,7 @@ export const ChatToolbar: React.FC<ChatToolbarProps> = ({
                 onClick={() => onInviteGame('checkers')}
                 title={t.games.checkersTitle.replace('{name}', contactName)}
               >
-                <span className="msn-game-icon">⚪</span>
+                <span className="wlm-game-icon">⚪</span>
                 <span>{t.games.checkers}</span>
               </div>
               <div
@@ -86,7 +86,7 @@ export const ChatToolbar: React.FC<ChatToolbarProps> = ({
                 onClick={() => onInviteGame('minesweeper')}
                 title={t.games.minesweeperTitle.replace('{name}', contactName)}
               >
-                <span className="msn-game-icon">💣</span>
+                <span className="wlm-game-icon">💣</span>
                 <span>{t.games.minesweeper}</span>
               </div>
               <div
@@ -94,7 +94,7 @@ export const ChatToolbar: React.FC<ChatToolbarProps> = ({
                 onClick={() => onInviteGame('morpion')}
                 title={t.games.morpionTitle.replace('{name}', contactName)}
               >
-                <span className="msn-game-icon">🎮</span>
+                <span className="wlm-game-icon">🎮</span>
                 <span>{t.games.morpion}</span>
               </div>
             </div>

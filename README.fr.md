@@ -192,6 +192,8 @@ npm test
 npm run test:security
 ```
 
+`npm run test:security` (`tests/audit_security_enforcement.js`) démarre son propre serveur isolé (dossier temporaire, port libre) : il n'a besoin d'aucun serveur lancé à la main et ne touche à aucune base existante.
+
 Certains tests parlent à `localhost:3001` et écrivent dans la `messenger.db` du dépôt. Ils refusent de tourner si le serveur qui répond sur ce port n'est pas le serveur de test de ce dépôt (un serveur de production sur la même machine, par exemple) : un serveur lancé avec `NODE_ENV=test` envoie une empreinte de sa base, vérifiée par `scripts/live_server_guard.mjs`. Sans serveur, ces tests sont ignorés.
 
 Elle envoie des requêtes API et WebSocket directes (sans passer par l'interface) pour tenter de contourner le client :

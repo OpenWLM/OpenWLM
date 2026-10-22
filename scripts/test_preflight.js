@@ -5,9 +5,9 @@
  * Garde-fou exécuté avant `npm test` (via le script npm `pretest`).
  *
  * La suite de tests est DESTRUCTIVE :
- *   - `tests/audit_security_enforcement.js` et `tests/test_hardening_audit2.js`
- *     ouvrent directement `PROJECT_ROOT/messenger.db` et parlent au serveur
- *     sur http://localhost:3001 ;
+ *   - les tests « live » (dont `tests/test_hardening_audit2.js`) ouvrent
+ *     directement `PROJECT_ROOT/messenger.db` et parlent au serveur sur
+ *     http://localhost:3001 (l'audit de sécurité a son propre serveur isolé) ;
  *   - plusieurs tests insèrent/suppriment des utilisateurs, messages,
  *     invitations, etc.
  *

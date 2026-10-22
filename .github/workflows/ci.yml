@@ -45,6 +45,9 @@ jobs:
           npm run test:unit
           kill "$SRV" 2>/dev/null || true
 
+      - name: Audit de sécurité (son propre serveur isolé)
+        run: npm run test:security
+
       - name: Installer le navigateur Playwright
         run: npx playwright install --with-deps chromium
 

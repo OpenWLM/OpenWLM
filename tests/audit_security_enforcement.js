@@ -1,7 +1,11 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import os from 'os';
+import net from 'net';
+import crypto from 'crypto';
 import http from 'http';
+import { spawn } from 'child_process';
 import Database from 'better-sqlite3';
 import jwt from 'jsonwebtoken';
 import { io as ClientIO } from 'socket.io-client';
@@ -10,21 +14,65 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.join(__dirname, '..');
 
-const jwtSecretPath = path.join(PROJECT_ROOT, '.jwt_secret');
-if (!fs.existsSync(jwtSecretPath)) {
-  console.error("[ERREUR] Fichier .jwt_secret introuvable. Démarrez le serveur une première fois.");
-  process.exit(1);
-}
+const SERVER_ENTRY = path.join(PROJECT_ROOT, 'server/index.js');
 
-const JWT_SECRET = fs.readFileSync(jwtSecretPath, 'utf8').trim();
-const db = new Database(path.join(PROJECT_ROOT, 'messenger.db'));
+/*
+ * Serveur isolé, comme les autres tests : dossier temporaire (base neuve), port libre, secret
+ * JWT propre au test. Ni le serveur sur :3001 ni le messenger.db du dépôt (encore moins la
+ * prod) ne sont touchés, et aucun serveur n'a à être lancé à la main.
+ */
+const JWT_SECRET = crypto.randomBytes(32).toString('hex');
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openwlm-audit-'));
+let port;
+let serverProc;
+let db;
+
+const getFreePort = () => new Promise((resolve, reject) => {
+  const srv = net.createServer();
+  srv.listen(0, () => { const { port: p } = srv.address(); srv.close(() => resolve(p)); });
+  srv.on('error', reject);
+});
+
+const waitForPort = async (p, timeoutMs = 15000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const ok = await new Promise((resolve) => {
+      const sock = net.connect(p, '127.0.0.1', () => { sock.end(); resolve(true); });
+      sock.on('error', () => resolve(false));
+    });
+    if (ok) return;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw new Error(`Serveur de test non démarré sur le port ${p}`);
+};
+
+const startServer = async () => {
+  port = await getFreePort();
+  serverProc = spawn(process.execPath, [SERVER_ENTRY], {
+    cwd: tmpDir,
+    env: { ...process.env, PORT: String(port), JWT_SECRET, NODE_ENV: 'test' },
+    stdio: ['ignore', 'ignore', 'inherit']
+  });
+  await waitForPort(port);
+  db = new Database(path.join(tmpDir, 'messenger.db'));
+};
+
+/** Arrêt du serveur, suppression du dossier temporaire, puis code de sortie. */
+const finish = (code) => {
+  try { db?.close(); } catch { /* ignore */ }
+  if (serverProc && !serverProc.killed) serverProc.kill('SIGTERM');
+  setTimeout(() => {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    process.exit(code);
+  }, 200);
+};
 
 const makeHttp = (apiPath, method, token, data) => {
   return new Promise((resolve) => {
     const postData = data ? (typeof data === 'string' ? data : JSON.stringify(data)) : '';
     const req = http.request({
-      hostname: 'localhost',
-      port: 3001,
+      hostname: '127.0.0.1',
+      port,
       path: apiPath,
       method,
       headers: {
@@ -51,6 +99,8 @@ async function auditEnforcement() {
   console.log('======================================================================');
   console.log('  TESTS DE CONTOURNEMENT DIRECT API/SERVEUR (SANS LE FRONTEND)');
   console.log('======================================================================\n');
+
+  await startServer();
 
   // Mise en place de 3 comptes de test :
   // 9201 = Alice
@@ -84,9 +134,9 @@ async function auditEnforcement() {
   const tokenBob = jwt.sign({ id: 9202, username: 'bob_audit', tv: 0 }, JWT_SECRET);
   const tokenCharlie = jwt.sign({ id: 9203, username: 'charlie_audit', tv: 0 }, JWT_SECRET);
 
-  const socketAlice = ClientIO('http://localhost:3001', { auth: { token: tokenAlice }, transports: ['websocket'] });
-  const socketBob = ClientIO('http://localhost:3001', { auth: { token: tokenBob }, transports: ['websocket'] });
-  const socketCharlie = ClientIO('http://localhost:3001', { auth: { token: tokenCharlie }, transports: ['websocket'] });
+  const socketAlice = ClientIO(`http://127.0.0.1:${port}`, { auth: { token: tokenAlice }, transports: ['websocket'] });
+  const socketBob = ClientIO(`http://127.0.0.1:${port}`, { auth: { token: tokenBob }, transports: ['websocket'] });
+  const socketCharlie = ClientIO(`http://127.0.0.1:${port}`, { auth: { token: tokenCharlie }, transports: ['websocket'] });
 
   const safeConnect = (s) => new Promise((resolve, reject) => {
     s.once('connect', resolve);
@@ -236,14 +286,14 @@ async function auditEnforcement() {
   const allPassed = results.every(r => r.ok);
   if (!allPassed) {
     console.error('❌ ÉCHEC : Au moins un test d\'enforcement serveur a échoué !');
-    process.exit(1);
+    finish(1);
   } else {
     console.log('✅ SUCCÈS : 100% des restrictions sont strictement appliquées côté serveur.');
-    process.exit(0);
+    finish(0);
   }
 }
 
 auditEnforcement().catch((err) => {
   console.error("Erreur d'exécution de l'audit:", err);
-  process.exit(1);
+  finish(1);
 });

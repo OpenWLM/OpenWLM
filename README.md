@@ -192,6 +192,8 @@ npm test
 npm run test:security
 ```
 
+`npm run test:security` (`tests/audit_security_enforcement.js`) starts its own isolated server (temporary folder, free port): it needs no manually started server and touches no existing database.
+
 Some tests talk to `localhost:3001` and write to the checkout's `messenger.db`. They refuse to run if the server answering on that port is not the test server of this checkout (a production server on the same machine, for example): a server started with `NODE_ENV=test` sends a fingerprint of its database, checked by `scripts/live_server_guard.mjs`. With no server running, those tests are skipped.
 
 It issues direct API and WebSocket requests (bypassing the UI) and checks the server rejects them:

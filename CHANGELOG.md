@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **Node.js 22.23.4 required** (security release of 2026-10-21, including CVE-2026-111497: Brotli decoder, possible code execution, reachable because Express decompresses `Content-Encoding: br` request bodies). With NodeSource: `sudo apt update && sudo apt install --only-upgrade nodejs`, then restart the service. Vite 8.3.5 (build tool, dev-server flaw fixed): `npm ci`.
 - `server/routes/users.js` and `server/middleware/auth.js` changed (E2E reset, blocking, profile change limit): restart the service. No new route or WAF rule.
 - `GET /api/health` (new route, local calls only), `server/routes/auth.js` (sign-out) and `server/index.js` changed: copy, then restart the service.
 - Sign-out and password change remove the relevant Push subscriptions / FCM tokens: server files `server/routes/auth.js`, `server/routes/users.js`, `server/index.js`, new `server/utils/pushTargets.js`. No new route or variable (WAF rules unchanged). `package-lock.json` changes (`npm ci`), then restart the service.

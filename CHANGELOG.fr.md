@@ -12,6 +12,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 ## [Non publié]
 
 ### Mise à jour du serveur
+- **Node.js 22.23.4 requis** (mise à jour de sécurité du 21/10/2026, dont CVE-2026-111497 : décodeur Brotli, exécution de code possible, atteignable car Express décompresse les corps de requête `Content-Encoding: br`). Avec NodeSource : `sudo apt update && sudo apt install --only-upgrade nodejs`, puis redémarrer le service. Vite 8.3.5 (outil de build, faille du serveur de développement corrigée) : `npm ci`.
 - `server/routes/users.js` et `server/middleware/auth.js` modifiés (réinitialisation E2E, blocage, limite des modifications de profil) : redémarrer le service. Aucune route ni règle WAF nouvelle.
 - `GET /api/health` (nouvelle route, réservée aux appels locaux), `server/routes/auth.js` (déconnexion) et `server/index.js` modifiés : copier, puis redémarrer le service.
 - Déconnexion et changement de mot de passe suppriment les abonnements Push / jetons FCM concernés : fichiers serveur `server/routes/auth.js`, `server/routes/users.js`, `server/index.js`, nouveau `server/utils/pushTargets.js`. Aucune route ni variable nouvelle (règles WAF inchangées). `package-lock.json` change (`npm ci`), puis redémarrer le service.

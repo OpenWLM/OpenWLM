@@ -208,7 +208,7 @@ if [ $NEED_BUILD = 1 ]; then
   npx tsc -b
   npx vite build --outDir dist.next --emptyOutDir
   if [ -d dist ]; then
-    mv --exchange dist.next dist
+    mv -T --exchange dist.next dist
     mv dist.next "$BACKUP_DIR/dist-precedent"
   else
     mv dist.next dist

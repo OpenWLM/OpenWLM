@@ -333,7 +333,12 @@
     "clickToLoad": "Click to load preview",
     "downloadError": "Error during download/decryption.",
     "savedToDownloads": "File saved to Downloads.",
-    "saveFailed": "Could not save the file on this device."
+    "saveFailed": "Could not save the file on this device.",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomFit": "Fit",
+    "zoomActual": "Actual size (100%)",
+    "zoomHint": "Scroll or pinch to zoom · double-click to toggle · drag to pan"
   },
   "videoCall": {
     "conversationWith": "Conversation {type} with {name}",

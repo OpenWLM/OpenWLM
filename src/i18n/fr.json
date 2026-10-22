@@ -333,7 +333,12 @@
     "clickToLoad": "Cliquer pour charger l'aperçu",
     "downloadError": "Erreur lors du téléchargement/déchiffrement.",
     "savedToDownloads": "Fichier enregistré dans Téléchargements.",
-    "saveFailed": "Impossible d'enregistrer le fichier sur l'appareil."
+    "saveFailed": "Impossible d'enregistrer le fichier sur l'appareil.",
+    "zoomIn": "Zoom avant",
+    "zoomOut": "Zoom arrière",
+    "zoomFit": "Ajuster",
+    "zoomActual": "Taille réelle (100 %)",
+    "zoomHint": "Molette ou pincement pour zoomer · double-clic pour basculer · glisser pour déplacer"
   },
   "videoCall": {
     "conversationWith": "Conversation {type} avec {name}",

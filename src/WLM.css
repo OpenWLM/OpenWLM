@@ -3438,10 +3438,10 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   backdrop-filter: blur(2px);
 }
 
-.wlm-lightbox-box {
-  width: auto;
-  max-width: 90vw;
-  max-height: 90vh;
+.wlm-viewer {
+  width: 96vw;
+  height: 94vh;
+  height: 94dvh;
   background: #f0f4f9;
   border: 1px solid #7098c4;
   border-radius: 7px;
@@ -3452,22 +3452,93 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   animation: wlmModalPop 0.15s ease-out;
 }
 
-.wlm-lightbox-content {
-  background: #181c20;
+.wlm-viewer-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 10px;
-  max-height: calc(88vh - 45px);
-  overflow: auto;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 8px;
+  background: linear-gradient(to bottom, #fbfdff, #dfeaf6);
+  border-bottom: 1px solid #a9c3de;
+  font-size: 11px;
 }
 
-.wlm-lightbox-image {
-  max-width: 100%;
-  max-height: calc(85vh - 55px);
-  object-fit: contain;
+.wlm-viewer-title {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: bold;
+  color: #1e3287;
+}
+
+.wlm-viewer-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.wlm-viewer-tools .win-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  min-width: 0;
+}
+
+.wlm-viewer-zoom {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #333;
+}
+
+.wlm-viewer-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #181c20;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.wlm-viewer-stage.zoomable { cursor: grab; }
+.wlm-viewer-stage.zoomable:active { cursor: grabbing; }
+
+.wlm-viewer-image {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  transform-origin: 0 0;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  border-radius: 2px;
+  -webkit-user-drag: none;
+}
+
+.wlm-viewer-hint {
+  padding: 3px 8px;
+  font-size: 10px;
+  color: #556;
+  text-align: center;
+  border-top: 1px solid #c0d8ec;
+}
+
+/* Téléphone : plein écran, sans cadre */
+@media (max-width: 700px) {
+  .wlm-viewer {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border: none;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .wlm-viewer-hint { display: none; }
+  .wlm-viewer-tools .win-btn { padding: 4px 10px; }
 }
 
 /* --- ÉMOTICÔNES PERSONNALISÉES (E2EE) --- */

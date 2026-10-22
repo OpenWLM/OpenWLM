@@ -41,7 +41,7 @@ et pour Firebase).
 | Appels | Écran d'appel Android, même téléphone verrouillé ; service d'appel pendant la conversation (cf. « Appels natifs »). |
 | Messages vocaux | Permission micro demandée par Android au premier usage. |
 | Fichiers reçus | Enregistrés dans **Téléchargements** (la WebView ignore les liens de téléchargement), par morceaux de 1,5 Mo (`beginSave` / `appendChunk` / `finishSave`, `ChunkedFileSaver.java`) : jusqu'à 100 Mo sans charger le fichier entier en mémoire ; marqué « en cours » pendant l'écriture, supprimé en cas d'échec. Android 10+ : chaque enregistrement est **confirmé dans une fenêtre native** (nom, taille) ; Android 8-9 : le sélecteur d'emplacement du système en tient lieu. |
-| Bouton Retour | Revient en arrière dans l'app, sinon la passe en arrière-plan sans la fermer. |
+| Bouton Retour | Revient en arrière dans l'app (ferme par exemple la visionneuse d'image, qui ajoute une étape à l'historique), sinon la passe en arrière-plan sans la fermer. |
 | Sauvegarde Android | Désactivée (y compris transfert d'appareil) : les clés E2EE mémorisées en IndexedDB ne quittent pas le téléphone. |
 | Débogage WebView | Uniquement dans l'APK de debug (`chrome://inspect`). |
 
@@ -224,6 +224,8 @@ l'appeler.
   `tests/test_session_renewal.js`).
 - Web : `npm run test:e2e` ; `e2e/android-save.spec.ts` simule le pont natif (plugin
   OpenWLMNative) : enregistrement par morceaux (APK v4+) et repli sur `saveFile` (APK v3).
+  `e2e/image-viewer.spec.ts` couvre la visionneuse d'image au format téléphone (pincement,
+  double-tap, Retour) : le zoom y est géré par la page, le pincement de la page restant désactivé.
 - Natif (JVM, sans téléphone) : `cd android && ./gradlew :app:testDebugUnitTest`
   (`AppLockPolicyTest`, `CallTimingTest`, `FileNamesTest`) ; lint : `./gradlew :app:lintDebug`.
 - Sur le téléphone : `adb logcat` et `chrome://inspect` (APK de debug).

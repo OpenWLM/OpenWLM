@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { type EncryptedFileKeys, decryptFileBinary } from '../utils/Security';
 import { useI18n } from '../i18n';
 import { notify } from '../utils/dialogs';
 import { isNativeApp, saveBlob } from '../utils/platform';
 import { safeFileName } from '../utils/fileNames';
+import ImageViewer from './ImageViewer';
 
 export interface FileDataPayload {
   type: 'file';
@@ -165,18 +167,6 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
       }
     };
   }, [imageUrl]);
-
-  // Raccourci Échap pour fermer la visionneuse agrandie
-  useEffect(() => {
-    if (!showLightbox) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setShowLightbox(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showLightbox]);
 
   const handleDownload = async () => {
     if (remaining.expired) {
@@ -363,39 +353,17 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
           </div>
         )}
 
-        {/* Visionneuse agrandie (Lightbox MSN / Windows) */}
-        {showLightbox && imageUrl && (
-          <div className="modal-bg wlm-lightbox-bg" onClick={() => setShowLightbox(false)}>
-            <div className="wlm-lightbox-box" onClick={e => e.stopPropagation()}>
-              <div className="wlm-paste-modal-header">
-                <div className="wlm-paste-title-area">
-                  <span className="wlm-paste-icon">📷</span>
-                  <span className="wlm-paste-title">{fileName} ({formatBytes(fileData.fileSize, language)})</span>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button 
-                    type="button" 
-                    className="win-btn win-btn-primary" 
-                    onClick={handleDownload}
-                    style={{ fontSize: '11px', padding: '2px 10px' }}
-                  >
-                    {t.fileTransfer.save}
-                  </button>
-                  <button 
-                    type="button" 
-                    className="win-close-btn" 
-                    onClick={() => setShowLightbox(false)} 
-                    title={`${t.common.close} (Esc)`}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-              <div className="wlm-lightbox-content">
-                <img src={imageUrl} alt={fileName} className="wlm-lightbox-image" />
-              </div>
-            </div>
-          </div>
+        {/* Visionneuse agrandie : zoom (molette, pincement, double-clic) et déplacement */}
+        {showLightbox && imageUrl && createPortal(
+          <div className="modal-bg wlm-lightbox-bg" onClick={(e) => { if (e.target === e.currentTarget) setShowLightbox(false); }}>
+            <ImageViewer
+              src={imageUrl}
+              title={`${fileName} (${formatBytes(fileData.fileSize, language)})`}
+              onClose={() => setShowLightbox(false)}
+              onSave={handleDownload}
+            />
+          </div>,
+          document.body
         )}
       </div>
     );

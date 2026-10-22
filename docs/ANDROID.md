@@ -57,7 +57,10 @@ Téléchargements, service d'appel micro / caméra, écran allumé, autorisation
 
 - **Origine vérifiée** : chacune de ces méthodes refuse (`untrusted_origin`) si la page chargée
   n'est pas le serveur choisi en HTTPS (`BridgeTrust`, testé : `BridgeTrustTest`), en plus de la
-  navigation déjà limitée à cet hôte.
+  navigation déjà limitée à cet hôte. Depuis la v8, aussi `setLanguage` et `setSoundPrefs`
+  (réglages). Exceptions voulues : `changeServer` et `retry` (page hors ligne locale), les
+  lectures d'état (`getInfo`, `isAppLocked`, `getCallPermissions`,
+  `getNotificationPermission`) et les arrêts (`stopOngoingCall`, `abortSave`).
 - **Micro / caméra** (`GuardedWebChromeClient`, avant Capacitor) : accordés seulement à
   l'origine du serveur choisi, et seulement si l'app est visible et déverrouillée, si un appel
   est en cours (service d'appel), ou dans la minute qui suit « Répondre ». Une page compromise

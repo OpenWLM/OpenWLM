@@ -64,6 +64,10 @@ public class OpenWLMNativePlugin extends Plugin {
     /**
      * Origine de la page appelante : le serveur choisi, en HTTPS. Sinon (navigation inattendue,
      * régression de configuration) la méthode est refusée.
+     * Sans ce contrôle, volontairement : changeServer et retry (appelés par la page hors ligne
+     * locale), les lectures d'état (getInfo, isAppLocked, getCallPermissions,
+     * getNotificationPermission) et les arrêts (stopOngoingCall, abortSave). Toute méthode qui
+     * agit ou enregistre un réglage passe par ici.
      */
     private boolean fromTrustedPage(PluginCall call) {
         if (BridgeTrust.isTrustedPage(MainActivity.currentPageUrl(), ServerConfig.getHost(getContext()))) return true;
@@ -314,6 +318,7 @@ public class OpenWLMNativePlugin extends Plugin {
     /** Langue de l'app, pour les textes des notifications. */
     @PluginMethod
     public void setLanguage(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         OpenWLMNotifications.setLanguage(getContext(), call.getString("lang"));
         OpenWLMNotifications.ensureChannels(getContext());
         call.resolve();

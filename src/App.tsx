@@ -4051,12 +4051,20 @@ const App: React.FC = () => {
     setInputText(text);
   };
 
-  // Insère du texte au niveau du curseur (sélecteur d'émoticônes, etc.)
+  // Insère du texte au niveau du curseur (sélecteur d'émoticônes, etc.). Ouvrir le menu fait
+  // perdre au champ son focus ; sur Android, sa sélection aussi (et son contenu peut être
+  // reconstruit à la fermeture du clavier). Reprendre le focus plaçait alors le curseur au
+  // DÉBUT du champ : on restaure la dernière position connue (cf. lastChatCaretRef).
   const insertChatText = (text: string) => {
     const root = chatInputRef.current;
     if (!root) return;
-    root.focus();
     const sel = window.getSelection();
+    const liveSelection = document.activeElement === root && !!sel && sel.rangeCount > 0 && root.contains(sel.anchorNode);
+    root.focus();
+    if (!liveSelection) {
+      const saved = lastChatCaretRef.current;
+      setRichCaretOffset(root, saved && saved.chatId === activeChatIdRef.current ? saved.offset : Number.MAX_SAFE_INTEGER);
+    }
     let range: Range;
     if (sel && sel.rangeCount > 0 && root.contains(sel.anchorNode)) {
       range = sel.getRangeAt(0);
@@ -4073,6 +4081,27 @@ const App: React.FC = () => {
     if (sel) { sel.removeAllRanges(); sel.addRange(range); }
     syncRichInput();
   };
+
+  // Dernière position du curseur dans le champ de saisie (en caractères, ce qui résiste à une
+  // reconstruction du contenu), et la conversation concernée
+  const lastChatCaretRef = useRef<{ chatId: number; offset: number } | null>(null);
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const root = chatInputRef.current;
+      const sel = window.getSelection();
+      if (!root || !sel || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) return;
+      lastChatCaretRef.current = { chatId: activeChatIdRef.current, offset: getRichCaretOffset(root) };
+    };
+    // selectionchange est asynchrone et regroupé : on enregistre aussi à chaque frappe
+    document.addEventListener('selectionchange', onSelectionChange);
+    document.addEventListener('input', onSelectionChange, true);
+    document.addEventListener('keyup', onSelectionChange, true);
+    return () => {
+      document.removeEventListener('selectionchange', onSelectionChange);
+      document.removeEventListener('input', onSelectionChange, true);
+      document.removeEventListener('keyup', onSelectionChange, true);
+    };
+  }, []);
 
   // 🎨 : entoure la sélection du champ de saisie (ou insère au curseur) avec des balises
   const wrapChatSelection = (open: string, close: string) => {

@@ -42,6 +42,8 @@ interface OpenWLMNativePlugin {
   requestNotificationPermission(): Promise<{ state: NativeNotificationPermission }>;
   openNotificationSettings(): Promise<void>;
   setLanguage(options: { lang: string }): Promise<void>;
+  /** APK v7+ : son des notifications de message et de Wizz (réglages Sons de l'app). */
+  setSoundPrefs(options: { message: boolean; nudge: boolean }): Promise<void>;
   addListener(event: 'fcmToken', handler: (data: { token: string }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'openChat', handler: (data: { senderId: number; answer?: boolean }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'hangUp', handler: () => void): Promise<PluginListenerHandle>;
@@ -165,6 +167,14 @@ export const resetNativePushToken = async (): Promise<void> => {
 /** Langue de l'app, pour les notifications construites par le code natif. */
 export const setNativeLanguage = (lang: string): void => {
   if (isNativeApp()) OpenWLMNative.setLanguage({ lang }).catch(() => { /* ignore */ });
+};
+
+/**
+ * Réglages Sons de l'app (sons coupés, catégorie, « Occupé ») pour les notifications natives :
+ * son de l'app pour un message ou un Wizz reçu app fermée, ou notification silencieuse.
+ */
+export const setNativeSoundPrefs = (prefs: { message: boolean; nudge: boolean }): void => {
+  if (isNativeApp() && hasNativeMethod('setSoundPrefs')) OpenWLMNative.setSoundPrefs(prefs).catch(() => { /* ignore */ });
 };
 
 /** Retour de l'écran de choix du serveur sans changement (annulé ou même serveur). */

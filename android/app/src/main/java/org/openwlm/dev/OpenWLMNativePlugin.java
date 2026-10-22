@@ -319,6 +319,14 @@ public class OpenWLMNativePlugin extends Plugin {
         call.resolve();
     }
 
+    /** Réglages Sons de l'app : son des notifications de message et de Wizz (APK v7+). */
+    @PluginMethod
+    public void setSoundPrefs(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
+        OpenWLMNotifications.setSoundPrefs(getContext(), call.getBoolean("message", true), call.getBoolean("nudge", true));
+        call.resolve();
+    }
+
     /** L'écran de choix du serveur est ouvert (cf. handleOnResume). */
     private boolean serverChangeOpen;
 

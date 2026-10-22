@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sons des notifications désignés par leur nom (OpenWLMNotifications.rawSound) : à garder
+     même si la réduction des ressources est activée un jour. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/wlm_message,@raw/wlm_nudge" />

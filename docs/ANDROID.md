@@ -131,6 +131,18 @@ navigateurs, FCM pour l'app) à chaque `dispatchPushNotification`.
 - **Appels** : priorité haute, durée de vie 45 s (`CALL_PUSH_TTL_S`) ; écran d'appel natif,
   cf. « Appels natifs » ci-dessous.
 - **App à l'écran** : pas de notification système, l'interface affiche ses propres alertes.
+- **Sons** (APK v7+) : un message reçu (canal « Messages », `messages_wlm`) et un Wizz (canal
+  « Wizz », `nudges`) font entendre les sons de l'app (`res/raw/wlm_message.mp3` et
+  `wlm_nudge.mp3`, copies de `public/assets/sounds/type.mp3` et `nudge.mp3`). Le son est porté
+  par le canal : le mode du téléphone (silencieux, vibreur, Ne pas déranger) et le volume des
+  notifications s'appliquent, et chaque canal reste modifiable dans les réglages d'Android. Les
+  réglages Sons de l'app (sons coupés, son des messages ou des Wizz décoché, « couper les sons
+  en Occupé ») sont transmis au code natif (`setSoundPrefs`) : notification alors silencieuse,
+  mais toujours affichée. Les autres sons (contact en ligne, clins d'œil, jeux) ne sont joués
+  que l'app ouverte ; l'appel entrant garde la sonnerie du téléphone. Le son d'un canal Android
+  ne peut plus changer après sa création : l'ancien canal `messages` (v1 à v6, son de
+  notification du téléphone) est supprimé, et les réglages que l'utilisateur y avait faits ne
+  sont pas repris.
 - **Toucher** : ouvre la conversation de l'expéditeur.
 - **Jetons** : table `fcm_tokens` (un par installation). L'interface enregistre le jeton après la
   connexion (`POST /api/push/fcm/register`) et à chaque renouvellement, **seulement si les
@@ -208,7 +220,8 @@ Gradle utilise jusqu'à 4 Go (`android/gradle.properties`).
 L'interface est servie par le serveur et peut être plus récente (ou plus ancienne, en cache)
 que l'APK installé. Elle teste les méthodes réellement exposées par l'APK
 (`hasNativeMethod`, liste publiée par le pont natif de Capacitor) au lieu de supposer une
-version : APK v3 → enregistrement des fichiers en un bloc (`saveFile`). Le changement de
+version : APK v3 → enregistrement des fichiers en un bloc (`saveFile`) ; avant la v7, pas de
+`setSoundPrefs` (notifications avec le son du téléphone). Le changement de
 serveur est le même pour toutes les versions : le jeton est retiré du compte avant d'ouvrir
 l'écran, puis réenregistré au retour dans l'app si rien n'a changé (synchronisation au retour
 au premier plan, sans dépendre de l'événement `serverChangeCancelled`, absent de la v3).
@@ -224,10 +237,12 @@ l'appeler.
   `tests/test_session_renewal.js`).
 - Web : `npm run test:e2e` ; `e2e/android-save.spec.ts` simule le pont natif (plugin
   OpenWLMNative) : enregistrement par morceaux (APK v4+) et repli sur `saveFile` (APK v3).
+  `e2e/android-sounds.spec.ts` : réglages Sons transmis à l'APK v7+ (`setSoundPrefs`), rien
+  envoyé à un APK plus ancien.
   `e2e/image-viewer.spec.ts` couvre la visionneuse d'image au format téléphone (pincement,
   double-tap, Retour) : le zoom y est géré par la page, le pincement de la page restant désactivé.
 - Natif (JVM, sans téléphone) : `cd android && ./gradlew :app:testDebugUnitTest`
-  (`AppLockPolicyTest`, `CallTimingTest`, `FileNamesTest`) ; lint : `./gradlew :app:lintDebug`.
+  (`AppLockPolicyTest`, `CallTimingTest`, `FileNamesTest`, `BridgeTrustTest`) ; lint : `./gradlew :app:lintDebug`.
 - Sur le téléphone : `adb logcat` et `chrome://inspect` (APK de debug).
 
 ## Signature

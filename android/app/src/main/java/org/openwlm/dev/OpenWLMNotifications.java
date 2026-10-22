@@ -8,6 +8,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.media.AudioAttributes;
+import android.net.Uri;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -22,10 +24,21 @@ import java.util.Map;
  * clé de traduction (`l10n`), jamais le texte d'un message ; le texte est pris ici dans la
  * langue choisie dans l'app. Les appels entrants passent par IncomingCallService (écran
  * d'appel, sonnerie).
+ *
+ * Sons : un message reçu et un Wizz font entendre les sons de l'app (res/raw, copies de
+ * public/assets/sounds/type.mp3 et nudge.mp3), portés par leur canal pour respecter le mode du
+ * téléphone (silencieux, vibreur, Ne pas déranger) et rester modifiables dans les réglages
+ * d'Android. Les autres sons de l'app (contact en ligne, clins d'œil…) ne sont joués que l'app
+ * ouverte. Réglages Sons de l'app : cf. setSoundPrefs.
  */
 final class OpenWLMNotifications {
 
-    static final String CHANNEL_MESSAGES = "messages";
+    /** Messages, fichiers, notifications d'appel discrètes : son de message de l'app. */
+    static final String CHANNEL_MESSAGES = "messages_wlm";
+    /** Wizz : son du Wizz de l'app. */
+    static final String CHANNEL_NUDGES = "nudges";
+    /** Canal des v1 à v6 (son de notification du téléphone), remplacé par CHANNEL_MESSAGES : le son d'un canal ne peut plus changer une fois créé. */
+    private static final String LEGACY_CHANNEL_MESSAGES = "messages";
     /** Appel entrant : notification plein écran, la sonnerie est jouée par IncomingCallService. */
     static final String CHANNEL_INCOMING_CALLS = "incoming_calls";
     /** Appel en cours : notification discrète du service de premier plan. */
@@ -40,6 +53,8 @@ final class OpenWLMNotifications {
 
     private static final String PREFS = "openwlm_app";
     private static final String KEY_LANG = "lang";
+    private static final String KEY_SOUND_MESSAGE = "sound_message";
+    private static final String KEY_SOUND_NUDGE = "sound_nudge";
 
     /** Clés `l10n` du serveur (cf. L10N dans public/sw.js). */
     private static final Map<String, Integer> TEXTS = new HashMap<>();
@@ -67,6 +82,14 @@ final class OpenWLMNotifications {
         prefs(context).edit().putString(KEY_LANG, lang).apply();
     }
 
+    /**
+     * Réglages Sons de l'app (Options → Sons : sons coupés, catégorie désactivée, « Occupé »),
+     * transmis par l'interface : son coupé → notification silencieuse (toujours affichée).
+     */
+    static void setSoundPrefs(Context context, boolean message, boolean nudge) {
+        prefs(context).edit().putBoolean(KEY_SOUND_MESSAGE, message).putBoolean(KEY_SOUND_NUDGE, nudge).apply();
+    }
+
     /** Contexte dont les ressources sont dans la langue de l'app (sinon celle du téléphone). */
     static Context localized(Context context) {
         String lang = prefs(context).getString(KEY_LANG, null);
@@ -82,10 +105,22 @@ final class OpenWLMNotifications {
         NotificationManager nm = ContextCompat.getSystemService(context, NotificationManager.class);
         if (nm == null) return;
 
+        AudioAttributes sound = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build();
+        nm.deleteNotificationChannel(LEGACY_CHANNEL_MESSAGES);
         NotificationChannel messages = new NotificationChannel(CHANNEL_MESSAGES, loc.getString(R.string.channel_messages), NotificationManager.IMPORTANCE_HIGH);
         messages.setDescription(loc.getString(R.string.channel_messages_desc));
+        messages.setSound(rawSound(context, "wlm_message"), sound);
         messages.enableVibration(true);
         nm.createNotificationChannel(messages);
+
+        NotificationChannel nudges = new NotificationChannel(CHANNEL_NUDGES, loc.getString(R.string.channel_nudges), NotificationManager.IMPORTANCE_HIGH);
+        nudges.setDescription(loc.getString(R.string.channel_nudges_desc));
+        nudges.setSound(rawSound(context, "wlm_nudge"), sound);
+        nudges.enableVibration(true);
+        nm.createNotificationChannel(nudges);
 
         nm.deleteNotificationChannel(LEGACY_CHANNEL_CALLS);
         NotificationChannel incoming = new NotificationChannel(CHANNEL_INCOMING_CALLS, loc.getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH);
@@ -130,7 +165,17 @@ final class OpenWLMNotifications {
         // App au premier plan : c'est elle qui affiche ses alertes (avec le contenu déchiffré),
         // sauf la notification de test demandée depuis les Options
         if (appVisible && !"pushTest".equals(data.get("l10n"))) return;
-        notify(context, tag, base(context, data, CHANNEL_MESSAGES).setAutoCancel(true).build());
+        boolean nudge = "nudge".equals(data.get("l10n"));
+        boolean soundOn = prefs(context).getBoolean(nudge ? KEY_SOUND_NUDGE : KEY_SOUND_MESSAGE, true);
+        notify(context, tag, base(context, data, nudge ? CHANNEL_NUDGES : CHANNEL_MESSAGES)
+            .setSilent(!soundOn)
+            .setAutoCancel(true)
+            .build());
+    }
+
+    /** Son embarqué (res/raw), désigné par son nom : stable d'une version de l'APK à l'autre. */
+    private static Uri rawSound(Context context, String name) {
+        return Uri.parse("android.resource://" + context.getPackageName() + "/raw/" + name);
     }
 
     /** « Appel manqué » : l'appel a expiré sans réponse sur cet appareil. */

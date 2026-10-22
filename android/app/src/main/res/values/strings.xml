@@ -20,7 +20,9 @@
     <string name="lock_prompt_subtitle">Use your fingerprint, face or screen lock</string>
 
     <string name="channel_messages">Messages</string>
-    <string name="channel_messages_desc">New messages, nudges and files</string>
+    <string name="channel_messages_desc">New messages and files (OpenWLM message sound)</string>
+    <string name="channel_nudges">Nudges</string>
+    <string name="channel_nudges_desc">Nudges received (OpenWLM nudge sound)</string>
     <string name="channel_calls">Calls</string>
     <string name="channel_calls_desc">Incoming voice and video calls (call screen)</string>
     <string name="notif_message">New message</string>

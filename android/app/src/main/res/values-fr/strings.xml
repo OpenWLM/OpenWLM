@@ -14,7 +14,9 @@
     <string name="lock_prompt_subtitle">Utilisez votre empreinte, votre visage ou le verrouillage de l\'écran</string>
 
     <string name="channel_messages">Messages</string>
-    <string name="channel_messages_desc">Nouveaux messages, Wizz et fichiers</string>
+    <string name="channel_messages_desc">Nouveaux messages et fichiers (son de message d\'OpenWLM)</string>
+    <string name="channel_nudges">Wizz</string>
+    <string name="channel_nudges_desc">Wizz reçus (son du Wizz d\'OpenWLM)</string>
     <string name="channel_calls">Appels</string>
     <string name="channel_calls_desc">Appels audio et vidéo entrants (écran d\'appel)</string>
     <string name="notif_message">Nouveau message reçu</string>

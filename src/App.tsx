@@ -53,7 +53,7 @@ import { ChatMessageLog } from './components/ChatMessageLog';
 import { ChatWindow } from './components/ChatWindow';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
-import { isNativeApp, getNativeFcmToken, dismissNativeIncomingCall, resetNativePushToken } from './utils/platform';
+import { isNativeApp, getNativeFcmToken, dismissNativeIncomingCall, resetNativePushToken, setNativeSoundPrefs } from './utils/platform';
 import { useNativePush, NATIVE_PUSH_RESET_EVENT, NATIVE_PUSH_SYNC_EVENT } from './hooks/useNativePush';
 import { withTimeout } from './utils/withTimeout';
 import { useI18n } from './i18n';
@@ -101,7 +101,7 @@ import {
   savePreferredStatus,
   isPresenceStatus
 } from './utils/profileStorage';
-import { useAppPrefs, getAppPrefs, updateAppPrefs, setPresenceForSounds } from './utils/appPrefs';
+import { useAppPrefs, getAppPrefs, updateAppPrefs, setPresenceForSounds, isSoundAllowed } from './utils/appPrefs';
 import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
 import { systemLine } from './utils/systemLine';
 import { commandSuggestions, isTestContactCommand } from './utils/chatCommands';
@@ -893,6 +893,11 @@ const App: React.FC = () => {
 
   // Préférences locales (Options → Disposition, Messages, Sons)
   const appPrefs = useAppPrefs();
+
+  // Sons des notifications de l'app Android (message, Wizz) alignés sur Options → Sons et le statut
+  useEffect(() => {
+    setNativeSoundPrefs({ message: isSoundAllowed('message'), nudge: isSoundAllowed('nudge') });
+  }, [appPrefs.sounds, myStatus]);
 
   // Conversation affichée ET fenêtre au premier plan : ses messages sont lus
   useEffect(() => {

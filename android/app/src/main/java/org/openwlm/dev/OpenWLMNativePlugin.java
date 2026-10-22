@@ -4,14 +4,17 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.KeyguardManager;
 import android.app.NotificationManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
+import android.text.format.Formatter;
 import android.util.Base64;
 import android.view.WindowManager;
 import androidx.activity.result.ActivityResult;
+import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
@@ -33,8 +36,11 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 
 /**
- * Pont minimal entre l'interface web et l'app Android. La page chargée vient du serveur :
- * ce plugin n'expose donc rien de sensible (pas d'accès aux fichiers ni aux clés).
+ * Pont entre l'interface web (chargée depuis le serveur choisi) et l'app Android. Aucun accès
+ * aux fichiers internes ni aux clés, mais des usages sensibles : jeton FCM, enregistrement de
+ * fichiers dans Téléchargements, service d'appel (micro / caméra), écran allumé, autorisations.
+ * Ceux-ci vérifient l'origine réelle de la page (serveur choisi, HTTPS : cf. BridgeTrust), et
+ * chaque enregistrement de fichier est confirmé par l'utilisateur dans une fenêtre native.
  */
 @CapacitorPlugin(
     name = "OpenWLMNative",
@@ -53,6 +59,16 @@ public class OpenWLMNativePlugin extends Plugin {
         instance = new WeakReference<>(this);
         OpenWLMNotifications.ensureChannels(getContext());
         ChunkedFileSaver.cleanTemp(getContext());
+    }
+
+    /**
+     * Origine de la page appelante : le serveur choisi, en HTTPS. Sinon (navigation inattendue,
+     * régression de configuration) la méthode est refusée.
+     */
+    private boolean fromTrustedPage(PluginCall call) {
+        if (BridgeTrust.isTrustedPage(MainActivity.currentPageUrl(), ServerConfig.getHost(getContext()))) return true;
+        call.reject("untrusted_origin");
+        return false;
     }
 
     /** Nouveau jeton FCM : l'interface le renvoie au serveur (événement « fcmToken »). */
@@ -92,6 +108,7 @@ public class OpenWLMNativePlugin extends Plugin {
     /** L'interface affiche l'appel de `callerId` : l'écran d'appel natif et sa sonnerie s'arrêtent. */
     @PluginMethod
     public void dismissIncomingCall(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         IncomingCallService.stop(getContext(), call.getInt("callerId", 0));
         call.resolve();
     }
@@ -99,6 +116,7 @@ public class OpenWLMNativePlugin extends Plugin {
     /** Appel établi ou en cours d'établissement : service de premier plan, audio d'appel. */
     @PluginMethod
     public void startOngoingCall(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         try {
             OngoingCallService.start(getContext(), call.getString("peerName", "OpenWLM"), Boolean.TRUE.equals(call.getBoolean("video", false)));
             call.resolve();
@@ -109,6 +127,7 @@ public class OpenWLMNativePlugin extends Plugin {
 
     @PluginMethod
     public void updateOngoingCall(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         OngoingCallService.update(getContext(), Boolean.TRUE.equals(call.getBoolean("video", false)));
         call.resolve();
     }
@@ -122,6 +141,7 @@ public class OpenWLMNativePlugin extends Plugin {
     /** Écran allumé pendant la vidéo (remplace le Screen Wake Lock du navigateur). */
     @PluginMethod
     public void setKeepScreenOn(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
         getActivity().runOnUiThread(() -> {
             if (on) getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -147,6 +167,7 @@ public class OpenWLMNativePlugin extends Plugin {
     /** `kind` : « microphone », « camera » (demande Android) ou « fullScreen » (réglages). */
     @PluginMethod
     public void requestCallPermission(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         String kind = call.getString("kind", "");
         if ("fullScreen".equals(kind)) {
             if (Build.VERSION.SDK_INT >= 34 && !canUseFullScreen()) {
@@ -226,6 +247,7 @@ public class OpenWLMNativePlugin extends Plugin {
     /** Jeton FCM de cette installation (null si Firebase n'est pas configuré dans l'APK). */
     @PluginMethod
     public void getFcmToken(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         if (!isFirebaseAvailable()) {
             JSObject ret = new JSObject();
             ret.put("token", null);
@@ -251,6 +273,7 @@ public class OpenWLMNativePlugin extends Plugin {
 
     @PluginMethod
     public void requestNotificationPermission(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && getPermissionState("notifications") != PermissionState.GRANTED) {
             requestPermissionForAlias("notifications", call, "onNotificationPermission");
             return;
@@ -280,6 +303,7 @@ public class OpenWLMNativePlugin extends Plugin {
     /** Réglages Android des notifications de l'app (autorisation refusée définitivement). */
     @PluginMethod
     public void openNotificationSettings(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName())
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -316,8 +340,7 @@ public class OpenWLMNativePlugin extends Plugin {
     @PluginMethod
     public void changeServer(PluginCall call) {
         serverChangeOpen = true;
-        Intent intent = new Intent(getContext(), ServerActivity.class);
-        intent.putExtra(ServerActivity.EXTRA_EDIT, true);
+        Intent intent = new Intent(getContext(), ServerSettingsActivity.class);
         getActivity().startActivity(intent);
         call.resolve();
     }
@@ -344,38 +367,44 @@ public class OpenWLMNativePlugin extends Plugin {
      */
     @PluginMethod
     public void saveFile(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         String data = call.getString("data");
         if (data == null || data.length() > (ChunkedFileSaver.MAX_BYTES / 3 + 1) * 4) {
             call.reject(data == null ? "missing_data" : "too_large");
             return;
         }
-        String id;
-        try {
-            id = saver.begin(getContext(), FileNames.sanitize(call.getString("fileName", "fichier")), call.getString("mimeType", "application/octet-stream"));
-        } catch (ChunkedFileSaver.TooManyException e) {
-            call.reject("too_many_saves");
-            return;
-        } catch (IOException e) {
-            call.reject("save_failed");
-            return;
-        }
-        try {
-            saver.append(getContext(), id, Base64.decode(data, Base64.DEFAULT));
-        } catch (IllegalArgumentException e) {
-            saver.abort(getContext(), id);
-            call.reject("invalid_data");
-            return;
-        } catch (IOException e) {
-            call.reject("save_failed");
-            return;
-        }
-        call.getData().put("id", id);
-        finishSave(call);
+        String name = FileNames.sanitize(call.getString("fileName", "fichier"));
+        String mime = call.getString("mimeType", "application/octet-stream");
+        confirmSave(call, name, (long) data.length() / 4 * 3, () -> {
+            String id;
+            try {
+                id = saver.begin(getContext(), name, mime);
+            } catch (ChunkedFileSaver.TooManyException e) {
+                call.reject("too_many_saves");
+                return;
+            } catch (IOException e) {
+                call.reject("save_failed");
+                return;
+            }
+            try {
+                saver.append(getContext(), id, Base64.decode(data, Base64.DEFAULT));
+            } catch (IllegalArgumentException e) {
+                saver.abort(getContext(), id);
+                call.reject("invalid_data");
+                return;
+            } catch (IOException e) {
+                call.reject("save_failed");
+                return;
+            }
+            call.getData().put("id", id);
+            finishSave(call);
+        });
     }
 
     /** Session révoquée : jeton FCM supprimé chez Firebase (un nouveau sera créé à la connexion). */
     @PluginMethod
     public void resetPushToken(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         if (!isFirebaseAvailable()) {
             call.resolve();
             return;
@@ -385,6 +414,7 @@ public class OpenWLMNativePlugin extends Plugin {
 
     @PluginMethod
     public void beginSave(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         String name = FileNames.sanitize(call.getString("fileName", "fichier"));
         String mime = call.getString("mimeType", "application/octet-stream");
         Long size = call.getLong("size");
@@ -392,20 +422,56 @@ public class OpenWLMNativePlugin extends Plugin {
             call.reject("too_large");
             return;
         }
-        try {
-            JSObject ret = new JSObject();
-            ret.put("id", saver.begin(getContext(), name, mime));
-            ret.put("maxChunkBytes", ChunkedFileSaver.MAX_CHUNK_BYTES);
-            call.resolve(ret);
-        } catch (ChunkedFileSaver.TooManyException e) {
-            call.reject("too_many_saves");
-        } catch (IOException e) {
-            call.reject("save_failed");
+        confirmSave(call, name, size != null ? size : -1, () -> {
+            try {
+                JSObject ret = new JSObject();
+                ret.put("id", saver.begin(getContext(), name, mime));
+                ret.put("maxChunkBytes", ChunkedFileSaver.MAX_CHUNK_BYTES);
+                call.resolve(ret);
+            } catch (ChunkedFileSaver.TooManyException e) {
+                call.reject("too_many_saves");
+            } catch (IOException e) {
+                call.reject("save_failed");
+            }
+        });
+    }
+
+    /**
+     * Confirmation native avant d'écrire dans Téléchargements (Android 10+ : sinon, une page
+     * compromise pourrait y écrire sans rien demander). Android 8-9 : le sélecteur
+     * d'emplacement du système sert de confirmation. Refus → { cancelled: true }.
+     */
+    private void confirmSave(PluginCall call, String name, long size, Runnable onConfirmed) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            onConfirmed.run();
+            return;
         }
+        getActivity().runOnUiThread(() -> {
+            Context loc = OpenWLMNotifications.localized(getContext());
+            String sizeText = size >= 0 ? Formatter.formatShortFileSize(getContext(), size) : "?";
+            new AlertDialog.Builder(getActivity())
+                .setTitle(loc.getString(R.string.save_confirm_title))
+                .setMessage(loc.getString(R.string.save_confirm_message, name, sizeText))
+                .setPositiveButton(loc.getString(R.string.save_confirm_ok), (d, w) -> bridge.execute(onConfirmed))
+                .setNegativeButton(loc.getString(R.string.server_cancel), (d, w) -> {
+                    JSObject ret = new JSObject();
+                    ret.put("cancelled", true);
+                    ret.put("saved", false);
+                    call.resolve(ret);
+                })
+                .setOnCancelListener((d) -> {
+                    JSObject ret = new JSObject();
+                    ret.put("cancelled", true);
+                    ret.put("saved", false);
+                    call.resolve(ret);
+                })
+                .show();
+        });
     }
 
     @PluginMethod
     public void appendChunk(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         String id = call.getString("id");
         String data = call.getString("data");
         // Contrôle avant décodage : un morceau trop gros n'est jamais décodé en mémoire
@@ -434,6 +500,7 @@ public class OpenWLMNativePlugin extends Plugin {
 
     @PluginMethod
     public void finishSave(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
         ChunkedFileSaver.Session session;
         try {
             session = saver.finish(getContext(), call.getString("id", ""));

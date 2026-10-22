@@ -227,6 +227,17 @@ public class OngoingCallService extends Service {
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
     }
 
+    /**
+     * App retirée des applications récentes : l'activité et sa WebView (donc l'appel WebRTC)
+     * disparaissent ; on ne laisse ni service micro / caméra, ni mode audio, ni verrous actifs.
+     */
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        if (running) stopCall();
+        stopSelf();
+        super.onTaskRemoved(rootIntent);
+    }
+
     @Override
     public void onDestroy() {
         if (running) stopCall();

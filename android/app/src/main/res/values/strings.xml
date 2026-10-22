@@ -47,4 +47,7 @@
     <string name="server_trust_title">Trusted server only</string>
     <string name="server_trust_message">%1$s is not the default server. Whoever runs it will receive your username and sign-in key and will display the app on this phone. Connect only if you trust this server.</string>
     <string name="server_trust_confirm">I trust this server</string>
+    <string name="save_confirm_title">Save file?</string>
+    <string name="save_confirm_message">“%1$s” (%2$s) will be saved to Downloads.</string>
+    <string name="save_confirm_ok">Save</string>
 </resources>

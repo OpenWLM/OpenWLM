@@ -36,11 +36,11 @@ et pour Firebase).
 
 | Fonction | Détail |
 |---|---|
-| Verrouillage | Empreinte, visage ou code du téléphone à l'ouverture et après 1 min en arrière-plan. Sans verrouillage d'écran configuré sur le téléphone, l'app ne peut pas être protégée (indiqué dans les Options). L'aperçu dans les applications récentes est masqué (Android 13+). |
+| Verrouillage | Empreinte, visage ou code du téléphone à l'ouverture et après 1 min en arrière-plan. Sans verrouillage d'écran configuré sur le téléphone, l'app ne peut pas être protégée (indiqué dans les Options). Contenu masqué (captures, aperçu des applications récentes) quand l'app est verrouillée, et en arrière-plan (Android 13+ : aperçu désactivé ; avant : `FLAG_SECURE` en arrière-plan). App ouverte et déverrouillée : captures possibles (partage d'écran en appel). |
 | Session | « Se souvenir de cet appareil » garde la session 30 jours glissants (cf. ci-dessous). |
 | Appels | Écran d'appel Android, même téléphone verrouillé ; service d'appel pendant la conversation (cf. « Appels natifs »). |
 | Messages vocaux | Permission micro demandée par Android au premier usage. |
-| Fichiers reçus | Enregistrés dans **Téléchargements** (la WebView ignore les liens de téléchargement), par morceaux de 1,5 Mo (`beginSave` / `appendChunk` / `finishSave`, `ChunkedFileSaver.java`) : jusqu'à 100 Mo sans charger le fichier entier en mémoire ; marqué « en cours » pendant l'écriture, supprimé en cas d'échec. |
+| Fichiers reçus | Enregistrés dans **Téléchargements** (la WebView ignore les liens de téléchargement), par morceaux de 1,5 Mo (`beginSave` / `appendChunk` / `finishSave`, `ChunkedFileSaver.java`) : jusqu'à 100 Mo sans charger le fichier entier en mémoire ; marqué « en cours » pendant l'écriture, supprimé en cas d'échec. Android 10+ : chaque enregistrement est **confirmé dans une fenêtre native** (nom, taille) ; Android 8-9 : le sélecteur d'emplacement du système en tient lieu. |
 | Bouton Retour | Revient en arrière dans l'app, sinon la passe en arrière-plan sans la fermer. |
 | Sauvegarde Android | Désactivée (y compris transfert d'appareil) : les clés E2EE mémorisées en IndexedDB ne quittent pas le téléphone. |
 | Débogage WebView | Uniquement dans l'APK de debug (`chrome://inspect`). |
@@ -48,6 +48,28 @@ et pour Firebase).
 Dans l'app, l'interface masque ce qui n'existe pas dans une WebView Android : installation
 PWA, réglages des notifications du navigateur / Web Push, option « inactivité de tout
 l'ordinateur ». Détection : `isNativeApp()` dans `src/utils/platform.ts`.
+
+## Pont natif : ce que la page peut demander
+
+La page vient du serveur ; le plugin `OpenWLMNative` (Java) n'a accès ni aux fichiers internes
+ni aux clés, mais certaines méthodes sont sensibles (jeton FCM, enregistrement dans
+Téléchargements, service d'appel micro / caméra, écran allumé, autorisations). Durcissements :
+
+- **Origine vérifiée** : chacune de ces méthodes refuse (`untrusted_origin`) si la page chargée
+  n'est pas le serveur choisi en HTTPS (`BridgeTrust`, testé : `BridgeTrustTest`), en plus de la
+  navigation déjà limitée à cet hôte.
+- **Micro / caméra** (`GuardedWebChromeClient`, avant Capacitor) : accordés seulement à
+  l'origine du serveur choisi, et seulement si l'app est visible et déverrouillée, si un appel
+  est en cours (service d'appel), ou dans la minute qui suit « Répondre ». Une page compromise
+  ne peut pas ouvrir le micro en arrière-plan ni derrière l'écran de verrouillage de l'app.
+  Limite : un flux déjà ouvert avant le verrouillage continue (c'est le cas voulu d'un appel en
+  cours, qui doit continuer écran éteint).
+- **Fichiers** : confirmation native avant chaque enregistrement (Android 10+), 2 à la fois.
+- **Changement de serveur** : écran non exporté (`ServerSettingsActivity`) ; le lanceur
+  exporté (`ServerActivity`) ne sert qu'au premier choix et ne transmet aucune URI reçue.
+  Écrans de choix du serveur, de verrouillage et d'appel protégés contre le « tapjacking »
+  (`filterTouchesWhenObscured`).
+- **Service d'appel** arrêté si l'app est retirée des applications récentes (`onTaskRemoved`).
 
 ## Appels natifs
 
@@ -69,7 +91,8 @@ redonne l'appel en attente à l'appareil qui se connecte (cf. docs/CALLS.md).
   10 s (`AppLockPolicy`, testé : `AppLockPolicyTest`). Sinon, l'écran de verrouillage de l'app
   s'affiche normalement, et un appel **vidéo** pris derrière lui démarre **caméra coupée**
   (le correspondant en est informé ; bouton caméra pour l'allumer après déverrouillage) ;
-- **Refuser** : `POST /api/calls/decline` avec le cookie de session et l'agent de la WebView,
+- **Refuser** : `POST /api/calls/decline` avec le cookie de session et l'agent de la WebView
+  (lus sur le thread principal),
   sans ouvrir l'app ; le code HTTP reçu est journalisé (`adb logcat -s OpenWLM`) ;
 - arrêt de la sonnerie : `call_cancel` reçu (« Appel manqué », « Appel pris sur un autre
   appareil », « Appel refusé »), appel affiché par l'interface (app ouverte), ou expiration de

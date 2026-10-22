@@ -14,7 +14,8 @@
         android:theme="@style/AppTheme"
         tools:targetApi="31">
 
-        <!-- Point d'entrée : choix du serveur au premier lancement, puis ouverture directe -->
+        <!-- Point d'entrée : choix du serveur au premier lancement, puis ouverture directe.
+             Exporté (lanceur) : il ne permet pas de CHANGER de serveur (ServerSettingsActivity). -->
         <activity
             android:name=".ServerActivity"
             android:theme="@style/AppTheme.NoActionBarLaunch"
@@ -25,6 +26,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Changement de serveur (Options, page hors ligne) : non exporté, ouvert par l'app seule -->
+        <activity
+            android:name=".ServerSettingsActivity"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="false" />
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"

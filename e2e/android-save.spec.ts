@@ -24,7 +24,7 @@ const fakeClientIp = () => `10.${1 + Math.floor(Math.random() * 250)}.${1 + Math
  * Faux plugin natif, injecté avant le chargement de l'app. `legacy` : APK v3 (méthode saveFile,
  * pas d'enregistrement par morceaux), pour vérifier que l'interface s'adapte à l'APK installé.
  */
-const fakeAndroidBridge = ({ legacy }: { legacy: boolean }) => {
+const fakeAndroidBridge = ({ legacy, refuse }: { legacy: boolean; refuse?: boolean }) => {
   type Saved = { id: string; fileName: string; mimeType: string; size: number; chunks: string[]; finished: boolean; aborted: boolean; legacy?: boolean };
   const w = window as unknown as Record<string, unknown> & { __saves: Saved[] };
   w.__saves = [];
@@ -35,6 +35,8 @@ const fakeAndroidBridge = ({ legacy }: { legacy: boolean }) => {
     getNotificationPermission: () => ({ state: 'granted' }),
     getCallPermissions: () => ({ notifications: 'granted', fullScreen: 'granted', microphone: 'granted', camera: 'granted' }),
     beginSave: (o) => {
+      // APK v6 : l'utilisateur refuse la fenêtre de confirmation native
+      if (refuse) return { cancelled: true };
       const s: Saved = { id: `save-${w.__saves.length + 1}`, fileName: String(o.fileName), mimeType: String(o.mimeType), size: Number(o.size), chunks: [], finished: false, aborted: false };
       w.__saves.push(s);
       return { id: s.id, maxChunkBytes: 4 * 1024 * 1024 };
@@ -86,16 +88,16 @@ const registerAndLogin = async (page: Page, username: string) => {
   await expect(page.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
 };
 
-const newUserPage = async (browser: Browser, username: string, android: false | 'v4' | 'v3') => {
+const newUserPage = async (browser: Browser, username: string, android: false | 'v4' | 'v3' | 'refuse') => {
   const ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
-  if (android) await ctx.addInitScript(fakeAndroidBridge, { legacy: android === 'v3' });
+  if (android) await ctx.addInitScript(fakeAndroidBridge, { legacy: android === 'v3', refuse: android === 'refuse' });
   const page = await ctx.newPage();
   await registerAndLogin(page, username);
   return page;
 };
 
 /** A (navigateur) et B (app Android simulée), contacts, conversation ouverte des deux côtés. */
-const pair = async (browser: Browser, apk: 'v4' | 'v3') => {
+const pair = async (browser: Browser, apk: 'v4' | 'v3' | 'refuse') => {
   const stamp = Date.now();
   const nameA = `andsa_${stamp}`;
   const nameB = `andsb_${stamp}`;
@@ -168,5 +170,20 @@ test('APK v3 (sans enregistrement par morceaux) : l\'interface se replie sur sav
   expect(saves[0].legacy).toBe(true);
   expect(saves[0].fileName).toBe(fileName);
   expect(Buffer.from(saves[0].chunks[0], 'base64').equals(original)).toBe(true);
+  cleanUploads(startedAt);
+});
+
+test('confirmation native refusée : rien n\'est enregistré, sans message d\'erreur', async ({ browser }) => {
+  test.setTimeout(180000);
+  const { a, b, stamp } = await pair(browser, 'refuse');
+  const startedAt = Date.now();
+  const fileName = `refus_${stamp}.bin`;
+  await a.locator('input[type="file"]').first().setInputFiles({ name: fileName, mimeType: 'application/octet-stream', buffer: crypto.randomBytes(50_000) });
+  const card = b.locator('.wlm-file-card', { hasText: fileName });
+  await expect(card).toBeVisible({ timeout: 60000 });
+  await card.locator('.wlm-file-download-btn').last().click();
+  await b.waitForTimeout(2000);
+  await expect(b.locator('.wlm-aero-dialog')).toHaveCount(0);
+  expect(await b.evaluate(() => (window as unknown as { __saves: unknown[] }).__saves)).toHaveLength(0);
   cleanUploads(startedAt);
 });

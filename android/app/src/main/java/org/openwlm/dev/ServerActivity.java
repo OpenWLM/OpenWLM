@@ -29,12 +29,20 @@ import org.json.JSONObject;
 
 /**
  * Point d'entrée de l'app : choix du serveur OpenWLM au premier lancement, ou à la demande
- * (EXTRA_EDIT, depuis les Options ou la page hors ligne). Si un serveur est déjà enregistré,
+ * (ServerSettingsActivity, non exportée : depuis les Options ou la page hors ligne). Si un
+ * serveur est déjà enregistré,
  * ouvre directement l'app.
  */
 public class ServerActivity extends AppCompatActivity {
 
-    static final String EXTRA_EDIT = "org.openwlm.dev.EDIT_SERVER";
+    /**
+     * Changement de serveur (et non premier choix). Faux ici : cette activité est le lanceur,
+     * exportée, et une autre application ne doit pas pouvoir ouvrir l'écran de changement de
+     * serveur (hameçonnage). Vrai dans ServerSettingsActivity, non exportée.
+     */
+    protected boolean isEditMode() {
+        return false;
+    }
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -48,7 +56,7 @@ public class ServerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
-        boolean edit = getIntent().getBooleanExtra(EXTRA_EDIT, false);
+        boolean edit = isEditMode();
         String saved = ServerConfig.getHost(this);
         if (saved != null && !edit) {
             openApp(false);
@@ -114,7 +122,7 @@ public class ServerActivity extends AppCompatActivity {
     private void applyServer(String host, String previous) {
         boolean changed = !host.equals(previous);
         ServerConfig.setHost(this, host);
-        if (!changed && getIntent().getBooleanExtra(EXTRA_EDIT, false)) {
+        if (!changed && isEditMode()) {
             finish();
             return;
         }
@@ -183,7 +191,6 @@ public class ServerActivity extends AppCompatActivity {
 
     private void openApp(boolean restart) {
         Intent intent = new Intent(this, MainActivity.class);
-        if (getIntent().getData() != null) intent.setData(getIntent().getData());
         if (restart) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();

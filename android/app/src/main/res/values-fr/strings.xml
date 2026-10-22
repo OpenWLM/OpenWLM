@@ -41,4 +41,7 @@
     <string name="server_trust_title">Serveur de confiance uniquement</string>
     <string name="server_trust_message">%1$s n\'est pas le serveur par défaut. Celui qui l\'exploite recevra votre identifiant et votre clé de connexion, et affichera l\'application sur ce téléphone. Ne continuez que si vous faites confiance à ce serveur.</string>
     <string name="server_trust_confirm">Je fais confiance à ce serveur</string>
+    <string name="save_confirm_title">Enregistrer le fichier ?</string>
+    <string name="save_confirm_message">« %1$s » (%2$s) sera enregistré dans Téléchargements.</string>
+    <string name="save_confirm_ok">Enregistrer</string>
 </resources>

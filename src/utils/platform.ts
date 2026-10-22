@@ -32,7 +32,8 @@ interface OpenWLMNativePlugin {
   /** APK v3 : enregistrement en un seul bloc (gardé pour la compatibilité). */
   saveFile(options: { fileName: string; mimeType: string; data: string }): Promise<{ saved: boolean; location?: string }>;
   resetPushToken(): Promise<void>;
-  beginSave(options: { fileName: string; mimeType: string; size: number }): Promise<{ id: string; maxChunkBytes: number }>;
+  /** APK v6+ : `cancelled` si l'utilisateur refuse la confirmation native (pas d'`id`). */
+  beginSave(options: { fileName: string; mimeType: string; size: number }): Promise<{ id?: string; maxChunkBytes?: number; cancelled?: boolean }>;
   appendChunk(options: { id: string; data: string }): Promise<void>;
   finishSave(options: { id: string }): Promise<{ saved: boolean; location?: string }>;
   abortSave(options: { id: string }): Promise<void>;
@@ -114,6 +115,7 @@ export const saveBlob = async (blob: Blob, fileName: string): Promise<boolean> =
   }
   if (isNativeApp()) {
     const { id } = await OpenWLMNative.beginSave({ fileName, mimeType: blob.type || 'application/octet-stream', size: blob.size });
+    if (!id) return false; // enregistrement refusé dans la confirmation native
     try {
       for (const [start, end] of chunkRanges(blob.size)) {
         await OpenWLMNative.appendChunk({ id, data: await blobToBase64(blob.slice(start, end)) });

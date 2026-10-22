@@ -60,11 +60,22 @@ public class CallActionReceiver extends BroadcastReceiver {
         String host = ServerConfig.getHost(context);
         if (host == null) return;
         String url = ServerConfig.urlFor(host) + "/api/calls/decline";
+        // Cookie de session et agent de la WebView lus ici, sur le thread principal (onReceive) :
+        // ces API de la WebView ne sont pas faites pour un thread quelconque, notamment au
+        // démarrage à froid de l'app
+        String cookie;
+        String userAgent;
+        try {
+            cookie = CookieManager.getInstance().getCookie(url);
+            userAgent = WebSettings.getDefaultUserAgent(context);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Refus d'appel impossible : WebView indisponible (" + e.getClass().getSimpleName() + ")");
+            return;
+        }
         PendingResult pending = goAsync();
         new Thread(() -> {
             HttpURLConnection conn = null;
             try {
-                String cookie = CookieManager.getInstance().getCookie(url);
                 conn = (HttpURLConnection) new URL(url).openConnection();
                 conn.setRequestMethod("POST");
                 conn.setConnectTimeout(10_000);
@@ -73,7 +84,7 @@ public class CallActionReceiver extends BroadcastReceiver {
                 conn.setRequestProperty("Content-Type", "application/json");
                 if (cookie != null) conn.setRequestProperty("Cookie", cookie);
                 // Même agent que la WebView : la requête ressemble à celles de l'app (Cloudflare)
-                conn.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(context));
+                conn.setRequestProperty("User-Agent", userAgent);
                 try (OutputStream out = conn.getOutputStream()) {
                     out.write(("{\"callerId\":" + callerId + "}").getBytes(StandardCharsets.UTF_8));
                 }

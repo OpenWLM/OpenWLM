@@ -8,6 +8,7 @@ import android.os.SystemClock;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
@@ -18,6 +19,7 @@ import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.CapConfig;
 import com.getcapacitor.PluginHandle;
+import com.getcapacitor.WebViewListener;
 
 /**
  * Coquille native d'OpenWLM : charge l'interface depuis le serveur choisi (ServerConfig),
@@ -30,6 +32,10 @@ public class MainActivity extends BridgeActivity {
 
     /** App à l'écran et déverrouillée : c'est alors l'interface qui affiche les alertes. */
     private static volatile boolean userVisible;
+    /** URL de la page chargée (contrôle d'origine du pont natif, cf. BridgeTrust). */
+    private static volatile String currentPageUrl;
+    /** Micro / caméra permis jusqu'à cet instant (elapsedRealtime) après « Répondre ». */
+    private static volatile long mediaAllowedUntil;
 
     private boolean started;
     /** Déverrouillage de l'app inutile jusqu'à cet instant (cf. handleChatIntent). */
@@ -64,6 +70,27 @@ public class MainActivity extends BridgeActivity {
         webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         webView.getSettings().setAllowFileAccess(false);
         webView.getSettings().setAllowContentAccess(false);
+        // Micro / caméra filtrés (origine, app visible ou appel en cours) avant Capacitor ;
+        // installé dans onCreate (BridgeWebChromeClient enregistre des lanceurs d'activité)
+        webView.setWebChromeClient(new GuardedWebChromeClient(bridge));
+        // Origine de la page suivie pour le pont natif (cf. OpenWLMNativePlugin)
+        bridge.addWebViewListener(new WebViewListener() {
+            @Override
+            public void onPageStarted(WebView view) {
+                currentPageUrl = view.getUrl();
+            }
+
+            @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                currentPageUrl = url;
+            }
+
+            @Override
+            public void onPageLoaded(WebView view) {
+                currentPageUrl = view.getUrl();
+            }
+        });
+        currentPageUrl = webView.getUrl();
 
         // Pas d'aperçu de la conversation dans l'écran des applications récentes
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -106,6 +133,14 @@ public class MainActivity extends BridgeActivity {
         return userVisible;
     }
 
+    static String currentPageUrl() {
+        return currentPageUrl;
+    }
+
+    static long mediaAllowedUntil() {
+        return mediaAllowedUntil;
+    }
+
     /** Écran de verrouillage de l'app affiché. */
     private static volatile boolean appLocked;
 
@@ -116,6 +151,27 @@ public class MainActivity extends BridgeActivity {
     private void updateVisibility() {
         userVisible = started && !locked;
         appLocked = locked;
+        updateSecureFlag();
+    }
+
+    /**
+     * Contenu masqué (captures d'écran, aperçu des applications récentes) quand l'app est
+     * verrouillée, et en arrière-plan sur Android < 13 (setRecentsScreenshotEnabled n'existe
+     * pas). App ouverte et déverrouillée : captures permises (partage d'écran en appel).
+     */
+    private boolean paused;
+
+    private void updateSecureFlag() {
+        boolean secure = locked || (paused && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU);
+        if (secure) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+    }
+
+    @Override
+    public void onPause() {
+        paused = true;
+        updateSecureFlag();
+        super.onPause();
     }
 
     @Override
@@ -132,6 +188,8 @@ public class MainActivity extends BridgeActivity {
         intent.removeExtra(OpenWLMNotifications.EXTRA_CHAT_ID);
         intent.removeExtra(OpenWLMNotifications.EXTRA_ANSWER);
         if (answer) {
+            // Micro / caméra permis le temps de décrocher, même derrière l'écran de verrouillage
+            mediaAllowedUntil = SystemClock.elapsedRealtime() + BridgeTrust.ANSWER_MEDIA_GRACE_MS;
             // Téléphone verrouillé par code pendant la sonnerie, déverrouillé par son propriétaire
             // pour répondre à CET appel : pas de second déverrouillage de l'app (AppLockPolicy)
             if (IncomingCallService.consumeAnswerUnlock(this, chatId)) {
@@ -160,6 +218,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        paused = false;
+        updateSecureFlag();
         if (locked && !authInProgress) authenticate();
     }
 

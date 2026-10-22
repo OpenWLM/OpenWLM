@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Écran d'appel entrant (IncomingCallActivity), affiché aussi téléphone verrouillé -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:filterTouchesWhenObscured="true"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#163F73"

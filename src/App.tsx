@@ -121,8 +121,25 @@ const gameIcon = (gameType?: string) =>
 
 /** Taille max. d'un message sur la socket (le serveur borne les trames à 1 Mo). */
 const MAX_SOCKET_MESSAGE_CHARS = 900_000;
-/** Délai d'attente de l'accusé du serveur avant de considérer l'envoi comme échoué. */
+/** Délai d'attente de l'accusé du serveur pour une tentative d'envoi. */
 const SEND_ACK_TIMEOUT_MS = 15_000;
+/** Envoi pendant une reconnexion : attente de la connexion au plus ce délai avant « Non envoyé ». */
+const SEND_WAIT_CONNECTION_MS = 30_000;
+/** Nouvelles tentatives automatiques après un accusé manquant (même mid : dédupliqué). */
+const SEND_AUTO_RETRIES = 1;
+/** Contrôle de la connexion au retour au premier plan : réponse attendue en moins de… */
+const LIVENESS_TIMEOUT_MS = 3_000;
+
+/**
+ * Connexion « muette » (téléphone sorti de veille, changement de réseau) : la connexion temps
+ * réel paraît ouverte mais plus rien ne passe, et Socket.IO ne s'en aperçoit qu'au bout de
+ * pingInterval + pingTimeout (jusqu'à 85 s). On ferme le transport : Socket.IO se reconnecte
+ * aussitôt (même objet socket, mêmes écouteurs).
+ */
+const forceSocketReconnect = (s: Socket) => {
+  console.warn('[Socket] Connexion muette : reconnexion immédiate');
+  try { s.io.engine?.close(); } catch { /* déjà fermée */ }
+};
 /** Clips vocaux : débit d'encodage et durée maximale (≈ 650 Ko une fois chiffrés). */
 const VOICE_CLIP_BITRATE = 32_000;
 const VOICE_CLIP_MAX_MS = 90_000;
@@ -2467,10 +2484,35 @@ const App: React.FC = () => {
       document.addEventListener('visibilitychange', onForeground);
       window.addEventListener('pageshow', onForeground);
 
+      // Retour au premier plan ou du réseau : la connexion répond-elle encore ? Après une veille
+      // ou un changement de réseau, elle peut paraître ouverte sans plus rien transmettre (cf.
+      // forceSocketReconnect) ; on le vérifie par un aller-retour (diag_ping, avec accusé) au
+      // lieu d'attendre jusqu'à 85 s que Socket.IO s'en aperçoive
+      let lastLivenessCheck = 0;
+      const checkLiveness = () => {
+        if (document.visibilityState !== 'visible') return;
+        const now = Date.now();
+        if (now - lastLivenessCheck < 2000) return; // visibilitychange + pageshow + online ensemble
+        lastLivenessCheck = now;
+        if (!newSocket.connected) {
+          if (!newSocket.active) newSocket.connect();
+          return;
+        }
+        newSocket.timeout(LIVENESS_TIMEOUT_MS).emit('diag_ping', (err: Error | null) => {
+          if (err && newSocket.connected) forceSocketReconnect(newSocket);
+        });
+      };
+      document.addEventListener('visibilitychange', checkLiveness);
+      window.addEventListener('pageshow', checkLiveness);
+      window.addEventListener('online', checkLiveness);
+
       setSocket(newSocket);
       return () => {
         document.removeEventListener('visibilitychange', onForeground);
         window.removeEventListener('pageshow', onForeground);
+        document.removeEventListener('visibilitychange', checkLiveness);
+        window.removeEventListener('pageshow', checkLiveness);
+        window.removeEventListener('online', checkLiveness);
         newSocket.disconnect();
       };
     }
@@ -2614,30 +2656,54 @@ const App: React.FC = () => {
       markSendFailed(chatId, clientMsgId, 'too_large');
       return;
     }
-    if (!socket || !socket.connected) {
+    const s = socket;
+    if (!s) {
       markSendFailed(chatId, clientMsgId, 'error', t.chat.sendFailedNetwork);
       return;
     }
 
-    socket.timeout(SEND_ACK_TIMEOUT_MS).emit('send_message', msgData, (err: Error | null, ack?: { success?: boolean; id?: number | string; timestamp?: string; code?: string; error?: string; isPrivate?: boolean }) => {
-      if (err || !ack?.success || ack.id === undefined || ack.id === null) {
-        const failed = ack?.code === 'RECIPIENT_OFFLINE_PRIVATE' ? 'offline_private' : 'error';
-        markSendFailed(chatId, clientMsgId, failed, err ? t.chat.sendFailedNetwork : ack?.error);
-        return;
-      }
-      resendInfoRef.current.delete(clientMsgId);
-      // isPrivate (décidé par le serveur) : un message privé confirmé reste reconnu comme tel
-      const confirmed: Message = { ...localMsg, id: ack.id, isPrivate: ack.isPrivate === true, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || localMsg.timestamp };
-      setMessages(prev => ({
-        ...prev,
-        [chatId]: (prev[chatId] || []).map(m => m.clientMsgId === clientMsgId
-          ? { ...m, id: ack.id, isPrivate: ack.isPrivate === true, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || m.timestamp }
-          : m)
-      }));
-      if (myKeysRef.current) {
-        saveToLocalCopy(chatId, confirmed);
-      }
+    // Connexion en cours de rétablissement (retour de veille, changement de réseau) : le
+    // message reste « en cours » et part dès la reconnexion, au lieu d'échouer aussitôt
+    const whenConnected = (send: () => void) => {
+      if (s.connected) { send(); return; }
+      const onConnect = () => { clearTimeout(timer); send(); };
+      const timer = setTimeout(() => {
+        s.off('connect', onConnect);
+        markSendFailed(chatId, clientMsgId, 'error', t.chat.sendFailedNetwork);
+      }, SEND_WAIT_CONNECTION_MS);
+      s.once('connect', onConnect);
+      if (!s.active) s.connect();
+    };
+
+    const attempt = (retriesLeft: number) => whenConnected(() => {
+      s.timeout(SEND_ACK_TIMEOUT_MS).emit('send_message', msgData, (err: Error | null, ack?: { success?: boolean; id?: number | string; timestamp?: string; code?: string; error?: string; isPrivate?: boolean }) => {
+        if (err && retriesLeft > 0) {
+          // Pas d'accusé : connexion très probablement muette. Reconnexion forcée puis nouvel
+          // envoi du même message (même mid : le serveur et le destinataire dédupliquent)
+          if (s.connected) forceSocketReconnect(s);
+          attempt(retriesLeft - 1);
+          return;
+        }
+        if (err || !ack?.success || ack.id === undefined || ack.id === null) {
+          const failed = ack?.code === 'RECIPIENT_OFFLINE_PRIVATE' ? 'offline_private' : 'error';
+          markSendFailed(chatId, clientMsgId, failed, err ? t.chat.sendFailedNetwork : ack?.error);
+          return;
+        }
+        resendInfoRef.current.delete(clientMsgId);
+        // isPrivate (décidé par le serveur) : un message privé confirmé reste reconnu comme tel
+        const confirmed: Message = { ...localMsg, id: ack.id, isPrivate: ack.isPrivate === true, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || localMsg.timestamp };
+        setMessages(prev => ({
+          ...prev,
+          [chatId]: (prev[chatId] || []).map(m => m.clientMsgId === clientMsgId
+            ? { ...m, id: ack.id, isPrivate: ack.isPrivate === true, _isPending: false, _failed: undefined, _failReason: undefined, timestamp: ack.timestamp || m.timestamp }
+            : m)
+        }));
+        if (myKeysRef.current) {
+          saveToLocalCopy(chatId, confirmed);
+        }
+      });
     });
+    attempt(SEND_AUTO_RETRIES);
   };
 
   /** Renvoie un message « Non envoyé » en réutilisant le mid d'origine (le serveur déduplique). */

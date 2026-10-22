@@ -27,6 +27,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **"Remember this device" keeps the session for 30 rolling days** (instead of 24 h): the server renews the session cookie as long as the device is used at least once a month, in the app and in the browser. Without this option, the session still lasts 24 h. Session revocation remains immediate.
 
 ### Tests
+- `e2e/socket-resilience.spec.ts`: silent connection on returning to the foreground, lost acknowledgement (automatic resend without duplicate); both fail on the previous version.
 - `e2e/push-robustness.spec.ts`: sign-out with a service worker that never activates; FCM token retried after a network failure, without duplicate sends. `tests/test_push_revocation.js`: `/api/health`.
 - `tests/test_push_revocation.js`: Web Push subscriptions and FCM tokens removed on sign-out (whole account) and password change (except the current device), other accounts untouched. `e2e/android-save.spec.ts`: fallback to `saveFile` with an APK v3. JVM test `FileNamesTest`.
 - `e2e/android-save.spec.ts`: simulated Android app, received file saved in chunks and identical to the original. JVM tests of the app (`AppLockPolicyTest`, `CallTimingTest`).
@@ -34,6 +35,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Intermittent "Not sent" messages (mostly on mobile)**: after waking up or a network change, the real-time connection could look open while carrying nothing, for up to 85 s; a message sent in that window failed after 15 s and had to be resent. On returning to the app (or to the network), the connection is now checked within 3 s and re-established at once if it does not answer; a message sent during a reconnection waits for the connection (30 s at most) instead of failing; a missing acknowledgement triggers a reconnection and an automatic resend of the same message (deduplicated, no duplicate for the recipient). No server change.
 - **Notifications, review follow-up**: a failed app token registration (offline, server unavailable) is no longer treated as successful: it is retried when the network comes back or on returning to the app, one sync at a time. Signing out no longer waits forever for the service worker (private browsing, failed registration): server-side revocation goes first, local unsubscribes are bounded to a few seconds and keys are purged in every case; password change is no longer blocked either. Changing server from APK v3: the token is now removed from the old server, and registered again if cancelled.
 - **Received files**: the name shown in the conversation is stripped of invisible and bidirectional characters (an extension can no longer be disguised).
 - **Server**: `/api/logout` returns an error if revocation fails in the database instead of ignoring it; new route `GET /api/health` (database readable), local calls only (404 for a request coming through Cloudflare), used by `openwlm-service.sh`. CI: Android job (JVM tests, Android lint, debug APK).

@@ -14,6 +14,11 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version)
   },
+  build: {
+    // scripts/deploy.sh construit à côté (dist.next) puis échange avec dist/ : jamais
+    // d'interface partielle servie pendant le build
+    outDir: process.env.OPENWLM_BUILD_OUT_DIR || 'dist'
+  },
   server: {
     proxy: {
       // Redirige les appels API vers le serveur Express local

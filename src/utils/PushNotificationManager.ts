@@ -98,7 +98,11 @@ export async function subscribeToWebPush(vapidPublicKey?: string): Promise<{ suc
       }
     }
 
-    const reg = await navigator.serviceWorker.ready;
+    // Service worker actif, attendu 3 s au plus (cf. readyRegistration)
+    const reg = await readyRegistration();
+    if (!reg) {
+      return { success: false, error: 'Service worker inactif (abonnement Push impossible pour l\'instant).' };
+    }
 
     // 2. Si pas de clé VAPID fournie, tenter de la récupérer depuis le serveur
     let key = vapidPublicKey;

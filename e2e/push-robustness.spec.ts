@@ -153,3 +153,53 @@ test('app Android : après « Déconnecter mes autres sessions », le jeton de c
   // Même si la lecture du jeton avait échoué, il est renvoyé au serveur
   await expect.poll(() => registers, { timeout: 20000 }).toBe(2);
 });
+
+test('déconnexion refusée puis annulée : le temps réel fonctionne toujours', async ({ browser }) => {
+  test.setTimeout(150000);
+  const stamp = Date.now();
+  const a = await newPage(browser);
+  const b = await newPage(browser);
+  await registerAndLogin(a, `lka_${stamp}`);
+  await registerAndLogin(b, `lkb_${stamp}`);
+  expect((await a.request.post('/api/invite', { data: { receiverUsername: `lkb_${stamp}` } })).ok()).toBeTruthy();
+  const meB = await (await b.request.get('/api/user/me')).json();
+  const invites = await (await b.request.get(`/api/invitations/${meB.user.id}`)).json();
+  expect((await b.request.post('/api/accept-invite', { data: { invitationId: invites[0].id } })).ok()).toBeTruthy();
+  await expect(b.locator('.contact-row', { hasText: `lka_${stamp}` })).toBeVisible({ timeout: 45000 });
+  await expect(a.locator('.contact-row', { hasText: `lkb_${stamp}` })).toBeVisible({ timeout: 45000 });
+  // Conversation ouverte AVANT : ensuite, seul le temps réel peut y faire apparaître un message
+  // (pas de rechargement de l'historique par un clic)
+  await a.locator('.contact-row', { hasText: `lkb_${stamp}` }).click();
+
+  // Réponse lente (réseau mobile) : la connexion temps réel est fermée par manual_disconnect
+  // pendant que la déconnexion est encore en cours
+  await a.route('**/api/logout', async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+  });
+  await a.locator('.status-trigger').click();
+  await a.locator('.dropdown-item', { hasText: 'Sign out everywhere' }).click();
+  const dialog = a.getByTestId('aero-dialog');
+  await expect(dialog).toContainText('could not be recorded');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(a.locator('.wlm-auth-form')).toHaveCount(0);
+
+  // La connexion temps réel a été rétablie : A reçoit un message de B
+  await b.locator('.contact-row', { hasText: `lka_${stamp}` }).click();
+  const text = `toujours là ${stamp}`;
+  await b.locator('.chat-input-rich').click();
+  await b.keyboard.type(text);
+  await b.keyboard.press('Enter');
+  await expect(a.locator('.msg-content', { hasText: text })).toBeVisible({ timeout: 20000 });
+});
+
+test('déconnexion avec une session déjà terminée (401) : la déconnexion locale va à son terme', async ({ browser }) => {
+  test.setTimeout(120000);
+  const page = await newPage(browser);
+  await registerAndLogin(page, `logout401_${Date.now()}`);
+  await page.route('**/api/logout', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: '{"code":"session_revoked"}' }));
+  await page.locator('.status-trigger').click();
+  await page.locator('.dropdown-item', { hasText: 'Sign out everywhere' }).click();
+  await expect(page.locator('.wlm-auth-form')).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId('aero-dialog')).toHaveCount(0);
+});

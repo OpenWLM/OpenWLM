@@ -203,13 +203,20 @@ if [ $NEED_NPM = 1 ]; then info "npm ci…"; npm ci --no-audit --no-fund; fi
 if [ $NEED_BUILD = 1 ]; then
   # Construit à côté puis échange d'un coup : un build interrompu ne laisse jamais une
   # interface partielle dans dist/ ; l'ancienne interface part dans la sauvegarde
+  # (npm run build lui-même, pour qu'aucune étape du script de build ne soit oubliée ;
+  # dossier de sortie donné à Vite par OPENWLM_BUILD_OUT_DIR, cf. vite.config.ts)
   info "npm run build (dans dist.next)…"
   rm -rf dist.next
-  npx tsc -b
-  npx vite build --outDir dist.next --emptyOutDir
-  if [ -d dist ]; then
+  OPENWLM_BUILD_OUT_DIR=dist.next npm run build
+  [ -f dist.next/index.html ] || fail "build incomplet : dist.next/index.html absent (dist/ inchangé)."
+  if [ -d dist ] && mv --help 2>/dev/null | grep -q -- '--exchange'; then
+    # Échange atomique (GNU coreutils 9.5 ou plus récent)
     mv -T --exchange dist.next dist
     mv dist.next "$BACKUP_DIR/dist-precedent"
+  elif [ -d dist ]; then
+    # coreutils plus ancien : deux renommages consécutifs (dist/ absent quelques millisecondes)
+    mv dist "$BACKUP_DIR/dist-precedent"
+    mv dist.next dist
   else
     mv dist.next dist
   fi

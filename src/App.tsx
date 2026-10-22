@@ -3619,12 +3619,18 @@ const App: React.FC = () => {
       // abonnements Push / jetons FCM) et suppression du cookie HttpOnly. Si elle échoue
       // (erreur serveur, hors ligne, délai dépassé), on ne fait pas comme si elle avait réussi :
       // le cookie resterait valide et les autres sessions ouvertes.
-      if (!(await revokeSessionOnServer(user?.token))) {
+      const revocation = await revokeSessionOnServer(user?.token);
+      if (revocation === 'failed') {
+        // La session est toujours ouverte : manual_disconnect a déjà fermé la connexion temps
+        // réel, on la rétablit tout de suite (présence et messages), que l'on réessaie ou non
+        if (socket && !socket.connected) socket.connect();
         loggingOutRef.current = false;
         const retry = await askConfirm(t.auth.logoutFailed, { title: t.auth.logout, icon: '⚠️', confirmLabel: t.auth.logoutRetry });
         if (retry) await handleLogout(reason, opts);
         return;
       }
+      // 'revoked' : révoquée maintenant ; 'ended' : elle n'existait déjà plus (expirée, ou
+      // révoquée depuis un autre appareil) — dans les deux cas, la purge locale va à son terme
     } else {
       socket?.disconnect();
     }
@@ -3636,8 +3642,12 @@ const App: React.FC = () => {
       await purgeLocalSession(reason);
     }
   };
-  /** POST /api/logout, borné à 10 s. Vrai seulement si le serveur a confirmé la révocation. */
-  const revokeSessionOnServer = async (token?: string): Promise<boolean> => {
+  /**
+   * POST /api/logout, borné à 10 s. 'revoked' : le serveur a révoqué les sessions ; 'ended' :
+   * la session n'existait déjà plus (401 / 403 de l'authentification) ; 'failed' : erreur du
+   * serveur, réseau ou délai dépassé (la session est peut-être toujours ouverte).
+   */
+  const revokeSessionOnServer = async (token?: string): Promise<'revoked' | 'ended' | 'failed'> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10_000);
     try {
@@ -3647,11 +3657,13 @@ const App: React.FC = () => {
         credentials: 'include',
         signal: controller.signal
       });
-      if (!res.ok) console.warn('[Logout] Révocation refusée par le serveur :', res.status);
-      return res.ok;
+      if (res.ok) return 'revoked';
+      if (res.status === 401 || res.status === 403) return 'ended';
+      console.warn('[Logout] Révocation refusée par le serveur :', res.status);
+      return 'failed';
     } catch (e) {
       console.warn('[Logout] Erreur appel /api/logout:', e);
-      return false;
+      return 'failed';
     } finally {
       clearTimeout(timer);
     }

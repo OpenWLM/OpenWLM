@@ -121,6 +121,9 @@ scripts/deploy.sh <commit précédent>    # retour arrière
   un échec, relancer la même commande reprend ce qui manque (le build ou le redémarrage). Avec
   `--no-restart`, la version n'est pas enregistrée si un redémarrage était nécessaire.
 - Rappel si `docs/cloudflare-waf.generated.json` a changé : mettre à jour Cloudflare d'abord.
+- Prérequis : bash, git, tar, Node.js/npm (ceux du service). L'échange atomique de `dist/`
+  utilise `mv --exchange` (GNU coreutils 9.5 ou plus récent) ; sur une distribution plus
+  ancienne, le script fait deux renommages consécutifs (`dist/` absent quelques millisecondes).
 - Options : `--yes` (sans confirmation), `--no-restart`, `--target <dossier>` (ex. une copie
   de test), `--from <commit>`.
 

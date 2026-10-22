@@ -72,7 +72,9 @@
     "signupSuccess": "Compte créé avec succès ! Vous pouvez maintenant vous connecter.",
     "unexpectedError": "Une erreur inattendue est survenue.",
     "logout": "Se déconnecter de partout",
-    "changePassword": "Changer le mot de passe"
+    "changePassword": "Changer le mot de passe",
+    "logoutFailed": "La déconnexion n'a pas pu être enregistrée par le serveur (connexion perdue ou erreur du serveur) : vos sessions restent ouvertes. Réessayer ?",
+    "logoutRetry": "Réessayer"
   },
   "status": {
     "online": "Disponible",

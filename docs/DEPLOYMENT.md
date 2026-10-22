@@ -82,8 +82,13 @@ jour des fichiers, faire `npm ci` (si `package-lock.json` a changé) puis `npm r
 même pas de redémarrage : le serveur sert `dist/` tel quel. Le serveur s'arrête proprement sur
 SIGTERM (connexions temps réel et base fermées). Santé : `GET /api/health` (`{ "ok": true }`
 si le serveur répond et que la base est lisible, 503 sinon), utilisé par `openwlm-service.sh` ;
-réservé aux appels locaux : une requête venue d'Internet (passée par Cloudflare, en-têtes
-`cf-ray` / `cf-connecting-ip`) reçoit 404.
+réservé aux appels faits sur la machine même (adresse de bouclage, sans en-têtes Cloudflare) :
+404 sinon.
+
+**Exposition du port** : le serveur écoute sur toutes les interfaces (port 3001). Le tunnel
+Cloudflare s'y connecte en local (`http://localhost:3001`), mais le port est aussi joignable
+depuis le réseau local, en HTTP, sans Cloudflare ni WAF. À fermer par le pare-feu de la
+machine (n'autoriser le port 3001 que depuis la boucle locale).
 
 ## Déploiement d'une version : `scripts/deploy.sh`
 
@@ -107,9 +112,14 @@ scripts/deploy.sh <commit précédent>    # retour arrière
   Premier déploiement sans ce fichier : `--from <commit actuellement en prod>`.
 - Avant d'écrire : sauvegarde des fichiers remplacés / supprimés et de la base (copie
   cohérente SQLite) dans `~/Archives/deploiements/<date>-<commit>/` (droits 600).
-- Puis seulement si nécessaire : `npm ci` (package*.json), `npm run build` (src/, public/…),
+- Puis seulement si nécessaire (d'après l'écart git avec la version déployée) : `npm ci`
+  (package*.json), build de l'interface (src/, public/…) **dans `dist.next` puis échangé d'un
+  coup avec `dist/`** (jamais d'interface partielle ; l'ancienne va dans la sauvegarde),
   redémarrage (`server/`, dépendances) via `openwlm-service.sh restart`, qui attend
   `/api/health`.
+- `.deployed-version` n'est écrit qu'une fois tout réussi (redémarrage et santé compris) : après
+  un échec, relancer la même commande reprend ce qui manque (le build ou le redémarrage). Avec
+  `--no-restart`, la version n'est pas enregistrée si un redémarrage était nécessaire.
 - Rappel si `docs/cloudflare-waf.generated.json` a changé : mettre à jour Cloudflare d'abord.
 - Options : `--yes` (sans confirmation), `--no-restart`, `--target <dossier>` (ex. une copie
   de test), `--from <commit>`.

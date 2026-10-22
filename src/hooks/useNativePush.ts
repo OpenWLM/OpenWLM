@@ -32,13 +32,16 @@ import {
  */
 
 /** Enregistre / retire le jeton sur le serveur. Vrai si le serveur a confirmé. */
+// Délai borné : un serveur ou un proxy qui ne répond pas ne bloque ni la synchronisation ni
+// le changement de serveur (échec → nouvel essai plus tard)
+const PUSH_REQUEST_TIMEOUT_MS = 10_000;
 const registerToken = (token: string): Promise<boolean> =>
-  axios.post('/api/push/fcm/register', { token }).then(() => true, (err) => {
+  axios.post('/api/push/fcm/register', { token }, { timeout: PUSH_REQUEST_TIMEOUT_MS }).then(() => true, (err) => {
     console.warn('[FCM] Enregistrement du jeton impossible:', err);
     return false;
   });
 const unregisterToken = (token: string): Promise<boolean> =>
-  axios.post('/api/push/fcm/unregister', { token }).then(() => true, () => false);
+  axios.post('/api/push/fcm/unregister', { token }, { timeout: PUSH_REQUEST_TIMEOUT_MS }).then(() => true, () => false);
 
 /**
  * Demande de resynchronisation du jeton avec l'autorisation (cf. OptionsModal), ou après son

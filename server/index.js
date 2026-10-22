@@ -257,11 +257,13 @@ const memoryCleanupInterval = setInterval(cleanupMemoryMaps, 5 * 60 * 1000);
 if (memoryCleanupInterval.unref) memoryCleanupInterval.unref();
 
 // Santé du service (supervision, scripts/openwlm-service.sh) : le processus répond ET la base
-// est lisible. Réservée aux appels locaux : une requête venue d'Internet passe par Cloudflare
-// (en-têtes cf-ray / cf-connecting-ip, ajoutés par le tunnel) et reçoit 404, comme une route
-// inconnue. Définie ici et non dans server/routes/ : hors des règles WAF générées.
+// est lisible. Réservée aux appels faits sur la machine même : connexion locale (adresse de
+// bouclage) ET pas d'en-têtes Cloudflare (le tunnel se connecte lui aussi en local, mais ajoute
+// cf-ray / cf-connecting-ip). Sinon 404, comme une route inconnue. Définie ici et non dans
+// server/routes/ : hors des règles WAF générées.
+const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 app.get('/api/health', (req, res, next) => {
-  if (req.headers['cf-ray'] || req.headers['cf-connecting-ip']) return next();
+  if (!LOOPBACK_ADDRESSES.has(req.socket.remoteAddress) || req.headers['cf-ray'] || req.headers['cf-connecting-ip']) return next();
   try {
     db.prepare('SELECT 1').get();
     res.json({ ok: true });

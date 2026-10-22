@@ -154,13 +154,16 @@ export async function unsubscribeFromWebPush(): Promise<boolean> {
     // Désabonner du navigateur
     await withTimeout(subscription.unsubscribe(), SW_READY_TIMEOUT_MS, false);
 
-    // Informer le serveur
+    // Informer le serveur (borné : jamais bloquant)
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SW_READY_TIMEOUT_MS);
     await fetch('/api/push/unsubscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ endpoint: subscription.endpoint })
-    }).catch(() => {});
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+      signal: controller.signal
+    }).catch(() => {}).finally(() => clearTimeout(timer));
 
     return true;
   } catch (err) {

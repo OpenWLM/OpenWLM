@@ -159,3 +159,15 @@ test('GET /api/health : 404 pour une requête venue d\'Internet (via Cloudflare)
     assert.equal(r, 404, header);
   }
 });
+
+test('GET /api/health : 404 pour un appel venu du réseau (adresse non locale)', async (t) => {
+  const lan = Object.values(os.networkInterfaces()).flat().find((i) => i && i.family === 'IPv4' && !i.internal);
+  if (!lan) return t.skip('aucune interface réseau non locale');
+  const status = await new Promise((resolve) => {
+    const req = http.request({ hostname: lan.address, port, path: '/api/health', method: 'GET' },
+      (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+    req.on('error', () => resolve(0));
+    req.end();
+  });
+  assert.equal(status, 404);
+});

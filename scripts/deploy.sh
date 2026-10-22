@@ -20,7 +20,8 @@
 # Options :
 #   --dry-run          afficher seulement
 #   --yes              pas de confirmation
-#   --no-restart       ne pas redémarrer le service (copie de test)
+#   --no-restart       ne pas redémarrer le service (copie de test) ; la version n'est alors
+#                      pas enregistrée si un redémarrage était nécessaire
 #   --target <dir>     dossier de prod (défaut : $OPENWLM_PROD_DIR ou ~/OpenWLM)
 #   --from <commit>    version actuellement déployée, si .deployed-version manque (1er déploiement)
 # =============================================================================
@@ -117,8 +118,18 @@ if [ -n "$PREVIOUS" ]; then
 fi
 
 CHANGED=("${ADDED[@]+"${ADDED[@]}"}" "${MODIFIED[@]+"${MODIFIED[@]}"}" "${DELETED[@]+"${DELETED[@]}"}")
+# Ce qu'il faut relancer se déduit de l'écart git entre la version déployée et la nouvelle,
+# pas seulement des fichiers encore différents : après un déploiement interrompu (fichiers
+# déjà copiés, redémarrage raté, marqueur non écrit), une relance refait npm ci / build /
+# redémarrage. Version déployée inconnue : tout est refait.
 NEED_NPM=0; NEED_BUILD=0; NEED_RESTART=0; WAF_CHANGED=0
-for rel in "${CHANGED[@]+"${CHANGED[@]}"}"; do
+GIT_CHANGED=()
+if [ -n "$PREVIOUS" ]; then
+  mapfile -t GIT_CHANGED < <(git -C "$REPO_DIR" diff --name-only --no-renames "$PREVIOUS" "$COMMIT")
+else
+  NEED_NPM=1; NEED_BUILD=1; NEED_RESTART=1
+fi
+for rel in "${CHANGED[@]+"${CHANGED[@]}"}" "${GIT_CHANGED[@]+"${GIT_CHANGED[@]}"}"; do
   case "$rel" in
     package.json|package-lock.json) NEED_NPM=1; NEED_BUILD=1; NEED_RESTART=1 ;;
     src/*|public/*|index.html|vite.config.*|tsconfig*.json) NEED_BUILD=1 ;;
@@ -133,9 +144,12 @@ print_list "  ajoutés" "${ADDED[@]+"${ADDED[@]}"}"
 print_list "  modifiés" "${MODIFIED[@]+"${MODIFIED[@]}"}"
 print_list "  supprimés" "${DELETED[@]+"${DELETED[@]}"}"
 echo
-if [ ${#CHANGED[@]} -eq 0 ]; then
+UP_TO_DATE=0
+if [ ${#CHANGED[@]} -eq 0 ] && [ "$PREVIOUS" = "$COMMIT" ]; then UP_TO_DATE=1; fi
+if [ $UP_TO_DATE = 1 ]; then
   ok "aucune différence : $TARGET_DIR correspond déjà à $SHORT."
 else
+  [ ${#CHANGED[@]} -eq 0 ] && info "fichiers déjà à jour, mais version $SHORT pas encore enregistrée (déploiement interrompu ?)."
   info "ensuite : $([ $NEED_NPM = 1 ] && echo 'npm ci, ')$([ $NEED_BUILD = 1 ] && echo 'npm run build, ')$([ $NEED_RESTART = 1 ] && [ $RESTART = 1 ] && echo 'redémarrage du service, ')version enregistrée."
 fi
 [ $WAF_CHANGED = 1 ] && warn "les règles WAF ont changé (docs/CLOUDFLARE_WAF.md) : mettre à jour Cloudflare AVANT de déployer."
@@ -144,9 +158,7 @@ if [ $DRY_RUN = 1 ]; then
   info "--dry-run : rien n'a été modifié."
   exit 0
 fi
-if [ ${#CHANGED[@]} -eq 0 ] && [ -f "$TARGET_DIR/.deployed-version" ] && [ "$PREVIOUS" = "$COMMIT" ]; then
-  exit 0
-fi
+[ $UP_TO_DATE = 1 ] && exit 0
 if [ $ASSUME_YES = 0 ]; then
   read -r -p "Déployer $SHORT dans $TARGET_DIR ? [o/N] " answer
   case "$answer" in o|O|oui|y|Y|yes) ;; *) fail "abandon, rien n'a été modifié." ;; esac
@@ -171,7 +183,7 @@ fi
 chmod -R go-rwx "$BACKUP_DIR"
 ok "sauvegarde : $BACKUP_DIR"
 
-trap 'rm -rf "$EXPORT"; warn "ÉCHEC pendant le déploiement. Restaurer : tar -xzf $BACKUP_DIR/fichiers-remplaces.tar.gz -C $TARGET_DIR (supprimer les fichiers listés dans fichiers-ajoutes.txt), puis npm ci / npm run build / restart."' ERR
+trap 'rm -rf "$EXPORT" "$TARGET_DIR/dist.next"; warn "ÉCHEC pendant le déploiement (version non enregistrée). Relancer la même commande pour reprendre, ou restaurer : tar -xzf $BACKUP_DIR/fichiers-remplaces.tar.gz -C $TARGET_DIR (supprimer les fichiers listés dans fichiers-ajoutes.txt), puis npm ci / npm run build / restart."' ERR
 umask 022
 
 # --- Copie, suppressions ------------------------------------------------------------------
@@ -188,8 +200,34 @@ done
 # --- Dépendances, interface, service ------------------------------------------------------
 cd "$TARGET_DIR"
 if [ $NEED_NPM = 1 ]; then info "npm ci…"; npm ci --no-audit --no-fund; fi
-if [ $NEED_BUILD = 1 ]; then info "npm run build…"; npm run build; fi
+if [ $NEED_BUILD = 1 ]; then
+  # Construit à côté puis échange d'un coup : un build interrompu ne laisse jamais une
+  # interface partielle dans dist/ ; l'ancienne interface part dans la sauvegarde
+  info "npm run build (dans dist.next)…"
+  rm -rf dist.next
+  npx tsc -b
+  npx vite build --outDir dist.next --emptyOutDir
+  if [ -d dist ]; then
+    mv --exchange dist.next dist
+    mv dist.next "$BACKUP_DIR/dist-precedent"
+  else
+    mv dist.next dist
+  fi
+  ok "interface reconstruite (précédente : $BACKUP_DIR/dist-precedent)."
+fi
 
+if [ $NEED_RESTART = 1 ] && [ $RESTART = 0 ]; then
+  # Rien n'est enregistré : un prochain lancement (sans --no-restart) refera le redémarrage
+  warn "--no-restart : service non redémarré, version NON enregistrée dans .deployed-version."
+  trap 'rm -rf "$EXPORT"' ERR
+  exit 0
+fi
+if [ $NEED_RESTART = 1 ]; then
+  # Échec (service KO, /api/health sans réponse) → arrêt ici, marqueur non écrit
+  "$TARGET_DIR/scripts/openwlm-service.sh" restart
+fi
+
+# Version enregistrée seulement une fois tout réussi (redémarrage et santé compris)
 {
   echo "commit=$COMMIT"
   echo "ref=$REF"
@@ -197,14 +235,6 @@ if [ $NEED_BUILD = 1 ]; then info "npm run build…"; npm run build; fi
   echo "par=$(id -un)"
   echo "sauvegarde=$BACKUP_DIR"
 } > "$TARGET_DIR/.deployed-version"
-
-if [ $NEED_RESTART = 1 ]; then
-  if [ $RESTART = 1 ]; then
-    "$TARGET_DIR/scripts/openwlm-service.sh" restart
-  else
-    warn "--no-restart : le service n'a pas été redémarré."
-  fi
-fi
 trap 'rm -rf "$EXPORT"' ERR
 ok "OpenWLM $SHORT déployé dans $TARGET_DIR."
 [ -n "$PREVIOUS" ] && info "retour arrière : $0 $(git -C "$REPO_DIR" rev-parse --short "$PREVIOUS")"

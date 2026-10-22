@@ -38,6 +38,34 @@ const newPage = async (browser: Browser, init?: () => void) => {
   return ctx.newPage();
 };
 
+/** App Android simulée (plugin OpenWLMNative), avec un jeton FCM et les notifications autorisées. */
+const fakeAndroidBridge = () => {
+  const promise = (name: string) => ({ name, rtype: 'promise' });
+  const impl: Record<string, () => unknown> = {
+    getInfo: () => ({ server: location.host, defaultServer: location.host, appLock: false, push: true }),
+    getFcmToken: () => ({ token: 'e2e-device:APA91b-robustesse-0123456789' }),
+    getNotificationPermission: () => ({ state: 'granted' }),
+    // Explication des autorisations d'appel déjà vue : pas de fenêtre pendant le test
+    getCallPermissions: () => ({ notifications: 'granted', fullScreen: 'granted', microphone: 'granted', camera: 'granted' })
+  };
+  const w = window as unknown as Record<string, unknown>;
+  w.CapacitorCustomPlatform = { name: 'android', plugins: {} };
+  let nextCallback = 1;
+  w.Capacitor = {
+    PluginHeaders: [{
+      name: 'OpenWLMNative',
+      methods: [
+        ...['getInfo', 'getFcmToken', 'getNotificationPermission', 'requestNotificationPermission', 'getCallPermissions',
+          'requestCallPermission', 'setLanguage', 'dismissIncomingCall', 'isAppLocked', 'beginSave', 'appendChunk',
+          'finishSave', 'abortSave', 'saveFile', 'resetPushToken', 'changeServer', 'removeListener'].map(promise),
+        { name: 'addListener', rtype: 'callback' }
+      ]
+    }],
+    nativePromise: async (_p: string, method: string) => (impl[method] ? impl[method]() : {}),
+    nativeCallback: () => String(nextCallback++)
+  };
+};
+
 test('déconnexion : jamais bloquée par un service worker qui ne s\'active pas', async ({ browser }) => {
   test.setTimeout(120000);
   // navigator.serviceWorker.ready ne se résout jamais
@@ -59,32 +87,7 @@ test('déconnexion : jamais bloquée par un service worker qui ne s\'active pas'
 
 test('app Android : un échec d\'enregistrement du jeton FCM est réessayé au retour du réseau', async ({ browser }) => {
   test.setTimeout(120000);
-  const page = await newPage(browser, () => {
-    const promise = (name: string) => ({ name, rtype: 'promise' });
-    const impl: Record<string, () => unknown> = {
-      getInfo: () => ({ server: location.host, defaultServer: location.host, appLock: false, push: true }),
-      getFcmToken: () => ({ token: 'e2e-device:APA91b-robustesse-0123456789' }),
-      getNotificationPermission: () => ({ state: 'granted' }),
-      // Explication des autorisations d'appel déjà vue : pas de fenêtre pendant le test
-      getCallPermissions: () => ({ notifications: 'granted', fullScreen: 'granted', microphone: 'granted', camera: 'granted' })
-    };
-    const w = window as unknown as Record<string, unknown>;
-    w.CapacitorCustomPlatform = { name: 'android', plugins: {} };
-    let nextCallback = 1;
-    w.Capacitor = {
-      PluginHeaders: [{
-        name: 'OpenWLMNative',
-        methods: [
-          ...['getInfo', 'getFcmToken', 'getNotificationPermission', 'requestNotificationPermission', 'getCallPermissions',
-            'requestCallPermission', 'setLanguage', 'dismissIncomingCall', 'isAppLocked', 'beginSave', 'appendChunk',
-            'finishSave', 'abortSave', 'saveFile', 'resetPushToken', 'changeServer', 'removeListener'].map(promise),
-          { name: 'addListener', rtype: 'callback' }
-        ]
-      }],
-      nativePromise: async (_p: string, method: string) => (impl[method] ? impl[method]() : {}),
-      nativeCallback: () => String(nextCallback++)
-    };
-  });
+  const page = await newPage(browser, fakeAndroidBridge);
 
   // Premier enregistrement : serveur indisponible (503) ; ensuite, laissé passer
   let calls = 0;
@@ -105,4 +108,48 @@ test('app Android : un échec d\'enregistrement du jeton FCM est réessayé au r
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForTimeout(1500);
   expect(calls).toBe(2);
+});
+
+test('déconnexion refusée par le serveur : la session reste ouverte, avec un nouvel essai proposé', async ({ browser }) => {
+  test.setTimeout(120000);
+  const page = await newPage(browser);
+  await registerAndLogin(page, `logoutko_${Date.now()}`);
+  let logoutCalls = 0;
+  await page.route('**/api/logout', async (route) => {
+    logoutCalls += 1;
+    if (logoutCalls === 1) await route.fulfill({ status: 500, contentType: 'application/json', body: '{"code":"logout_failed"}' });
+    else await route.continue();
+  });
+
+  await page.locator('.status-trigger').click();
+  await page.locator('.dropdown-item', { hasText: 'Sign out everywhere' }).click();
+  // Échec : message, toujours connecté (rien de purgé)
+  const dialog = page.getByTestId('aero-dialog');
+  await expect(dialog).toContainText('could not be recorded');
+  await expect(page.locator('.wlm-auth-form')).toHaveCount(0);
+  await expect(page.locator('.status-trigger')).toBeVisible();
+  expect((await page.request.get('/api/user/me')).status()).toBe(200);
+
+  // Nouvel essai : cette fois accepté → déconnexion
+  await dialog.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.locator('.wlm-auth-form')).toBeVisible({ timeout: 20000 });
+  expect(logoutCalls).toBe(2);
+  expect((await page.request.get('/api/user/me')).status()).toBe(401);
+});
+
+test('app Android : après « Déconnecter mes autres sessions », le jeton de cet appareil est réenregistré', async ({ browser }) => {
+  test.setTimeout(120000);
+  const page = await newPage(browser, fakeAndroidBridge);
+  let registers = 0;
+  await page.route('**/api/push/fcm/register', async (route) => { registers += 1; await route.continue(); });
+  await registerAndLogin(page, `revresync_${Date.now()}`);
+  await expect.poll(() => registers, { timeout: 20000 }).toBe(1);
+
+  await page.locator('.status-trigger').click();
+  await page.locator('.dropdown-item', { hasText: 'Options' }).first().click();
+  await page.locator('.options-nav-item', { hasText: 'Security' }).click();
+  await page.getByTestId('revoke-sessions').getByRole('button', { name: 'Sign out my other devices' }).click();
+  await page.getByTestId('revoke-sessions').getByRole('button', { name: 'Yes, sign them out' }).click();
+  // Même si la lecture du jeton avait échoué, il est renvoyé au serveur
+  await expect.poll(() => registers, { timeout: 20000 }).toBe(2);
 });

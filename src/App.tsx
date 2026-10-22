@@ -54,7 +54,7 @@ import { ChatWindow } from './components/ChatWindow';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from './utils/CustomEmoticonsDB';
 import { onInstallAvailabilityChange, promptPWAInstall } from './pwa';
 import { isNativeApp, getNativeFcmToken, dismissNativeIncomingCall, resetNativePushToken } from './utils/platform';
-import { useNativePush } from './hooks/useNativePush';
+import { useNativePush, NATIVE_PUSH_RESET_EVENT, NATIVE_PUSH_SYNC_EVENT } from './hooks/useNativePush';
 import { withTimeout } from './utils/withTimeout';
 import { useI18n } from './i18n';
 import { formatNickname } from './utils/NicknameFormatter';
@@ -107,7 +107,7 @@ import { systemLine } from './utils/systemLine';
 import { commandSuggestions, isTestContactCommand } from './utils/chatCommands';
 import { hasPlusFormatting, renderPlusText, stripPlusTags, visibleLength } from './utils/plusFormat';
 import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
-import { notify } from './utils/dialogs';
+import { notify, askConfirm } from './utils/dialogs';
 
 axios.defaults.withCredentials = true;
 
@@ -3611,31 +3611,49 @@ const App: React.FC = () => {
     if (loggingOutRef.current) return;
     loggingOutRef.current = true;
     if (reason) console.warn("[Session] Déconnexion:", reason); 
-    const currentToken = user?.token;
-    try {
-      if (!opts.local) {
-        if (socket) {
-          socket.emit('manual_disconnect');
-        }
-        // SÉCURITÉ : révocation côté serveur d'abord (toutes les sessions du compte, et ses
-        // abonnements Push / jetons FCM) et suppression du cookie HttpOnly
-        try {
-          await fetch('/api/logout', {
-            method: 'POST',
-            headers: currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {},
-            credentials: 'include'
-          });
-        } catch (e) {
-          console.warn('[Logout] Erreur appel /api/logout:', e);
-        }
-      } else {
-        socket?.disconnect();
+    if (!opts.local) {
+      if (socket) {
+        socket.emit('manual_disconnect');
       }
+      // SÉCURITÉ : révocation côté serveur d'abord (toutes les sessions du compte, et ses
+      // abonnements Push / jetons FCM) et suppression du cookie HttpOnly. Si elle échoue
+      // (erreur serveur, hors ligne, délai dépassé), on ne fait pas comme si elle avait réussi :
+      // le cookie resterait valide et les autres sessions ouvertes.
+      if (!(await revokeSessionOnServer(user?.token))) {
+        loggingOutRef.current = false;
+        const retry = await askConfirm(t.auth.logoutFailed, { title: t.auth.logout, icon: '⚠️', confirmLabel: t.auth.logoutRetry });
+        if (retry) await handleLogout(reason, opts);
+        return;
+      }
+    } else {
+      socket?.disconnect();
+    }
+    try {
       // Puis désabonnement de cet appareil de son côté (navigateur ; app : jeton FCM supprimé
       // chez Firebase), borné dans le temps : jamais bloquant pour la purge qui suit
       await withTimeout(Promise.allSettled([unsubscribeFromWebPush(), resetNativePushToken()]).then(() => undefined), 5000, undefined);
     } finally {
       await purgeLocalSession(reason);
+    }
+  };
+  /** POST /api/logout, borné à 10 s. Vrai seulement si le serveur a confirmé la révocation. */
+  const revokeSessionOnServer = async (token?: string): Promise<boolean> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const res = await fetch('/api/logout', {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        credentials: 'include',
+        signal: controller.signal
+      });
+      if (!res.ok) console.warn('[Logout] Révocation refusée par le serveur :', res.status);
+      return res.ok;
+    } catch (e) {
+      console.warn('[Logout] Erreur appel /api/logout:', e);
+      return false;
+    } finally {
+      clearTimeout(timer);
     }
   };
   // SÉCURITÉ : purge de tout ce que la session a laissé sur l'appareil, quoi qu'il arrive avant
@@ -3676,6 +3694,21 @@ const App: React.FC = () => {
     setUser(prev => (prev && prev.token ? { ...prev, token: undefined } : prev));
   };
 
+  /**
+   * Après « Déconnecter mes autres sessions » ou un changement de mot de passe, le serveur ne
+   * garde que les cibles Push que cet appareil a pu lui donner. Si leur lecture a échoué ou
+   * dépassé son délai, celles de cet appareil ont été supprimées avec les autres : on les
+   * réenregistre (sans rien demander, seulement si les notifications sont déjà autorisées).
+   */
+  const resubscribeThisDevice = () => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      subscribeToWebPush().catch(() => { /* Push indisponible */ });
+    }
+    // App Android : synchronisation du jeton FCM (l'état mémorisé est oublié)
+    window.dispatchEvent(new Event(NATIVE_PUSH_RESET_EVENT));
+    window.dispatchEvent(new Event(NATIVE_PUSH_SYNC_EVENT));
+  };
+
   // Options → Sécurité : couper les autres appareils, garder celui-ci (connexion et Push)
   const revokeOtherSessions = async (): Promise<{ ok: boolean; disconnected?: number }> => {
     try {
@@ -3683,11 +3716,7 @@ const App: React.FC = () => {
       const fcmToken = await getNativeFcmToken();
       const res = await axios.post('/api/sessions/revoke-others', { socketId: socket?.id, keepPushEndpoint: sub?.endpoint, keepFcmToken: fcmToken ?? undefined });
       dropInMemoryToken();
-      // Si l'abonnement de cet appareil n'a pas pu être lu à temps, il a été supprimé avec les
-      // autres : réenregistrement (sans rien demander : seulement si déjà autorisé)
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        subscribeToWebPush().catch(() => { /* Push indisponible */ });
-      }
+      resubscribeThisDevice();
       return { ok: true, disconnected: Number(res.data?.disconnected) || 0 };
     } catch {
       return { ok: false };
@@ -5040,7 +5069,10 @@ const App: React.FC = () => {
           onClose={() => setShowPasswordModal(false)}
           onSubmit={async (current, next) => {
             const result = await handleChangePassword(current, next, socket?.id);
-            if (result.ok) dropInMemoryToken();
+            if (result.ok) {
+              dropInMemoryToken();
+              resubscribeThisDevice();
+            }
             // Session révoquée entre-temps (autre appareil) : retour à l'écran de connexion
             if (!result.ok && result.error === 'revoked') await handleLogoutRef.current?.('session_revoked', { local: true });
             return result;

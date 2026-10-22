@@ -72,7 +72,9 @@
     "signupSuccess": "Account created successfully! You can now sign in.",
     "unexpectedError": "An unexpected error occurred.",
     "logout": "Sign out everywhere",
-    "changePassword": "Change password"
+    "changePassword": "Change password",
+    "logoutFailed": "Sign-out could not be recorded by the server (connection lost or server error): your sessions are still open. Try again?",
+    "logoutRetry": "Try again"
   },
   "status": {
     "online": "Available",

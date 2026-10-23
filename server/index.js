@@ -26,10 +26,11 @@ import { createEmoticonsRouter } from './routes/emoticons.js';
 import { createPushRouter } from './routes/push.js';
 import { createGamesRouter, activeGames, getGamePlayers } from './routes/games.js';
 import createRtcRouter from './routes/rtc.js';
-import { messageLimits, wizzLimits, winkLimits } from './sockets/messages.js';
+import { messageLimits, wizzLimits, winkLimits, ackLimits, privateToggleLimits, cleanupByteBudget } from './sockets/messages.js';
 import { cleanupWindow } from './utils/rateWindow.js';
-import { gameMoveLimits, GAME_MOVE_WINDOW_MS } from './sockets/games.js';
+import { gameMoveLimits, gameEventLimits, GAME_MOVE_WINDOW_MS } from './sockets/games.js';
 import { setupSocketHandlers } from './sockets/index.js';
+import { isUnrecognizedTunnelRequest, defaultCloudflareMatcher } from './clientIdentity.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -160,11 +161,25 @@ app.use((req, res, next) => {
 
 const corsOptions = {
   origin: (origin, callback) => callback(null, isOriginAllowed(origin)),
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'DELETE'],
   optionsSuccessStatus: 200,
   credentials: true
 };
 app.use(cors(corsOptions));
+
+// Tunnel Cloudflare local non déclaré (cf. server/clientIdentity.js) : toutes les requêtes
+// porteraient l'IP du proxy et les limites par IP seraient globales. Signalé une fois, en
+// clair, dans le journal : à corriger avec CLOUDFLARE_IP_RANGES (docs/DEPLOYMENT.md).
+let tunnelWarned = false;
+app.use((req, res, next) => {
+  if (!tunnelWarned && isUnrecognizedTunnelRequest(req)) {
+    tunnelWarned = true;
+    console.error(`[Sécurité] Requête Cloudflare (cf-ray) reçue depuis ${req.socket.remoteAddress}, hors des plages de confiance : `
+      + 'CF-Connecting-IP est ignoré et tous les visiteurs partagent cette IP (limites par IP globales). '
+      + 'Ajoutez CLOUDFLARE_IP_RANGES=127.0.0.1/32,::1/128 (tunnel local) dans .env, puis redémarrez.');
+  }
+  next();
+});
 app.use(express.json({ limit: '100kb' }));
 
 // PWA : Service Worker
@@ -197,9 +212,16 @@ setInterval(cleanupExpiredFiles, 10 * 60 * 1000);
 cleanupOrphanUploads();
 setInterval(cleanupOrphanUploads, 30 * 60 * 1000);
 
-// Diffusion de statut vers les contacts autorisés
+// Diffusion de statut vers les contacts autorisés : ceux qui ont l'émetteur dans leur liste
+// sans l'avoir bloqué, ET que l'émetteur a lui-même dans sa liste sans les avoir bloqués
+// (un contact bloqué ou supprimé le voit « hors ligne » dans sa liste : il ne doit pas
+// recevoir sa présence ni son profil en temps réel).
 const broadcastStatusToContacts = (userId, payload) => {
-  const contacts = db.prepare('SELECT user_id FROM contacts WHERE contact_id = ? AND (blocked IS NULL OR blocked = 0)').all(userId);
+  const contacts = db.prepare(`
+    SELECT c.user_id FROM contacts c
+    JOIN contacts mine ON mine.user_id = ? AND mine.contact_id = c.user_id
+    WHERE c.contact_id = ? AND (c.blocked IS NULL OR c.blocked = 0) AND (mine.blocked IS NULL OR mine.blocked = 0)
+  `).all(userId, userId);
   contacts.forEach(contact => {
     io.to(getUserRoom(contact.user_id)).emit('user_status_changed', payload);
   });
@@ -244,6 +266,10 @@ const cleanupMemoryMaps = () => {
   cleanupWindow(wizzLimits, 60000, now);
   cleanupWindow(winkLimits, 60000, now);
   cleanupWindow(gameMoveLimits, GAME_MOVE_WINDOW_MS, now);
+  cleanupWindow(gameEventLimits, GAME_MOVE_WINDOW_MS, now);
+  cleanupWindow(ackLimits, 10000, now);
+  cleanupWindow(privateToggleLimits, 10000, now);
+  cleanupByteBudget(now);
 
   for (const [key, game] of activeGames.entries()) {
     const players = getGamePlayers(game);
@@ -297,10 +323,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// Erreurs non traitées par une route (JSON malformé, corps trop gros, exception) : réponse
+// JSON courte, jamais la page HTML par défaut d'Express ni une trace de pile.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = Number(err?.status || err?.statusCode);
+  if (status >= 400 && status < 500) {
+    return res.status(status).json({ error: status === 413 ? 'Requête trop volumineuse.' : 'Requête invalide.' });
+  }
+  console.error('[HTTP] Erreur non gérée :', err);
+  res.status(500).json({ error: 'Erreur interne du serveur.' });
+});
+
 // Initialisation des gestionnaires Socket.IO
 setupSocketHandlers(io, broadcastStatusToContacts);
 
 // Démarrage du serveur HTTP
 httpServer.listen(PORT, () => {
   console.log(`Serveur démarré sur http://localhost:${PORT}`);
+  const loopbackTrusted = defaultCloudflareMatcher.contains('127.0.0.1') || defaultCloudflareMatcher.contains('::1');
+  console.log(`[IP client] Plages Cloudflare de confiance : ${process.env.CLOUDFLARE_IP_RANGES ? 'CLOUDFLARE_IP_RANGES' : 'liste publique par défaut'}${loopbackTrusted ? ' (tunnel local reconnu)' : ' (tunnel local NON reconnu : cf. docs/DEPLOYMENT.md)'}`);
 });

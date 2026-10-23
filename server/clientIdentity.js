@@ -11,6 +11,12 @@
  *
  * La liste des plages peut être surchargée via la variable d'environnement
  * CLOUDFLARE_IP_RANGES (liste CIDR séparée par des virgules).
+ *
+ * DÉPLOIEMENT PAR TUNNEL (cloudflared sur la même machine) : les requêtes arrivent de
+ * l'adresse de bouclage, qui n'est PAS une plage Cloudflare publique. Sans
+ * CLOUDFLARE_IP_RANGES=127.0.0.1/32,::1/128, CF-Connecting-IP est ignoré et tous les visiteurs
+ * partagent l'IP 127.0.0.1 : les limites « par IP » deviennent globales (10 connexions par
+ * minute pour tout le monde…). `isUnrecognizedTunnelRequest` détecte ce cas.
  */
 import net from 'net';
 
@@ -166,6 +172,18 @@ export const loadCloudflareRanges = (envValue = process.env.CLOUDFLARE_IP_RANGES
 };
 
 export const defaultCloudflareMatcher = new CloudflareIpMatcher(loadCloudflareRanges());
+
+/**
+ * Vrai si la requête vient d'un proxy Cloudflare (en-tête `cf-ray`) dont l'adresse de socket
+ * n'est pas dans les plages de confiance : l'IP cliente est alors celle du proxy, pas du
+ * visiteur. Cas typique : tunnel cloudflared local sans CLOUDFLARE_IP_RANGES.
+ */
+export const isUnrecognizedTunnelRequest = (req, options = {}) => {
+  const matcher = options.matcher || defaultCloudflareMatcher;
+  const socketIp = getSocketIp(req);
+  if (!socketIp || !req?.headers?.['cf-ray']) return false;
+  return !matcher.contains(socketIp);
+};
 
 /**
  * Renvoie l'IP de socket normalisée de la connexion TCP.

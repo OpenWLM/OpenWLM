@@ -85,8 +85,14 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     const existingContact = db.prepare('SELECT * FROM contacts WHERE user_id = ? AND contact_id = ?').get(senderId, receiver.id);
     if (existingContact) return res.status(400).json({ error: "Utilisateur déjà présent dans vos contacts.", code: 'invite_already_contact' });
 
+    // Même réponse qu'un compte inexistant (anti-énumération, anti-harcèlement) : le
+    // destinataire a bloqué l'expéditeur (il a pu supprimer le contact de son côté et
+    // réinviter), ou une invitation est déjà en attente (pas de doublon).
+    const blockedByReceiver = db.prepare('SELECT 1 FROM contacts WHERE user_id = ? AND contact_id = ? AND blocked = 1').get(receiver.id, senderId);
+    if (blockedByReceiver) return res.json({ success: true });
+
     const existingInvite = db.prepare('SELECT * FROM invitations WHERE sender_id = ? AND receiver_id = ? AND status = \'pending\'').get(senderId, receiver.id);
-    if (existingInvite) return res.status(400).json({ error: "Une invitation est déjà en attente.", code: 'invite_pending' });
+    if (existingInvite) return res.json({ success: true });
 
     try {
       const stmt = db.prepare('INSERT INTO invitations (sender_id, receiver_id) VALUES (?, ?)');

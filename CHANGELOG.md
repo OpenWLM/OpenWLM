@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **October 2026 security review, batch 1 (server)**: `server/index.js`, `server/db.js`, `server/clientIdentity.js`, `server/routes/{auth,users,files,emoticons}.js`, `server/sockets/{messages,games,webrtc}.js` changed: restart the service. **Behind a local cloudflared tunnel, add `CLOUDFLARE_IP_RANGES=127.0.0.1/32,::1/128` to `.env`** (see docs/DEPLOYMENT.md): without it, every per-IP limit was global. **WAF rule changed**: `DELETE /api/emoticons/custom/:assetId` now expects an `emo_<uuid>` id (previously a number, which would have blocked emoticon deletion in Block mode) — update the Cloudflare rule from `docs/cloudflare-waf.generated.json`.
 - **Node.js 22.23.4 required** (security release of 2026-10-21, including CVE-2026-111497: Brotli decoder, possible code execution, reachable because Express decompresses `Content-Encoding: br` request bodies). With NodeSource: `sudo apt update && sudo apt install --only-upgrade nodejs`, then restart the service. Vite 8.3.5 (build tool, dev-server flaw fixed): `npm ci`.
 - `server/routes/users.js` and `server/middleware/auth.js` changed (E2E reset, blocking, profile change limit): restart the service. No new route or WAF rule.
 - `GET /api/health` (new route, local calls only), `server/routes/auth.js` (sign-out) and `server/index.js` changed: copy, then restart the service.
@@ -31,6 +32,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- `tests/test_lot1_hardening.js` (isolated server, 11 tests: multipart, presence, invitations, message bounds and budget, receipt, games, calls) and 3 tunnel tests in `tests/test_client_ip_resolution.js`; all fail on the previous version. `test_call_delivery.js` and `test_route_authorization.js` adapted (cooldown after rejection, "Play again" at game end).
 - `e2e/android-sounds.spec.ts`: Sound settings (sounds off, nudge unticked, Busy) passed to a simulated APK v7, nothing sent to an APK v6.
 - `e2e/image-viewer.spec.ts`: large received screenshot, large viewer (desktop) and full screen (phone), fitted view, double-click actual size, bounded panning, mouse wheel, 0 key, pinch, double-tap, Back.
 - `e2e/emoticon-insert.spec.ts`: emoticon inserted at the caret (end and middle of the text), desktop and phone layouts, selection lost as on Android (fails on the previous version).
@@ -46,6 +48,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Server security (review, batch 1)**:
+  - Per-IP limits behind a local cloudflared tunnel: the server now reports at startup and in its log when Cloudflare requests arrive from an address outside the trusted ranges (all visitors then shared IP 127.0.0.1: 10 logins/min for everyone). `CLOUDFLARE_IP_RANGES` documented in `.env.example`.
+  - File and emoticon uploads: number and size of text fields bounded (one account could exhaust server memory with a single multipart request of thousands of fields).
+  - Presence and profile: a contact you blocked or removed from your list no longer receives your status, nickname, personal message, avatar or key changes in real time.
+  - Invitations: you can no longer invite someone who blocked you (same reply as a nonexistent account), no duplicate invitations, no reply revealing that an account exists.
+  - Messages: integer recipient required, text capped at 64 KB (900 KB for a voice clip), `mid` capped, type whitelisted, style sanitized, and a per-sender volume budget (24 MB rolling over 10 min): two accounts can no longer fill the disk at 1 MB per message.
+  - "Delivered" receipt: the client-sent "private" flag no longer bypasses the message existence check; receipts and private-mode toggling are rate limited.
+  - Games: invitations, accept, decline, restart, quit and resync limited to 15 per 10 s; "Play again" refused until the game is over; in Tic-tac-toe the loser starts the next round (before, if the winner clicked "Play again", neither player could move); ids normalized; accepting an invitation whose author went offline gets an explicit reply.
+  - Calls: a caller can no longer ring and notify the same contact in a loop (one pending call per pair, 10 s cooldown after a rejection); with several devices, a secondary device dropping no longer hangs up the call on the other; caller disconnected while ringing: the callee is told and their notification becomes "missed"; a third party no longer stays "busy" after an overridden call.
+  - Sign-up: username normalized once (a username with surrounding spaces was accepted, then not found at sign-in).
+  - HTTP errors: short JSON reply (400/413/500) instead of Express's default HTML page; CORS declares `DELETE`; SQLite foreign keys enabled (declared `ON DELETE CASCADE` had no effect).
 - **Android app (APK v8)**: the notification language setting (`setLanguage`) is now only accepted from the chosen server's page, like the other native bridge methods that act or store a setting; the intended exceptions (offline page, status reads, stops) are documented.
 - **The word "MSN" removed from the code**: comments and CSS class names (`msn-butterfly` → `wlm-logo`, `msn-game-icon` → `wlm-game-icon`), no visible change.
 - **Self-contained security audit**: `npm run test:security` starts its own isolated server (temporary folder, free port) instead of requiring a manually started server and opening the checkout's `messenger.db` (which it created empty when no server was running, then failed). It now also runs in CI.

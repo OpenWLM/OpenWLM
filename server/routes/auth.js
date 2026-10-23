@@ -139,8 +139,11 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     }
     captchas.delete(captchaId);
 
+    // Normalisé une seule fois : la même valeur sert à la validation et à l'enregistrement
+    // (un identifiant entouré d'espaces était accepté mais introuvable à la connexion)
+    const normalizedSignupName = typeof username === 'string' ? username.trim().toLowerCase() : '';
     const usernameRegex = /^[a-zA-Z0-9_.@-]{3,100}$/;
-    if (!username || typeof username !== 'string' || !usernameRegex.test(username.trim()) || username.trim().length > 100) {
+    if (!normalizedSignupName || !usernameRegex.test(normalizedSignupName)) {
       return res.status(400).json({ error: 'Adresse de messagerie invalide (3-100 caractères, sans espaces).', code: 'username_invalid' });
     }
 
@@ -157,7 +160,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     try {
       const hashedPassword = await hashPassword(password, salt);
       const stmt = db.prepare('INSERT INTO users (username, password_hash, salt, nickname, status, token_version) VALUES (?, ?, ?, ?, ?, 0)');
-      const info = stmt.run(username.toLowerCase(), hashedPassword, salt, nickname || username.split('@')[0], 'offline');
+      const info = stmt.run(normalizedSignupName, hashedPassword, salt, nickname || normalizedSignupName.split('@')[0], 'offline');
       signupIpCounter.record(clientIp);
       res.json({ success: true, userId: info.lastInsertRowid });
     } catch (err) {

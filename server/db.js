@@ -6,6 +6,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const db = new Database('messenger.db');
+// SQLite n'applique les clés étrangères (ON DELETE CASCADE des abonnements Push, jetons FCM,
+// émoticônes, curseurs…) que si on le demande à chaque connexion.
+db.pragma('foreign_keys = ON');
 
 /**
  * INITIALISATION DE LA BASE DE DONNÉES SQLITE

@@ -26,9 +26,11 @@ const emoticonStorage = multer.diskStorage({
   }
 });
 
+// Mêmes bornes que l'upload de fichiers (cf. server/routes/files.js) : un seul fichier et
+// quelques champs courts (shortcut, mimeType, width, height, isAnimated).
 const uploadEmoticon = multer({
   storage: emoticonStorage,
-  limits: { fileSize: 2 * 1024 * 1024 } // 2 Mo max buffer Multer
+  limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 8, parts: 10, fieldSize: 4 * 1024, fieldNameSize: 100 }
 });
 
 export const createEmoticonsRouter = () => {
@@ -176,8 +178,8 @@ export const createEmoticonsRouter = () => {
   /**
    * Suppression d'une émoticône personnalisée
    */
-  router.delete('/emoticons/custom/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
+  router.delete('/emoticons/custom/:assetId', authenticateToken, (req, res) => {
+    const id = req.params.assetId;
     const emoRecord = db.prepare('SELECT asset_filename FROM custom_emoticons WHERE id = ? AND owner_id = ?').get(id, req.user.id);
 
     if (!emoRecord) {

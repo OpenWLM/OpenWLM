@@ -6,7 +6,8 @@ import {
   normalizeIp,
   ipMatchesCidr,
   CloudflareIpMatcher,
-  DEFAULT_CLOUDFLARE_RANGES
+  DEFAULT_CLOUDFLARE_RANGES,
+  isUnrecognizedTunnelRequest
 } from '../server/clientIdentity.js';
 
 /**
@@ -101,4 +102,26 @@ test('ipMatchesCidr / matcher : cohérence bornes', () => {
   assert.equal(matcher.contains(DIRECT_IP), false);
   assert.equal(matcher.contains('2606:4700::abcd'), true);
   assert.equal(matcher.contains('2001:db8::1'), false);
+});
+
+// --- Tunnel cloudflared local (requêtes Cloudflare depuis la boucle locale) ---------------
+
+test('tunnel local sans CLOUDFLARE_IP_RANGES : CF-Connecting-IP ignoré ET situation détectée', () => {
+  const req = makeReq('127.0.0.1', { 'cf-ray': '8f1c2d3e4f5a6b7c-CDG', 'cf-connecting-ip': CLIENT_IP });
+  assert.equal(getClientIp(req, { matcher }), '127.0.0.1', 'tous les visiteurs partageraient cette IP');
+  assert.equal(isUnrecognizedTunnelRequest(req, { matcher }), true);
+});
+
+test('tunnel local déclaré (127.0.0.1/32,::1/128) : CF-Connecting-IP utilisé, rien à signaler', () => {
+  const local = new CloudflareIpMatcher(['127.0.0.1/32', '::1/128']);
+  const req = makeReq('127.0.0.1', { 'cf-ray': '8f1c2d3e4f5a6b7c-CDG', 'cf-connecting-ip': CLIENT_IP });
+  assert.equal(getClientIp(req, { matcher: local }), CLIENT_IP);
+  assert.equal(isUnrecognizedTunnelRequest(req, { matcher: local }), false);
+  const v6 = makeReq('::1', { 'cf-ray': 'x', 'cf-connecting-ip': CLIENT_IP });
+  assert.equal(getClientIp(v6, { matcher: local }), CLIENT_IP);
+});
+
+test('requête locale sans cf-ray (appel direct, supervision) : pas un tunnel', () => {
+  assert.equal(isUnrecognizedTunnelRequest(makeReq('127.0.0.1', {}), { matcher }), false);
+  assert.equal(isUnrecognizedTunnelRequest(makeReq(DIRECT_IP, { 'cf-ray': 'x' }), { matcher }), true, 'proxy inconnu avec cf-ray : signalé aussi');
 });

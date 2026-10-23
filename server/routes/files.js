@@ -36,9 +36,13 @@ const fileStorage = multer.diskStorage({
   }
 });
 
+// Bornes sur TOUTE la requête multipart, pas seulement le fichier : sans `fields`/`parts`,
+// un client peut envoyer des milliers de champs texte de 1 Mo (défaut busboy) accumulés en
+// mémoire avant la partie fichier → épuisement mémoire. La route n'attend que `file` et
+// quelques champs courts (originalName, fileType, receiverId).
 const upload = multer({
   storage: fileStorage,
-  limits: { fileSize: 100 * 1024 * 1024 } // 100 Mo max
+  limits: { fileSize: 100 * 1024 * 1024, files: 1, fields: 8, parts: 10, fieldSize: 4 * 1024, fieldNameSize: 100 }
 });
 
 export const cleanupExpiredFiles = () => {

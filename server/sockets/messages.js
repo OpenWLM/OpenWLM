@@ -10,6 +10,62 @@ import { isAllowed } from '../utils/rateWindow.js';
 export const wizzLimits = new Map();   // Wizz uniquement — 3 / 60 s
 export const winkLimits = new Map();   // Winks uniquement — 7 / 60 s
 export const messageLimits = new Map(); // Messages — 20 / 10 s
+// Accusés (remis / lu) et bascule du mode privé : 60 / 10 s et 10 / 10 s. Sans limite, un
+// contact pouvait déclencher en boucle des lectures/écritures SQLite et des événements chez
+// l'autre (mode privé qui clignote).
+export const ackLimits = new Map();
+export const privateToggleLimits = new Map();
+// Volume persisté par expéditeur : 24 Mo glissants sur 10 min (≈ 30 messages vocaux de 90 s).
+// Les messages ne sont ni purgés ni soumis à quota : sans cette borne, deux comptes
+// complices remplissaient le disque à ~1 Mo par message.
+export const messageByteLimits = new Map();
+export const MESSAGE_BYTES_WINDOW_MS = 10 * 60 * 1000;
+export const MESSAGE_BYTES_MAX = (process.env.NODE_ENV === 'test' && Number(process.env.OPENWLM_TEST_MESSAGE_BYTES_MAX) > 0)
+  ? Number(process.env.OPENWLM_TEST_MESSAGE_BYTES_MAX) // serveur de test uniquement
+  : 24 * 1024 * 1024;
+// Tailles par message : une enveloppe de texte ou de fichier tient en quelques Ko ; seul un
+// message vocal (90 s, base64 dans l'enveloppe) approche la trame socket de 1 Mo.
+export const MAX_TEXT_CHARS = 64 * 1024;
+export const MAX_AUDIO_CHARS = 900 * 1024;
+export const MAX_MID_CHARS = 64;
+const MESSAGE_TYPES = new Set(['text', 'audio', 'file']);
+
+const asId = (v) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+
+/** Budget de volume glissant par expéditeur (octets persistés). */
+const byteBudgetAllows = (senderId, bytes, now = Date.now()) => {
+  const fresh = (messageByteLimits.get(senderId) || []).filter((e) => now - e.t < MESSAGE_BYTES_WINDOW_MS);
+  const used = fresh.reduce((sum, e) => sum + e.n, 0);
+  if (used + bytes > MESSAGE_BYTES_MAX) { messageByteLimits.set(senderId, fresh); return false; }
+  fresh.push({ t: now, n: bytes });
+  messageByteLimits.set(senderId, fresh);
+  return true;
+};
+export const cleanupByteBudget = (now = Date.now()) => {
+  for (const [key, entries] of messageByteLimits.entries()) {
+    const fresh = entries.filter((e) => now - e.t < MESSAGE_BYTES_WINDOW_MS);
+    if (fresh.length === 0) messageByteLimits.delete(key);
+    else messageByteLimits.set(key, fresh);
+  }
+};
+
+/** Style d'affichage : objet plat de quelques clés courtes (couleur, police, gras…), sinon null. */
+const sanitizeStyle = (style) => {
+  if (!style || typeof style !== 'object' || Array.isArray(style)) return null;
+  const out = {};
+  let count = 0;
+  for (const [k, v] of Object.entries(style)) {
+    if (++count > 12) return null;
+    if (k.length > 32) return null;
+    if (typeof v === 'string') { if (v.length > 64) return null; out[k] = v; }
+    else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+    else return null;
+  }
+  return out;
+};
 
 // Compteur d'ids temporaires pour les messages privés (évite les collisions Date.now() à la même ms)
 let privateMsgSeq = 0;
@@ -21,10 +77,18 @@ export const registerMessageHandlers = (io, socket) => {
   socket.on('send_message', (data, callback) => {
     // `isPrivate` éventuellement fourni par le client est volontairement IGNORÉ :
     // le serveur calcule seul le mode privé effectif à partir de l'état persisté.
-    const { senderId, receiverId, text, style, audio, type } = data || {};
+    const { senderId, text, audio } = data || {};
+    const receiverId = asId(data?.receiverId);
     
-    if (socket.user.id !== senderId) {
+    if (socket.user.id !== senderId || !receiverId) {
       if (typeof callback === 'function') callback({ success: false, error: "Non autorisé." });
+      return;
+    }
+    // Champs libres bornés : type sur liste blanche, style de forme attendue
+    const type = MESSAGE_TYPES.has(data?.type) ? data.type : 'text';
+    const style = sanitizeStyle(data?.style);
+    if ((text !== undefined && text !== null && typeof text !== 'string') || (audio !== undefined && audio !== null && typeof audio !== 'string')) {
+      if (typeof callback === 'function') callback({ success: false, error: "Message invalide." });
       return;
     }
 
@@ -52,6 +116,10 @@ export const registerMessageHandlers = (io, socket) => {
       try {
         const parsed = JSON.parse(text);
         if (parsed && parsed.v === 2 && typeof parsed.mid === 'string' && parsed.mid.length > 0) {
+          if (parsed.mid.length > MAX_MID_CHARS) {
+            if (typeof callback === 'function') callback({ success: false, error: "Message invalide." });
+            return;
+          }
           envelopeMid = parsed.mid;
         }
       } catch (_) { /* texte non-JSON : pas de mid */ }
@@ -88,12 +156,19 @@ export const registerMessageHandlers = (io, socket) => {
       }
     }
 
-    if (text && text.length > 5000000) {
-      if (typeof callback === 'function') callback({ success: false, error: "Message trop volumineux." });
+    // Un message vocal (type 'audio') voyage dans l'enveloppe chiffrée (champ text) ; tout le
+    // reste tient en quelques Ko. Le champ `audio` hors enveloppe (ancien format) est borné pareil.
+    const textLimit = type === 'audio' ? MAX_AUDIO_CHARS : MAX_TEXT_CHARS;
+    if (text && text.length > textLimit) {
+      if (typeof callback === 'function') callback({ success: false, error: "Message trop volumineux.", code: 'too_large' });
       return;
     }
-    if (audio && audio.length > 5000000) {
-      if (typeof callback === 'function') callback({ success: false, error: "Audio trop volumineux." });
+    if (audio && audio.length > MAX_AUDIO_CHARS) {
+      if (typeof callback === 'function') callback({ success: false, error: "Audio trop volumineux.", code: 'too_large' });
+      return;
+    }
+    if (!finalIsPrivate && !byteBudgetAllows(senderId, (text ? text.length : 0) + (audio ? audio.length : 0))) {
+      if (typeof callback === 'function') callback({ success: false, error: "Volume de messages trop important, réessayez plus tard.", code: 'quota' });
       return;
     }
     
@@ -186,15 +261,19 @@ export const registerMessageHandlers = (io, socket) => {
    * Accusé de réception (message_delivered)
    */
   socket.on('message_delivered', (data) => {
-    const { messageId, senderId, isPrivate } = data || {};
+    const { messageId, senderId } = data || {};
     const recipientId = socket.user.id;
     const sId = Number(senderId);
     const mId = Number(messageId);
     if (!mId || !sId) return;
+    if (!isAllowed(ackLimits, recipientId, 60, 10000)) return;
 
     const check = canInteract(sId, recipientId);
     if (!check.allowed) return;
 
+    // Le mode privé est décidé par l'état persisté, jamais par le drapeau du client (sinon un
+    // faux « remis » pour n'importe quel id contournait la vérification d'existence).
+    const isPrivate = isConversationPrivate(sId, recipientId);
     if (!isPrivate) {
       try {
         // SÉCURITÉ : n'accuser que des messages réellement existants et destinés à ce destinataire
@@ -230,12 +309,14 @@ export const registerMessageHandlers = (io, socket) => {
    * Curseur et statut de lecture (message_read)
    */
   socket.on('message_read', (data) => {
-    const { contactId, lastReadMessageId, isPrivate } = data || {};
+    const { contactId, lastReadMessageId } = data || {};
     const readerId = socket.user.id;
     const cId = Number(contactId);
     const rawLastId = Number(lastReadMessageId) || 0;
 
     if (!cId || cId === readerId) return;
+    if (!isAllowed(ackLimits, readerId, 60, 10000)) return;
+    const isPrivate = isConversationPrivate(cId, readerId);
 
     const check = canInteract(readerId, cId);
     if (!check.allowed) return;
@@ -347,7 +428,7 @@ export const registerMessageHandlers = (io, socket) => {
       return;
     }
 
-    if (!winkId || typeof winkId !== 'string' || !/^[\w-]+$/.test(winkId)) return;
+    if (!winkId || typeof winkId !== 'string' || winkId.length > 64 || !/^[\w-]+$/.test(winkId)) return;
 
     // 7 Winks / minute (compteur dédié, indépendant des Wizz)
     if (!isAllowed(winkLimits, senderId, 7, 60000)) return;
@@ -367,6 +448,7 @@ export const registerMessageHandlers = (io, socket) => {
     const contactId = Number(receiverId);
     if (!Number.isInteger(contactId) || contactId <= 0 || contactId === ownerId) return;
     if (typeof isPrivate !== 'boolean') return;
+    if (!isAllowed(privateToggleLimits, ownerId, 10, 10000)) return;
 
     const check = canInteract(ownerId, contactId);
     if (!check.allowed) {

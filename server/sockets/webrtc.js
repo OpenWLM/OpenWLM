@@ -45,7 +45,9 @@ if (rtcCleanupTimer.unref) rtcCleanupTimer.unref();
 // ÉTAT DES APPELS EN COURS : userId -> peerId (dans les deux sens) pour détecter « occupé »
 // et pour prévenir le pair en cas de déconnexion brutale (coupure réseau).
 const activeCalls = new Map();
-const markActive = (a, b) => { activeCalls.set(a, b); activeCalls.set(b, a); };
+// Un utilisateur n'est en appel qu'avec un seul pair : on retire d'abord ses anciens mappings
+// (sinon un tiers restait « occupé » après un appel écrasé).
+const markActive = (a, b) => { clearActive(a); clearActive(b); activeCalls.set(a, b); activeCalls.set(b, a); };
 const clearActive = (uid) => {
   const peer = activeCalls.get(uid);
   if (peer !== undefined) {
@@ -80,16 +82,31 @@ const takePending = (callerId, calleeId) => {
   pendingCalls.delete(key);
   return entry !== undefined && entry.expires > Date.now();
 };
-const clearPendingFor = (userId) => {
-  for (const key of pendingCalls.keys()) {
+// Dernière socket d'un utilisateur partie : ses appels en attente sont purgés. Pour ceux où
+// il était l'APPELANT, l'appelé est prévenu (sinon son écran restait sur « connexion ») et
+// une notification d'appel envoyée par Push devient « manqué ».
+const clearPendingFor = (io, userId) => {
+  for (const [key, entry] of pendingCalls.entries()) {
     const [a, b] = key.split(':').map(Number);
-    if (a === userId || b === userId) pendingCalls.delete(key);
+    if (a !== userId && b !== userId) continue;
+    pendingCalls.delete(key);
+    if (a === userId) {
+      notifyCallEnded(a, b, entry, 'missed');
+      if (isUserOnline(b)) io.to(getUserRoom(b)).emit('call_ended', { caller: a });
+    }
   }
 };
+// Refus récent appelant→appelé : pas de nouvel appel pendant 10 s (anti-harcèlement : le même
+// appelant pouvait faire sonner et pusher le contact en boucle, à 10 appels / 10 s).
+const CALL_REJECT_COOLDOWN_MS = 10 * 1000;
+const recentRejects = new Map();
 const pendingCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of pendingCalls.entries()) {
     if (entry.expires <= now) pendingCalls.delete(key);
+  }
+  for (const [key, until] of recentRejects.entries()) {
+    if (until <= now) recentRejects.delete(key);
   }
 }, 60000);
 if (pendingCleanupTimer.unref) pendingCleanupTimer.unref();
@@ -169,6 +186,7 @@ const markRinging = (io, callerId, calleeId) => {
 export const declinePendingCall = (io, callerId, calleeId) => {
   const entry = getPending(callerId, calleeId);
   if (!takePending(callerId, calleeId)) return false;
+  recentRejects.set(pendingKey(callerId, calleeId), Date.now() + CALL_REJECT_COOLDOWN_MS);
   io.to(getUserRoom(callerId)).emit('call_rejected', { by: calleeId });
   notifyCallEnded(callerId, calleeId, entry, 'declined');
   return true;
@@ -215,6 +233,11 @@ export const registerWebRtcHandlers = (io, socket) => {
     }
     // En appel, ou un autre appel sonne déjà chez lui : occupé (un seul appel présenté à la fois)
     if (isUserBusy(targetId) || hasOtherIncoming(targetId, self)) {
+      return socket.emit('call_busy', { target: targetId });
+    }
+    // Déjà en train de l'appeler, ou refusé il y a moins de 10 s : pas de nouvelle sonnerie
+    // ni de nouveau Push (chaque call_request re-présentait l'appel à tous ses appareils)
+    if (getPending(self, targetId) || (recentRejects.get(pendingKey(self, targetId)) || 0) > Date.now()) {
       return socket.emit('call_busy', { target: targetId });
     }
 
@@ -289,6 +312,8 @@ export const registerWebRtcHandlers = (io, socket) => {
     const targetId = asId(data?.target);
     if (!targetId) return;
     if (!canInteract(self, targetId).allowed) return;
+    // Compteur partagé avec la signalisation : large, raccrocher ne doit jamais être refusé
+    if (!rtcRateAllowed(self, 100)) return;
 
     clearActive(self);
     // L'appelant raccroche pendant la sonnerie : l'appel ne peut plus être accepté. Si l'appelé
@@ -304,11 +329,15 @@ export const registerWebRtcHandlers = (io, socket) => {
   // Coupure brutale (réseau, fermeture d'onglet) : prévenir le pair
   socket.on('disconnect', () => {
     // Différé : le handler de sockets/index.js retire la socket du registre APRÈS celui-ci.
-    // Si c'était la dernière socket de l'utilisateur, ses appels en attente sont purgés.
-    setImmediate(() => { if (!isUserOnline(self)) clearPendingFor(self); });
-    const peer = clearActive(self);
-    if (peer !== undefined && isUserOnline(peer)) {
-      io.to(getUserRoom(peer)).emit('call_ended', { caller: self });
-    }
+    // Seule la DERNIÈRE socket de l'utilisateur compte : en appel depuis son PC, la socket de
+    // son téléphone qui tombe (veille) ne doit pas raccrocher l'appel du PC.
+    setImmediate(() => {
+      if (isUserOnline(self)) return;
+      clearPendingFor(io, self);
+      const peer = clearActive(self);
+      if (peer !== undefined && isUserOnline(peer)) {
+        io.to(getUserRoom(peer)).emit('call_ended', { caller: self });
+      }
+    });
   });
 };

@@ -27,7 +27,7 @@
 | Realtime | GET/POST + WS | `/socket.io/**` |
 | API | GET | `/api/captcha`, `/api/contacts/:userId`, `/api/conversations/pending`, `/api/emoticons/custom/asset/:assetId`, `/api/emoticons/custom/my`, `/api/files/download/:fileId`, `/api/files/info/:fileId`, `/api/games/active`, `/api/invitations/:userId`, `/api/messages/:userId/:contactId`, `/api/push/status`, `/api/rtc-config`, `/api/user/:userId/public-key`, `/api/user/me` |
 | API | POST | `/api/accept-invite`, `/api/calls/decline`, `/api/contacts/block`, `/api/contacts/delete`, `/api/decline-invite`, `/api/emoticons/custom/upload`, `/api/files/upload`, `/api/invite`, `/api/login`, `/api/logout`, `/api/messages/clear`, `/api/push/fcm/register`, `/api/push/fcm/unregister`, `/api/push/subscribe`, `/api/push/test`, `/api/push/unsubscribe`, `/api/sessions/revoke-others`, `/api/signup`, `/api/user/change-password`, `/api/user/global-private`, `/api/user/keys`, `/api/user/reset-e2e-keys`, `/api/user/update` |
-| API | DELETE | `/api/emoticons/custom/:id` |
+| API | DELETE | `/api/emoticons/custom/:assetId` |
 <!-- WAF-GEN:SURFACE:END -->
 
 **Aucune route `PUT`/`PATCH`.** Le serveur renvoie actuellement le **fallback SPA**
@@ -62,7 +62,7 @@ not (
       http.request.uri.path in { "/api/accept-invite" "/api/calls/decline" "/api/contacts/block" "/api/contacts/delete" "/api/decline-invite" "/api/emoticons/custom/upload" "/api/files/upload" "/api/invite" "/api/login" "/api/logout" "/api/messages/clear" "/api/push/fcm/register" "/api/push/fcm/unregister" "/api/push/subscribe" "/api/push/test" "/api/push/unsubscribe" "/api/sessions/revoke-others" "/api/signup" "/api/user/change-password" "/api/user/global-private" "/api/user/keys" "/api/user/reset-e2e-keys" "/api/user/update" }
   ) )
   or ( http.request.method eq "DELETE" and (
-      matches(http.request.uri.path, "^/api/emoticons/custom/[0-9]+$")
+      matches(http.request.uri.path, "^/api/emoticons/custom/emo_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
   ) )
 )
 ```

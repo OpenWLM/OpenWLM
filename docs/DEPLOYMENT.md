@@ -138,3 +138,17 @@ Voir `.env.example` : `POW_DIFFICULTY` (preuve de travail à l'inscription, déf
 et `SIGNUP_IP_DAILY_LIMIT` (comptes créés par IP sur 24 h, défaut 10). Derrière
 Cloudflare, l'IP prise en compte est `CF-Connecting-IP` uniquement si la connexion
 provient d'une plage Cloudflare (cf. `server/clientIdentity.js`).
+
+**Tunnel cloudflared sur la même machine** (cas de la prod) : les requêtes arrivent de
+l'adresse de bouclage, qui n'est pas une plage Cloudflare publique. Il faut donc, dans `.env` :
+
+```
+CLOUDFLARE_IP_RANGES=127.0.0.1/32,::1/128
+```
+
+Sans cette ligne, `CF-Connecting-IP` est ignoré, tous les visiteurs partagent l'IP
+`127.0.0.1` et toutes les limites par IP (10 connexions/min, inscriptions par jour, uploads…)
+s'appliquent au monde entier : quelques requêtes par minute suffisent à bloquer tout le monde.
+Le serveur le signale au démarrage (`[IP client] … tunnel local NON reconnu`) et dans le
+journal à la première requête Cloudflare concernée (`[Sécurité] Requête Cloudflare (cf-ray)
+reçue depuis 127.0.0.1, hors des plages de confiance`).

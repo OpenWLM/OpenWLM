@@ -173,7 +173,8 @@ test('« Refuser » depuis la notification : POST /api/calls/decline', async () 
 });
 
 test('appelant qui raccroche pendant le réveil : l\'appel n\'est plus redonné', async () => {
-  const a = await connect(aliceId);
+  // Charlie appelle : Bob vient de refuser Alice (délai de 10 s avant un nouvel appel de sa part)
+  const a = await connect(charlieId);
   const zombie = await connect(bobId);
   let b2 = null;
   try {
@@ -198,7 +199,8 @@ test('appelé hors ligne sans appareil réveillable : injoignable', async () => 
 });
 
 test('retour au premier plan sans reconnexion (call_resync) : l\'appel en attente est redonné', async () => {
-  const a = await connect(aliceId);
+  // Charlie appelle : Bob vient de refuser Alice (délai de 10 s avant un nouvel appel de sa part)
+  const a = await connect(charlieId);
   const b = await connect(bobId);
   try {
     // Page suspendue : la connexion survit mais l'appel n'est pas confirmé

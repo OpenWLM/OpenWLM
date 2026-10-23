@@ -26,6 +26,15 @@ const GAME_TYPES = ['checkers', 'puissance4', 'minesweeper'];
 export const gameMoveLimits = new Map();
 export const GAME_MOVE_LIMIT = 40;
 export const GAME_MOVE_WINDOW_MS = 10000;
+// Autres événements de jeu (invitation, acceptation, refus, rejouer, quitter, resync) :
+// 15 par 10 s. Une invitation en boucle affichait une fenêtre chez le contact à chaque appel.
+export const gameEventLimits = new Map();
+export const GAME_EVENT_LIMIT = 15;
+
+const asId = (v) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
 
 export const registerGameHandlers = (io, socket) => {
   /**
@@ -45,10 +54,23 @@ export const registerGameHandlers = (io, socket) => {
     return true;
   };
 
+  /** Débit des événements de jeu hors coups ; cible normalisée en entier (sinon ignoré). */
+  const guardEvent = (data) => {
+    if (!socket.user || !socket.user.id) return null;
+    const target = asId(data?.target);
+    if (!target) return null;
+    if (!isAllowed(gameEventLimits, socket.user.id, GAME_EVENT_LIMIT, GAME_MOVE_WINDOW_MS)) {
+      socket.emit('game_error', { message: 'Trop de demandes. Patientez un instant.' });
+      return null;
+    }
+    return target;
+  };
+
   // 1. Envoi d'une invitation à jouer
   socket.on('game_invite', (data) => {
-    if (!socket.user || !socket.user.id) return;
-    const { target, gameType } = data || {};
+    const target = guardEvent(data);
+    if (!target) return;
+    const { gameType } = data || {};
     
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) {
@@ -80,8 +102,9 @@ export const registerGameHandlers = (io, socket) => {
 
   // 2. Acceptation de l'invitation (Création sécurisée de la session de jeu)
   socket.on('game_accept', (data) => {
-    if (!socket.user || !socket.user.id) return;
-    const { target, gameType } = data || {};
+    const target = guardEvent(data);
+    if (!target) return;
+    const { gameType } = data || {};
 
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) {
@@ -215,13 +238,16 @@ export const registerGameHandlers = (io, socket) => {
           gameType: 'morpion'
         });
       }
+    } else {
+      // L'initiateur s'est déconnecté entre-temps : l'invitation est consommée, on le dit
+      socket.emit('game_user_offline', { target });
     }
   });
 
   // 3. Refus de l'invitation
   socket.on('game_decline', (data) => {
-    if (!socket.user || !socket.user.id) return;
-    const { target } = data || {};
+    const target = guardEvent(data);
+    if (!target) return;
     const check = canInteract(socket.user.id, target);
     if (!check.allowed) return;
 
@@ -301,6 +327,7 @@ export const registerGameHandlers = (io, socket) => {
 
     if (winner) {
       game.status = 'finished';
+      game.lastWinner = winner;
       if (winner === 'X') game.scores[game.playerX]++;
       if (winner === 'O') game.scores[game.playerO]++;
     }
@@ -532,9 +559,9 @@ export const registerGameHandlers = (io, socket) => {
 
   // 5. Demande de redémarrage de la partie
   socket.on('game_restart', (data) => {
-    if (!socket.user || !socket.user.id) return;
+    const target = guardEvent(data);
+    if (!target) return;
     const userId = socket.user.id;
-    const { target } = data || {};
 
     const check = canInteract(userId, target);
     if (!check.allowed) return;
@@ -542,6 +569,11 @@ export const registerGameHandlers = (io, socket) => {
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
     if (!game) return;
+    // Rejouer n'est possible qu'une partie terminée : sinon un joueur en difficulté
+    // effaçait le plateau de l'adversaire en pleine partie.
+    if (game.status !== 'finished') {
+      return socket.emit('game_error', { message: 'La partie est encore en cours.' });
+    }
 
     // SÉCURITÉ : la grille suit le TYPE ENREGISTRÉ de la partie (jamais le type fourni par le client).
     if (game.gameType === 'minesweeper') {
@@ -558,9 +590,13 @@ export const registerGameHandlers = (io, socket) => {
       game.status = 'playing';
       game.turn = game.playerRed;
     } else {
+      // Morpion : même règle que l'interface (le perdant commence ; nul → X). Avant, le serveur
+      // donnait le tour à celui qui cliquait « Rejouer » : si le gagnant cliquait, aucun des
+      // deux ne pouvait jouer.
+      const lastWinner = game.lastWinner || 'draw';
       game.board = Array(9).fill(null);
       game.status = 'playing';
-      game.turn = userId;
+      game.turn = lastWinner === 'X' ? game.playerO : lastWinner === 'O' ? game.playerX : game.playerX;
     }
 
     io.to(getUserRoom(target)).emit('game_restart', {
@@ -571,9 +607,9 @@ export const registerGameHandlers = (io, socket) => {
 
   // 6. Quitter / Abandonner la partie
   socket.on('game_quit', (data) => {
-    if (!socket.user || !socket.user.id) return;
+    const target = guardEvent(data);
+    if (!target) return;
     const userId = socket.user.id;
-    const { target } = data || {};
 
     const check = canInteract(userId, target);
     if (!check.allowed) return;
@@ -589,9 +625,9 @@ export const registerGameHandlers = (io, socket) => {
 
   // 6bis. Re-synchronisation de l'état de la partie
   socket.on('game_resync', (data) => {
-    if (!socket.user || !socket.user.id) return;
+    const target = guardEvent(data);
+    if (!target) return;
     const userId = socket.user.id;
-    const { target } = data || {};
 
     const check = canInteract(userId, target);
     if (!check.allowed) return;

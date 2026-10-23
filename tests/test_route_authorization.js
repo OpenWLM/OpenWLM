@@ -153,6 +153,21 @@ test('jeux : un restart légitime (partie active) est bien livré', { skip: serv
     s2.emit('game_accept', { target: IDS.owner, gameType: 'morpion' });
     await wait(400);
 
+    // En pleine partie, « Rejouer » est refusé (l'interface ne le propose qu'à la fin)
+    const refused = await new Promise((resolve) => {
+      s2.once('game_restart', () => resolve('delivered'));
+      s1.once('game_error', (e) => resolve(e?.message));
+      s1.emit('game_restart', { target: IDS.contact });
+      setTimeout(() => resolve(null), 800);
+    });
+    assert.match(String(refused), /en cours/i, 'restart en pleine partie refusé');
+
+    // Partie jouée jusqu'au bout (X gagne : 0, 1, 2)
+    for (const [sock, target, index] of [[s1, IDS.contact, 0], [s2, IDS.owner, 3], [s1, IDS.contact, 1], [s2, IDS.owner, 4], [s1, IDS.contact, 2]]) {
+      sock.emit('game_move', { target, index });
+      await wait(120);
+    }
+
     const received = await new Promise((resolve) => {
       s2.once('game_restart', (payload) => resolve(payload));
       s1.emit('game_restart', { target: IDS.contact });

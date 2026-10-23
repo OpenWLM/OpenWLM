@@ -42,4 +42,15 @@ public class BridgeTrustTest {
         // Mauvaise origine, même app visible
         assertFalse(BridgeTrust.allowMediaCapture("https://evil.test/", HOST, true, true, 0, 0));
     }
+
+    @Test
+    public void cheminsLocauxCapacitorRefuses() {
+        assertTrue(BridgeTrust.isForbiddenLocalPath("/_capacitor_file_/data/data/org.openwlm.dev/app_webview/Default/Cookies"));
+        assertTrue(BridgeTrust.isForbiddenLocalPath("/_CAPACITOR_FILE_/sdcard/x"));
+        assertTrue(BridgeTrust.isForbiddenLocalPath("/_capacitor_content_/content://media/external/images/1"));
+        assertFalse(BridgeTrust.isForbiddenLocalPath("/"));
+        assertFalse(BridgeTrust.isForbiddenLocalPath("/api/user/me"));
+        assertFalse(BridgeTrust.isForbiddenLocalPath("/assets/_capacitor_file_.png"));
+        assertFalse(BridgeTrust.isForbiddenLocalPath(null));
+    }
 }

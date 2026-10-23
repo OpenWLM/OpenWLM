@@ -73,6 +73,8 @@ public class MainActivity extends BridgeActivity {
         // Micro / caméra filtrés (origine, app visible ou appel en cours) avant Capacitor ;
         // installé dans onCreate (BridgeWebChromeClient enregistre des lanceurs d'activité)
         webView.setWebChromeClient(new GuardedWebChromeClient(bridge));
+        // Fichiers du téléphone servis par le serveur local de Capacitor : refusés (cf. BridgeTrust)
+        bridge.setWebViewClient(new GuardedWebViewClient(bridge));
         // Origine de la page suivie pour le pont natif (cf. OpenWLMNativePlugin)
         bridge.addWebViewListener(new WebViewListener() {
             @Override
@@ -249,12 +251,28 @@ public class MainActivity extends BridgeActivity {
         }
         lockOverlay.setVisibility(View.VISIBLE);
         lockOverlay.bringToFront();
+        // L'écran de verrouillage bloque les touches, mais la WebView restait focalisable (un
+        // clavier physique tapait dans le champ de saisie caché) et lisible par les services
+        // d'accessibilité (TalkBack, ou une app malveillante disposant de ce droit)
+        WebView wv = bridge != null ? bridge.getWebView() : null;
+        if (wv != null) {
+            wv.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            wv.clearFocus();
+            wv.setFocusable(false);
+        }
+        lockOverlay.requestFocus();
         updateVisibility();
     }
 
     private void unlock() {
         locked = false;
         if (lockOverlay != null) lockOverlay.setVisibility(View.GONE);
+        WebView wv = bridge != null ? bridge.getWebView() : null;
+        if (wv != null) {
+            wv.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+            wv.setFocusable(true);
+            wv.setFocusableInTouchMode(true);
+        }
         updateVisibility();
     }
 

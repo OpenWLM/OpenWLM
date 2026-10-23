@@ -34,6 +34,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
+import java.util.HashMap;
+import java.util.Map;
+import android.content.ActivityNotFoundException;
 
 /**
  * Pont entre l'interface web (chargée depuis le serveur choisi) et l'app Android. Aucun accès
@@ -198,8 +201,12 @@ public class OpenWLMNativePlugin extends Plugin {
         }
         if (state == PermissionState.DENIED) {
             // Refusée définitivement : Android ne la redemande plus, ouvrir les autorisations de l'app
-            getContext().startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            try {
+                getContext().startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (ActivityNotFoundException e) {
+                // Profil restreint sans écran de réglages : rien à ouvrir (pas de plantage)
+            }
             call.resolve();
             return;
         }
@@ -311,7 +318,12 @@ public class OpenWLMNativePlugin extends Plugin {
         Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName())
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        getContext().startActivity(intent);
+        try {
+            getContext().startActivity(intent);
+        } catch (ActivityNotFoundException e) {
+            call.reject("unavailable");
+            return;
+        }
         call.resolve();
     }
 
@@ -378,16 +390,19 @@ public class OpenWLMNativePlugin extends Plugin {
      * Gardé pour qu'une interface en cache plus ancienne que l'APK fonctionne encore ; taille
      * contrôlée AVANT décodage.
      */
+    /** saveFile (APK v3) reçoit tout le fichier en base64 dans une chaîne : borné à 20 Mo (~27 Mo en mémoire). */
+    static final long LEGACY_SAVE_MAX_BYTES = 20L * 1024 * 1024;
+
     @PluginMethod
     public void saveFile(PluginCall call) {
         if (!fromTrustedPage(call)) return;
         String data = call.getString("data");
-        if (data == null || data.length() > (ChunkedFileSaver.MAX_BYTES / 3 + 1) * 4) {
+        if (data == null || data.length() > (LEGACY_SAVE_MAX_BYTES / 3 + 1) * 4) {
             call.reject(data == null ? "missing_data" : "too_large");
             return;
         }
         String name = FileNames.sanitize(call.getString("fileName", "fichier"));
-        String mime = call.getString("mimeType", "application/octet-stream");
+        String mime = FileNames.safeMimeType(call.getString("mimeType"));
         confirmSave(call, name, (long) data.length() / 4 * 3, () -> {
             String id;
             try {
@@ -429,7 +444,7 @@ public class OpenWLMNativePlugin extends Plugin {
     public void beginSave(PluginCall call) {
         if (!fromTrustedPage(call)) return;
         String name = FileNames.sanitize(call.getString("fileName", "fichier"));
-        String mime = call.getString("mimeType", "application/octet-stream");
+        String mime = FileNames.safeMimeType(call.getString("mimeType"));
         Long size = call.getLong("size");
         if (size != null && size > ChunkedFileSaver.MAX_BYTES) {
             call.reject("too_large");
@@ -454,30 +469,35 @@ public class OpenWLMNativePlugin extends Plugin {
      * compromise pourrait y écrire sans rien demander). Android 8-9 : le sélecteur
      * d'emplacement du système sert de confirmation. Refus → { cancelled: true }.
      */
+    /** Confirmations natives affichées (une page en boucle ne doit pas en empiler sans limite). */
+    private int pendingConfirms;
+
     private void confirmSave(PluginCall call, String name, long size, Runnable onConfirmed) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             onConfirmed.run();
             return;
         }
         getActivity().runOnUiThread(() -> {
+            if (pendingConfirms >= ChunkedFileSaver.MAX_SESSIONS) {
+                call.reject("too_many_saves");
+                return;
+            }
+            pendingConfirms++;
             Context loc = OpenWLMNotifications.localized(getContext());
             String sizeText = size >= 0 ? Formatter.formatShortFileSize(getContext(), size) : "?";
+            Runnable cancelled = () -> {
+                JSObject ret = new JSObject();
+                ret.put("cancelled", true);
+                ret.put("saved", false);
+                call.resolve(ret);
+            };
             new AlertDialog.Builder(getActivity())
                 .setTitle(loc.getString(R.string.save_confirm_title))
                 .setMessage(loc.getString(R.string.save_confirm_message, name, sizeText))
                 .setPositiveButton(loc.getString(R.string.save_confirm_ok), (d, w) -> bridge.execute(onConfirmed))
-                .setNegativeButton(loc.getString(R.string.server_cancel), (d, w) -> {
-                    JSObject ret = new JSObject();
-                    ret.put("cancelled", true);
-                    ret.put("saved", false);
-                    call.resolve(ret);
-                })
-                .setOnCancelListener((d) -> {
-                    JSObject ret = new JSObject();
-                    ret.put("cancelled", true);
-                    ret.put("saved", false);
-                    call.resolve(ret);
-                })
+                .setNegativeButton(loc.getString(R.string.server_cancel), (d, w) -> cancelled.run())
+                .setOnCancelListener((d) -> cancelled.run())
+                .setOnDismissListener((d) -> pendingConfirms--)
                 .show();
         });
     }
@@ -533,8 +553,16 @@ public class OpenWLMNativePlugin extends Plugin {
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType(session.mimeType);
         intent.putExtra(Intent.EXTRA_TITLE, session.fileName);
-        pendingTemp = session.temp;
-        startActivityForResult(call, intent, "onSaveDocumentResult");
+        // Temporaire associé à SA session : deux enregistrements rapprochés ne s'écrasent plus
+        pendingTemps.put(call.getString("id", ""), session.temp);
+        try {
+            startActivityForResult(call, intent, "onSaveDocumentResult");
+        } catch (ActivityNotFoundException e) {
+            pendingTemps.remove(call.getString("id", ""));
+            // noinspection ResultOfMethodCallIgnored
+            session.temp.delete();
+            call.reject("unavailable");
+        }
     }
 
     @PluginMethod
@@ -543,12 +571,11 @@ public class OpenWLMNativePlugin extends Plugin {
         call.resolve();
     }
 
-    private File pendingTemp;
+    private final Map<String, File> pendingTemps = new HashMap<>();
 
     @ActivityCallback
     private void onSaveDocumentResult(PluginCall call, ActivityResult result) {
-        File temp = pendingTemp;
-        pendingTemp = null;
+        File temp = pendingTemps.remove(call.getString("id", ""));
         if (temp == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
             if (temp != null) {
                 // noinspection ResultOfMethodCallIgnored

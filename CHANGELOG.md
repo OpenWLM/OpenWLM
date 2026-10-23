@@ -33,6 +33,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- JVM tests `BridgeTrustTest.cheminsLocauxCapacitorRefuses` and `FileNamesTest.typeMimeControle`.
 - `e2e/session-robustness.spec.ts` (offline start, expired session, message received while loading, read receipt in background), `e2e/account-scoped-data.spec.ts` (emoticon key after sign-out, per-account verified contacts), `tests/test_emoticon_key_backup.js`; all fail on the previous version.
 - `tests/test_lot1_hardening.js` (isolated server, 11 tests: multipart, presence, invitations, message bounds and budget, receipt, games, calls) and 3 tunnel tests in `tests/test_client_ip_resolution.js`; all fail on the previous version. `test_call_delivery.js` and `test_route_authorization.js` adapted (cooldown after rejection, "Play again" at game end).
 - `e2e/android-sounds.spec.ts`: Sound settings (sounds off, nudge unticked, Busy) passed to a simulated APK v7, nothing sent to an APK v6.
@@ -50,6 +51,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Android app (APK v9, review batch 3)**:
+  - The page can no longer read the phone's files through Capacitor's local server (`/_capacitor_file_/…`, `/_capacitor_content_/…`): 404 reply. A compromised page or a malicious custom server could have read the WebView's session cookies and E2EE keys there.
+  - Under the app's lock screen, the conversation is no longer readable by accessibility services nor reachable from a physical keyboard (focus removed).
+  - Second incoming call while a first one rings (rare): the call screen shows the new caller instead of staying on the old one ("Answer" targeted the wrong contact).
+  - Minor: MIME type of saved files validated; at most two save confirmations shown at once; on Android 8-9, two close saves no longer overwrite each other; `saveFile` (old interface) capped at 20 MB; opening a missing system screen (restricted profile) without a crash; empty task affinity (task hijacking on Android 8-10).
 - **Interface (review, batch 2)**:
   - **Custom emoticons lost at sign-out**: their key only existed on the device and was wiped at sign-out; they stayed listed but no longer displayed. The key is now also saved on the server, encrypted for your own public key (the server cannot read it), and recovered at sign-in on any device; emoticons created earlier get their copy on first load.
   - **Opening the app offline no longer forgets the remembered device**: only a server reply (expired or refused session) invalidates it; offline, the sign-in screen says so and automatic sign-in returns with the network.

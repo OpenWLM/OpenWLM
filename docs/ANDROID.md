@@ -36,7 +36,7 @@ et pour Firebase).
 
 | Fonction | Détail |
 |---|---|
-| Verrouillage | Empreinte, visage ou code du téléphone à l'ouverture et après 1 min en arrière-plan. Sans verrouillage d'écran configuré sur le téléphone, l'app ne peut pas être protégée (indiqué dans les Options). Contenu masqué (captures, aperçu des applications récentes) quand l'app est verrouillée, et en arrière-plan (Android 13+ : aperçu désactivé ; avant : `FLAG_SECURE` en arrière-plan). App ouverte et déverrouillée : captures possibles (partage d'écran en appel). |
+| Verrouillage | Empreinte, visage ou code du téléphone à l'ouverture et après 1 min en arrière-plan. Sans verrouillage d'écran configuré sur le téléphone, l'app ne peut pas être protégée (indiqué dans les Options). Contenu masqué (captures, aperçu des applications récentes) quand l'app est verrouillée, et en arrière-plan (Android 13+ : aperçu désactivé ; avant : `FLAG_SECURE` en arrière-plan). Sous le verrou, la page reste chargée (connexion, appels) mais est retirée de l'accessibilité et du focus : ni TalkBack ni un clavier physique n'y accèdent (APK v9+). App ouverte et déverrouillée : captures possibles (partage d'écran en appel). |
 | Session | « Se souvenir de cet appareil » garde la session 30 jours glissants (cf. ci-dessous). |
 | Appels | Écran d'appel Android, même téléphone verrouillé ; service d'appel pendant la conversation (cf. « Appels natifs »). |
 | Messages vocaux | Permission micro demandée par Android au premier usage. |
@@ -55,6 +55,12 @@ La page vient du serveur ; le plugin `OpenWLMNative` (Java) n'a accès ni aux fi
 ni aux clés, mais certaines méthodes sont sensibles (jeton FCM, enregistrement dans
 Téléchargements, service d'appel micro / caméra, écran allumé, autorisations). Durcissements :
 
+- **Fichiers du téléphone jamais servis à la page** (APK v9+) : le serveur local de Capacitor
+  sait servir `/_capacitor_file_/<chemin>` et `/_capacitor_content_/<uri>` à la page (pour un
+  plugin Filesystem, absent ici) ; une page compromise ou un serveur personnalisé malveillant y
+  lirait les cookies de session et les clés E2EE de la WebView, malgré `setAllowFileAccess(false)`
+  et la CSP. `GuardedWebViewClient` répond 404 à ces chemins (`BridgeTrust.isForbiddenLocalPath`,
+  testé).
 - **Origine vérifiée** : chacune de ces méthodes refuse (`untrusted_origin`) si la page chargée
   n'est pas le serveur choisi en HTTPS (`BridgeTrust`, testé : `BridgeTrustTest`), en plus de la
   navigation déjà limitée à cet hôte. Depuis la v8, aussi `setLanguage` et `setSoundPrefs`
@@ -223,8 +229,8 @@ Gradle utilise jusqu'à 4 Go (`android/gradle.properties`).
 L'interface est servie par le serveur et peut être plus récente (ou plus ancienne, en cache)
 que l'APK installé. Elle teste les méthodes réellement exposées par l'APK
 (`hasNativeMethod`, liste publiée par le pont natif de Capacitor) au lieu de supposer une
-version : APK v3 → enregistrement des fichiers en un bloc (`saveFile`) ; avant la v7, pas de
-`setSoundPrefs` (notifications avec le son du téléphone). Le changement de
+version : APK v3 → enregistrement des fichiers en un bloc (`saveFile`, borné à 20 Mo depuis la
+v9) ; avant la v7, pas de `setSoundPrefs` (notifications avec le son du téléphone). Le changement de
 serveur est le même pour toutes les versions : le jeton est retiré du compte avant d'ouvrir
 l'écran, puis réenregistré au retour dans l'app si rien n'a changé (synchronisation au retour
 au premier plan, sans dépendre de l'événement `serverChangeCancelled`, absent de la v3).

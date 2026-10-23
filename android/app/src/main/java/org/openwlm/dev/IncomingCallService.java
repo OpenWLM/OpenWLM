@@ -148,6 +148,9 @@ public class IncomingCallService extends Service {
         boolean video = intent.getBooleanExtra(EXTRA_VIDEO, false);
         long ringMs = intent.getLongExtra(EXTRA_RING_MS, CallTiming.DEFAULT_RING_MS);
 
+        // Un autre appel sonnait encore (rare : le serveur n'en présente qu'un à la fois, sauf
+        // si le premier a expiré chez lui) : son écran d'appel se ferme, le nouveau se relance
+        if (ringingCallerId != 0 && ringingCallerId != callerId) IncomingCallActivity.finishIfShowing();
         stopSounds();
         ringingCallerId = callerId;
         ringingName = name;

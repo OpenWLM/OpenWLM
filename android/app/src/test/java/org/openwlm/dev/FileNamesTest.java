@@ -27,4 +27,14 @@ public class FileNamesTest {
         assertEquals(FileNames.MAX_LENGTH, FileNames.sanitize("x".repeat(500)).length());
         assertEquals("photo été.jpg", FileNames.sanitize("photo été.jpg"));
     }
+
+    @Test
+    public void typeMimeControle() {
+        assertEquals("image/png", FileNames.safeMimeType("image/png"));
+        assertEquals("application/vnd.ms-excel", FileNames.safeMimeType(" Application/VND.MS-Excel "));
+        assertEquals("application/octet-stream", FileNames.safeMimeType(null));
+        assertEquals("application/octet-stream", FileNames.safeMimeType("text/html; charset=utf-8"));
+        assertEquals("application/octet-stream", FileNames.safeMimeType("sans-slash"));
+        assertEquals("application/octet-stream", FileNames.safeMimeType("a/b/c"));
+    }
 }

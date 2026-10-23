@@ -24,6 +24,8 @@ import java.lang.ref.WeakReference;
 public class IncomingCallActivity extends AppCompatActivity {
 
     private static WeakReference<Activity> showing = new WeakReference<>(null);
+    /** Appelant affiché (l'état du service peut changer pendant que l'écran est ouvert). */
+    private int boundCallerId;
 
     /** La sonnerie s'est arrêtée (fin d'appel, réponse ailleurs…) : fermer l'écran d'appel. */
     static void finishIfShowing() {
@@ -49,6 +51,12 @@ public class IncomingCallActivity extends AppCompatActivity {
         }
         showing = new WeakReference<>(this);
         setContentView(R.layout.activity_incoming_call);
+        bind(callerId);
+    }
+
+    /** Affiche l'appel de `callerId` : nom, type, et boutons qui agissent sur CET appel. */
+    private void bind(int callerId) {
+        boundCallerId = callerId;
         Context loc = OpenWLMNotifications.localized(this);
         ((TextView) findViewById(R.id.call_name)).setText(IncomingCallService.ringingName());
         ((TextView) findViewById(R.id.call_type)).setText(loc.getString(IncomingCallService.ringingVideo() ? R.string.notif_call_video : R.string.notif_call_audio));
@@ -65,9 +73,19 @@ public class IncomingCallActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        int current = IncomingCallService.ringingCallerId();
+        if (current > 0 && current != boundCallerId) bind(current);
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
-        if (IncomingCallService.ringingCallerId() <= 0) finish();
+        int current = IncomingCallService.ringingCallerId();
+        if (current <= 0) finish();
+        // Un autre appel a remplacé celui affiché : « Répondre » / « Refuser » visaient le mauvais contact
+        else if (current != boundCallerId) bind(current);
     }
 
     private void answer(int callerId) {

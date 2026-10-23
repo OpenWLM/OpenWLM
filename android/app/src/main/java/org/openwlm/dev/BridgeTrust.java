@@ -39,6 +39,19 @@ final class BridgeTrust {
      * juste après « Répondre » (appel pris derrière l'écran de verrouillage de l'app). Une page
      * compromise ne peut donc pas écouter en arrière-plan ni derrière le verrouillage.
      */
+    /**
+     * Chemins du serveur local de Capacitor qui servent des fichiers du téléphone à la page
+     * (/_capacitor_file_/<chemin absolu>, /_capacitor_content_/<content://…>). L'app n'en a
+     * aucun usage (pas de plugin Filesystem) ; une page compromise, ou un serveur personnalisé
+     * malveillant, y lirait les cookies de session et les clés E2EE de la WebView. Refusés par
+     * GuardedWebViewClient.
+     */
+    static boolean isForbiddenLocalPath(String path) {
+        if (path == null) return false;
+        String p = path.toLowerCase(Locale.ROOT);
+        return p.startsWith("/_capacitor_file_") || p.startsWith("/_capacitor_content_");
+    }
+
     static boolean allowMediaCapture(String origin, String serverHost, boolean userVisible, boolean callActive, long now, long answerGraceUntil) {
         if (!isTrustedPage(origin, serverHost)) return false;
         return userVisible || callActive || now < answerGraceUntil;

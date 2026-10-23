@@ -33,6 +33,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Visionneuse d'image agrandie et zoomable** : une image reçue ou envoyée s'ouvre presque en plein écran sur ordinateur, en plein écran sur téléphone (sans barre d'outils, avec une simple croix rouge Aero pour fermer), entière au départ. Zoom à la molette (centré sur le pointeur), au pincement à deux doigts, au double-clic ou double-tap (taille réelle sur le point visé, puis retour), aux boutons − / + / Ajuster / 100 % et au clavier (+, -, 0, 1) ; l'image zoomée se déplace à la souris ou au doigt sans sortir de l'écran. Le bouton Retour d'Android ferme la visionneuse au lieu de quitter la conversation. Une capture d'écran se lit sans l'enregistrer. Interface seulement : ni serveur ni APK à mettre à jour.
 
 ### Tests
+- Tests JVM `BridgeTrustTest.cheminsLocauxCapacitorRefuses` et `FileNamesTest.typeMimeControle`.
 - `e2e/session-robustness.spec.ts` (démarrage hors ligne, session expirée, message reçu pendant le chargement, accusé de lecture en arrière-plan), `e2e/account-scoped-data.spec.ts` (clé d'émoticône après déconnexion, contacts vérifiés par compte), `tests/test_emoticon_key_backup.js` ; tous en échec sur la version précédente.
 - `tests/test_lot1_hardening.js` (serveur isolé, 11 tests : multipart, présence, invitations, bornes et budget des messages, accusé, jeux, appels) et 3 tests de tunnel dans `tests/test_client_ip_resolution.js` ; tous échouent sur la version précédente. `test_call_delivery.js` et `test_route_authorization.js` adaptés (délai après refus, « Rejouer » en fin de partie).
 - `e2e/android-sounds.spec.ts` : réglages Sons (sons coupés, Wizz décoché, Occupé) transmis à l'APK v7 simulé, rien envoyé à un APK v6.
@@ -50,6 +51,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections
+- **App Android (APK v9, relecture lot 3)** :
+  - La page ne peut plus lire les fichiers du téléphone par le serveur local de Capacitor (`/_capacitor_file_/…`, `/_capacitor_content_/…`) : réponse 404. Une page compromise ou un serveur personnalisé malveillant y aurait lu les cookies de session et les clés E2EE de la WebView.
+  - Sous l'écran de verrouillage de l'app, la conversation n'est plus lisible par les services d'accessibilité ni accessible à un clavier physique (focus retiré).
+  - Deuxième appel entrant pendant qu'un premier sonne (rare) : l'écran d'appel affiche le nouvel appelant au lieu de rester sur l'ancien (« Répondre » visait le mauvais contact).
+  - Mineur : type MIME des fichiers enregistrés contrôlé ; au plus deux confirmations d'enregistrement affichées à la fois ; sur Android 8-9, deux enregistrements rapprochés ne s'écrasent plus ; `saveFile` (interface ancienne) borné à 20 Mo ; ouverture d'un écran système absent (profil restreint) sans plantage ; affinité de tâche vide (détournement de tâche sur Android 8-10).
 - **Interface (relecture, lot 2)** :
   - **Émoticônes personnalisées perdues à la déconnexion** : leur clé n'existait que sur l'appareil et était effacée en se déconnectant ; elles restaient listées mais ne s'affichaient plus. La clé est désormais aussi sauvegardée sur le serveur, chiffrée pour votre propre clé publique (le serveur ne peut pas la lire), et retrouvée à la connexion sur n'importe quel appareil ; les émoticônes créées avant reçoivent leur copie au premier chargement.
   - **Ouvrir l'app sans réseau n'oublie plus l'appareil mémorisé** : seule une réponse du serveur (session expirée ou refusée) l'invalide ; hors ligne, l'écran de connexion l'explique et la connexion automatique revient avec le réseau.

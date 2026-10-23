@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **Security review, batch 5**: `server/routes/messages.js` (paginated history: last 300 messages, `?before=` and `?limit=`, `X-Has-More` header) and `server/routes/auth.js` (**new route `POST /api/logout-device`**, WAF rule regenerated, to copy into Cloudflare): restart the service.
 - **Security review, batch 4**: `server/middleware/auth.js`, `server/routes/{auth,users}.js`, `server/sockets/messages.js`, `server/db.js` (new `messages(sender_id)` index, created at startup) changed: restart the service. **New route `POST /api/user/migrate-auth-key`**: WAF rule regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`.
 - **Security review, batch 2 (interface + server)**: `server/db.js` (new `custom_emoticons.encrypted_key` column, created automatically at startup), `server/routes/emoticons.js` (`encryptedKey` upload field, **new route `POST /api/emoticons/custom/key`**: WAF rule regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`): restart the service.
 - **October 2026 security review, batch 1 (server)**: `server/index.js`, `server/db.js`, `server/clientIdentity.js`, `server/routes/{auth,users,files,emoticons}.js`, `server/sockets/{messages,games,webrtc}.js` changed: restart the service. **Behind a local cloudflared tunnel, add `CLOUDFLARE_IP_RANGES=127.0.0.1/32,::1/128` to `.env`** (see docs/DEPLOYMENT.md): without it, every per-IP limit was global. **WAF rule changed**: `DELETE /api/emoticons/custom/:assetId` now expects an `emo_<uuid>` id (previously a number, which would have blocked emoticon deletion in Block mode) — update the Cloudflare rule from `docs/cloudflare-waf.generated.json`.
@@ -34,6 +35,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- `tests/test_history_pagination.js` (pagination, `logout-device`), peer payload test in `tests/test_message_envelope.js`, `e2e/peer-payload.spec.ts` (IME, abandoned sign-in, "Earlier messages"); fail on the previous version.
 - `tests/test_lot4_hardening.js` (per-IP lockout, key migration, quota), timestamp test in `tests/test_message_envelope.js`, `e2e/auth-key-scope.spec.ts` (legacy-key account migrated; window and menu keyboard); all fail on the previous version.
 - JVM tests `BridgeTrustTest.cheminsLocauxCapacitorRefuses` and `FileNamesTest.typeMimeControle`.
 - `e2e/session-robustness.spec.ts` (offline start, expired session, message received while loading, read receipt in background), `e2e/account-scoped-data.spec.ts` (emoticon key after sign-out, per-account verified contacts), `tests/test_emoticon_key_backup.js`; all fail on the previous version.
@@ -53,6 +55,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Security review, batch 5**:
+  - **Received message style bounded** (size 8 to 20, `#RRGGBB` color, font, bold/italic): a contact can no longer display giant text that breaks the conversation, nor transparent text.
+  - **Addresses supplied by a contact**: download link, wink id and voice-clip sound accepted only in their exact form; a contact can no longer make the app load another server path. An unknown wink is not played.
+  - **Log**: each line has a stable key; after a sort or an insertion, an image thumbnail no longer shows under the wrong message.
+  - **Enter during IME composition** (Japanese, Chinese, Korean keyboards, some Android completions): confirms the candidate instead of sending the incomplete message.
+  - **Abandoned sign-in** (encryption keys could not be set up): the session cookie is removed from this browser, without signing out your other devices.
+  - **Paginated history**: a conversation opens with its last 300 messages; "Earlier messages" loads the previous page (a long conversation with voice clips used to be sent whole).
 - **Security review, batch 4**:
   - **Authentication key bound to the server**: it is now derived with the server's address (host and port). Before, the same key worked on any OpenWLM instance where the same username and password were used: a third-party instance operator could replay it elsewhere. Existing accounts sign in as before with their password and are migrated silently (same password, same vault, other devices stay signed in); password change and E2E reset accept the old key until the migration has happened.
   - **Sign-in lockout**: 10 failures per username **and** IP address (plus a large per-username cap); a third party can no longer lock your account by typing ten wrong passwords from their own connection.

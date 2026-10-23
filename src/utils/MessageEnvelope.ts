@@ -314,17 +314,55 @@ const STRING_FIELDS = ['text', 'audio', 'winkId', 'fileId', 'token', 'downloadUr
  * Empêche un payload d'écraser des champs de contrôle (id, senderId, timestamp,
  * delivery_status, sender…) lors de la fusion avec le message serveur.
  */
+// Formes attendues des champs qui deviennent des adresses chargées par l'app : un pair ne doit
+// pas pouvoir faire charger un autre chemin du serveur (`/api/files/download/../../user/me`)
+// ni une source audio arbitraire.
+const FIELD_PATTERNS: Partial<Record<(typeof STRING_FIELDS)[number], RegExp>> = {
+  downloadUrl: /^\/api\/files\/download\/[0-9a-f-]{36}\?token=[0-9a-f]{16,128}$/,
+  fileId: /^[0-9a-f-]{36}$/,
+  token: /^[0-9a-f]{16,128}$/,
+  winkId: /^[\w-]{1,64}$/,
+  audio: /^data:audio\/[\w.+-]{1,32}(;[\w.+-]+=[\w.+-]+)*;base64,[A-Za-z0-9+/]+=*$/
+};
+
+/**
+ * Style d'affichage choisi par l'expéditeur (FontModal) : bornes de l'interface. Sinon un pair
+ * pouvait afficher un texte de 900 pt qui casse la conversation, ou transparent (invisible mais
+ * notifié).
+ */
+const sanitizeStyle = (raw: unknown): Record<string, unknown> | null => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const s = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  if (typeof s.family === 'string' && /^[\w .'-]{1,48}$/.test(s.family)) out.family = s.family;
+  if (s.weight === 'normal' || s.weight === 'bold') out.weight = s.weight;
+  if (s.style === 'normal' || s.style === 'italic') out.style = s.style;
+  if (typeof s.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(s.color)) out.color = s.color;
+  const size = Number(s.size);
+  if (Number.isFinite(size)) out.size = String(Math.min(20, Math.max(8, Math.round(size))));
+  if (s.underline === true) out.underline = true;
+  if (s.strikeout === true) out.strikeout = true;
+  return out;
+};
+
 export const sanitizeDecryptedPayload = (raw: unknown): Record<string, unknown> => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const p = raw as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   if (typeof p.type === 'string' && ALLOWED_TYPES.has(p.type)) out.type = p.type;
-  for (const f of STRING_FIELDS) if (typeof p[f] === 'string') out[f] = p[f];
+  for (const f of STRING_FIELDS) {
+    if (typeof p[f] !== 'string') continue;
+    const pattern = FIELD_PATTERNS[f];
+    if (pattern && !pattern.test(p[f] as string)) continue;
+    out[f] = p[f];
+  }
   if (typeof p.fileSize === 'number' && Number.isFinite(p.fileSize)) out.fileSize = p.fileSize;
   if (typeof p.expiresAt === 'number' && Number.isFinite(p.expiresAt)) out.expiresAt = p.expiresAt;
   // /me : message d'action (« * Pseudo texte »)
   if (p.action === true) out.action = true;
-  for (const f of ['style', 'fileKeys', 'customEmoticons'] as const) {
+  const style = sanitizeStyle(p.style);
+  if (style) out.style = style;
+  for (const f of ['fileKeys', 'customEmoticons'] as const) {
     if (p[f] && typeof p[f] === 'object' && !Array.isArray(p[f])) out[f] = p[f];
   }
   return out;

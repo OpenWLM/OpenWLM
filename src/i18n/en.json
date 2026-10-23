@@ -203,7 +203,8 @@
     "sendFailedGeneric": "The server did not accept the message.",
     "voiceClipMaxReached": "Maximum duration reached: the voice clip is being sent.",
     "winkNotSentNetwork": "Wink not sent: the connection to the server was lost while sending.",
-    "winkNotSentOffline": "Wink not sent: the contact is offline in private mode, and private winks are not stored."
+    "winkNotSentOffline": "Wink not sent: the contact is offline in private mode, and private winks are not stored.",
+    "loadOlderMessages": "Earlier messages"
   },
   "bot": {
     "name": "OpenWLM",

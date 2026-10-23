@@ -207,7 +207,8 @@ test('sanitizeDecryptedPayload ne garde que les champs de contenu', () => {
     id: 999, senderId: 42, sender: 'Admin', timestamp: 0, delivery_status: 'read', _isPending: false,
     fileSize: 10, customEmoticons: { ':x:': {} }, audio: 123
   });
-  assert.deepEqual(out, { type: 'text', text: 'hi', style: { color: 'red' }, fileSize: 10, customEmoticons: { ':x:': {} } });
+  // Couleur hors format #RRGGBB (celui de l'interface) : écartée
+  assert.deepEqual(out, { type: 'text', text: 'hi', style: {}, fileSize: 10, customEmoticons: { ':x:': {} } });
   assert.deepEqual(sanitizeDecryptedPayload({ type: 'admin' }), {}, 'type inconnu ignoré');
   assert.deepEqual(sanitizeDecryptedPayload(null), {});
 });
@@ -231,6 +232,34 @@ test('horodatage signé : un vieux message re-présenté comme nouveau est rejet
   // Sans date serveur (ancien appelant) : comportement inchangé
   const noServerTs = await openAs(bob, old);
   assert.equal(noServerTs.status, 'verified');
+});
+
+
+// ---------------------------------------------------------------- payload d'un pair
+
+test('payload d\'un pair : style borné, chemins et audio de forme stricte', () => {
+  const out = sanitizeDecryptedPayload({
+    type: 'text', text: 'x',
+    style: { family: 'Segoe UI', size: 900, color: 'transparent', weight: 'bold', style: 'italic', underline: true, extra: 'x' },
+    downloadUrl: '/api/files/download/../../user/me',
+    winkId: 'a/../b',
+    audio: 'https://evil.test/a.mp3'
+  });
+  assert.deepEqual(out.style, { family: 'Segoe UI', weight: 'bold', style: 'italic', size: '20', underline: true });
+  assert.equal(out.downloadUrl, undefined);
+  assert.equal(out.winkId, undefined);
+  assert.equal(out.audio, undefined);
+  const ok = sanitizeDecryptedPayload({
+    type: 'file',
+    downloadUrl: '/api/files/download/0a1b2c3d-1111-4222-8333-444455556666?token=' + 'ab'.repeat(24),
+    audio: 'data:audio/webm;base64,AAAA',
+    winkId: 'bisou',
+    style: { size: '10', color: '#0000FF' }
+  });
+  assert.ok(ok.downloadUrl);
+  assert.equal(ok.audio, 'data:audio/webm;base64,AAAA');
+  assert.equal(ok.winkId, 'bisou');
+  assert.deepEqual(ok.style, { size: '10', color: '#0000FF' });
 });
 
 } // fin du bloc exécuté si le module .ts est chargeable

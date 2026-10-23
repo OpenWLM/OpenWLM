@@ -30,14 +30,25 @@ export const createMessagesRouter = () => {
       if (cursor) contactLastReadId = Number(cursor.last_read_message_id) || 0;
     } catch(e) {}
 
-    const history = db.prepare(`
+    // Pagination : les `limit` derniers messages (300 par défaut, 1000 au plus), ou ceux qui
+    // précèdent le message `before`. L'en-tête X-Has-More indique s'il en reste de plus anciens.
+    // Sans cela, une longue conversation (messages vocaux compris) était renvoyée en entier.
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 300));
+    const before = parseInt(req.query.before, 10);
+    const beforeClause = Number.isInteger(before) && before > 0 ? 'AND messages.id < ?' : '';
+    const params = [uId, cId, cId, uId, ...(beforeClause ? [before] : []), limit + 1];
+    const page = db.prepare(`
       SELECT messages.*, COALESCE(NULLIF(users.nickname, ''), users.username) as sender_name 
       FROM messages 
       JOIN users ON messages.sender_id = users.id
-      WHERE (sender_id = ? AND receiver_id = ?) 
-         OR (sender_id = ? AND receiver_id = ?)
-      ORDER BY timestamp ASC
-    `).all(uId, cId, cId, uId);
+      WHERE ((sender_id = ? AND receiver_id = ?) 
+         OR (sender_id = ? AND receiver_id = ?)) ${beforeClause}
+      ORDER BY messages.id DESC
+      LIMIT ?
+    `).all(...params);
+    const hasMore = page.length > limit;
+    const history = page.slice(0, limit).reverse();
+    res.set('X-Has-More', hasMore ? '1' : '0');
 
     const mapped = history.map(msg => {
       let status = msg.delivery_status || 'sent';

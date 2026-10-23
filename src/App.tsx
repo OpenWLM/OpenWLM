@@ -638,6 +638,8 @@ const App: React.FC = () => {
 
   // --- ÉTAT DES MESSAGES & CONVERSATIONS ---
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
+  // Conversations dont le serveur a encore des messages plus anciens que ceux affichés
+  const [historyHasMore, setHistoryHasMore] = useState<Record<number, boolean>>({});
   // Messages non lus par conversation : onglet qui clignote, contact mis en avant, titre de la page
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
 
@@ -1258,6 +1260,16 @@ const App: React.FC = () => {
    * 4. Si rememberMe est coché : tente la persistance sécurisée dans IndexedDB.
    *    EXIGENCE ABSOLUE : Si la persistance échoue, la connexion RÉUSSIT quand même sans blocage.
    */
+  /**
+   * Connexion abandonnée (clés impossibles à mettre en place) : le cookie de session posé par
+   * /api/login est retiré de CE navigateur, sinon une session valide y restait (autre onglet,
+   * rechargement) alors que l'écran de connexion était réaffiché.
+   */
+  const abandonDeviceSession = () => {
+    delete axios.defaults.headers.common['Authorization'];
+    axios.post('/api/logout-device').catch(() => { /* hors ligne : le cookie expirera */ });
+  };
+
   const handleUserLogin = async (loggedInUser: any, vaultKey: CryptoKey, authKeyHex: string) => {
     // Statut CHOISI sur l'écran de connexion (pas le statut renvoyé par le serveur) : devient
     // la préférence de ce compte sur cet appareil
@@ -1278,6 +1290,7 @@ const App: React.FC = () => {
 
         privJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
         if (!privJwk) {
+          abandonDeviceSession();
           notify(t.notices.vaultDecryptFailed, { icon: '⚠️' });
           return;
         }
@@ -1358,6 +1371,7 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("[Zero-Knowledge] Erreur initialisation clés:", err);
+      abandonDeviceSession();
       notify(t.notices.keysInitFailed, { icon: '⚠️' });
     }
   };
@@ -1828,6 +1842,9 @@ const App: React.FC = () => {
         const requestedAt = Date.now();
         const res = await axios.get(`/api/messages/${user.id}/${chatId}`);
         if (Array.isArray(res.data)) {
+          // Seuls les derniers messages sont renvoyés ; les plus anciens se chargent à la demande
+          const hasMore = res.headers?.['x-has-more'] === '1';
+          if (!incremental) setHistoryHasMore(prev => (prev[chatId] === hasMore ? prev : { ...prev, [chatId]: hasMore }));
           const serverMsgs = await decryptMessageArray(res.data);
           // Les messages indéchiffrables (ex. chiffrés pour une ancienne clé) restent masqués ;
           // les messages rejetés (signature invalide, texte clair) sont AFFICHÉS comme tels.
@@ -1877,7 +1894,16 @@ const App: React.FC = () => {
             const baseFor = (current: Message[] | undefined) => withLocalOnly(current || [], cachedBase);
             // Tolérance d'une minute entre l'horloge du serveur (horodatage) et celle d'ici
             const keepSince = requestedAt - 60000;
-            setMessages(prev => ({ ...prev, [chatId]: mergeServerHistory(baseFor(prev[chatId]), validServerMsgs, keepSince) }));
+            // Page partielle : les messages plus anciens déjà affichés (« Messages précédents »)
+            // ne sont pas dans la réponse, mais n'ont pas été supprimés
+            const oldestServerId = hasMore ? validServerMsgs.reduce((min, m) => (typeof m.id === 'number' && m.id < min ? m.id : min), Number.MAX_SAFE_INTEGER) : 0;
+            const withOlder = (list: Message[]) =>
+              oldestServerId ? list.filter(m => typeof m.id === 'number' && m.id < oldestServerId) : [];
+            setMessages(prev => {
+              const merged = mergeServerHistory(baseFor(prev[chatId]), validServerMsgs, keepSince);
+              const older = withOlder(prev[chatId] || []);
+              return { ...prev, [chatId]: older.length ? insertByTime(merged, older) : merged };
+            });
             // Copie locale chiffrée : historique serveur ET messages privés (sinon perdus au
             // rechargement, puisque le serveur ne les a jamais eus). Calculée avec la même base
             // que l'affichage, copie lue au préchargement comprise.
@@ -1899,6 +1925,31 @@ const App: React.FC = () => {
       console.error(`Erreur chargement historique pour ${chatId}:`, err);
     } finally {
       loadingChatsRef.current.delete(chatId);
+    }
+  }, [user, decryptMessageArray]);
+
+  /** « Messages précédents » : la page qui précède le plus ancien message affiché. */
+  const loadingOlderRef = useRef(false);
+  const loadOlderMessages = useCallback(async (chatId: number) => {
+    if (!user || loadingOlderRef.current) return;
+    const current = messagesRef.current[chatId] || [];
+    const oldestId = current.reduce((min, m) => (typeof m.id === 'number' && m.id > 0 && m.id < min ? m.id : min), Number.MAX_SAFE_INTEGER);
+    if (oldestId === Number.MAX_SAFE_INTEGER) return;
+    loadingOlderRef.current = true;
+    try {
+      const res = await axios.get(`/api/messages/${user.id}/${chatId}`, { params: { before: oldestId } });
+      if (!Array.isArray(res.data)) return;
+      const older = (await decryptMessageArray(res.data)).filter(m => m._auth !== 'undecryptable');
+      setHistoryHasMore(prev => ({ ...prev, [chatId]: res.headers?.['x-has-more'] === '1' }));
+      setMessages(prev => {
+        const list = prev[chatId] || [];
+        const known = new Set(list.map(m => m.id).filter(Boolean));
+        return { ...prev, [chatId]: insertByTime(list, older.filter(m => !m.id || !known.has(m.id))) };
+      });
+    } catch (err) {
+      console.warn('[Historique] Chargement des messages précédents impossible :', err);
+    } finally {
+      loadingOlderRef.current = false;
     }
   }, [user, decryptMessageArray]);
 
@@ -4300,6 +4351,8 @@ const App: React.FC = () => {
       return;
     }
     if (e.key !== 'Enter') return;
+    // Validation d'un candidat (clavier japonais, chinois, coréen, complétion Android) : pas un envoi
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     e.preventDefault();
     if (e.shiftKey) {
       const sel = window.getSelection();
@@ -4826,6 +4879,8 @@ const App: React.FC = () => {
                  onAssistantAction={onAssistantActionStable}
                  renderMessageContent={renderMessageContent}
                  onPlayWink={onPlayWinkStable}
+                 hasOlder={!!historyHasMore[activeChatId]}
+                 onLoadOlder={loadOlderMessages}
                />
 
                {/* Pied de page (Saisie du message) */}

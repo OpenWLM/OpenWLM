@@ -47,10 +47,7 @@ const getExtension = (fileName: string): string => {
 // SÉCURITÉ (M4) : n'accepter que les URL de téléchargement internes.
 // downloadUrl provient du payload E2EE (contrôlé par l'émetteur) → bloquer toute URL absolue/externe.
 const isSafeDownloadUrl = (url: unknown): url is string =>
-  typeof url === 'string' &&
-  url.startsWith('/api/files/download/') &&
-  !url.includes('://') &&
-  !url.startsWith('//');
+  typeof url === 'string' && /^\/api\/files\/download\/[0-9a-f-]{36}\?token=[0-9a-f]{16,128}$/.test(url);
 
 export const isImageFile = (fileData?: FileDataPayload | null): boolean => {
   if (!fileData) return false;

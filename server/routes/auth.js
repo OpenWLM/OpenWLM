@@ -57,6 +57,18 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   /**
    * Déconnexion explicite
    */
+  /**
+   * Abandon d'une ouverture de session sur CET appareil (clés de chiffrement impossibles à
+   * mettre en place) : seul le cookie de ce navigateur est retiré. Les autres appareils restent
+   * connectés (contrairement à /logout, qui révoque toutes les sessions du compte).
+   */
+  router.post('/logout-device', (req, res) => {
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const isCloudflare = Boolean(req.headers['cf-ray'] || isHttps);
+    res.clearCookie('token', { httpOnly: true, secure: (isProd || isCloudflare) && isHttps, sameSite: 'strict', path: '/' });
+    res.json({ success: true });
+  });
+
   router.post('/logout', authenticateToken, (req, res) => {
     const userId = req.user.id;
     // Toutes les sessions du compte sont révoquées : plus aucun appareil ne doit recevoir de

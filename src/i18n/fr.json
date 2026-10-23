@@ -203,7 +203,8 @@
     "sendFailedGeneric": "Le serveur n'a pas accepté le message.",
     "voiceClipMaxReached": "Durée maximale atteinte : le clip vocal est envoyé.",
     "winkNotSentNetwork": "Clin d'œil non envoyé : connexion au serveur perdue pendant l'envoi.",
-    "winkNotSentOffline": "Clin d'œil non envoyé : le contact est hors ligne en mode privé, et les clins d'œil privés ne sont pas conservés."
+    "winkNotSentOffline": "Clin d'œil non envoyé : le contact est hors ligne en mode privé, et les clins d'œil privés ne sont pas conservés.",
+    "loadOlderMessages": "Messages précédents"
   },
   "bot": {
     "name": "OpenWLM",

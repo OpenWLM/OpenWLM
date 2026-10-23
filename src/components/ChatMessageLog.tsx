@@ -29,6 +29,9 @@ interface ChatMessageLogProps {
   renderMessageContent: (text: string, style?: any) => React.ReactNode;
   /** Rejoue un clin d'œil reçu (quand la lecture automatique est désactivée). */
   onPlayWink?: (winkId: string) => void;
+  /** Le serveur a des messages plus anciens que ceux affichés. */
+  hasOlder?: boolean;
+  onLoadOlder?: (chatId: number) => void;
 }
 
 const ChatMessageLogInner: React.FC<ChatMessageLogProps> = ({
@@ -42,7 +45,9 @@ const ChatMessageLogInner: React.FC<ChatMessageLogProps> = ({
   onResend,
   onAssistantAction,
   renderMessageContent,
-  onPlayWink
+  onPlayWink,
+  hasOlder,
+  onLoadOlder
 }) => {
   const { t } = useI18n();
   // Options → Messages : afficher l'heure des messages
@@ -52,6 +57,13 @@ const ChatMessageLogInner: React.FC<ChatMessageLogProps> = ({
     <>
       {/* Historique des messages (Scrollable) */}
       <div className="chat-log-scroll">
+        {hasOlder && onLoadOlder && (
+          <div className="msg-load-older">
+            <button type="button" className="win-btn" data-testid="load-older" onClick={() => onLoadOlder(activeChatId)}>
+              {t.chat.loadOlderMessages}
+            </button>
+          </div>
+        )}
         {messages.map((m, i) => {
           const messageSide = resolveMessageSide(m, myId);
           const isSender = messageSide === 'self';
@@ -68,7 +80,9 @@ const ChatMessageLogInner: React.FC<ChatMessageLogProps> = ({
             : (isImage ? t.chat.contactSentImage.replace('{name}', senderDisplayName) : t.chat.contactSentFile.replace('{name}', senderDisplayName));
 
           return (
-          <div key={i} className="msg-line">
+          // Clé stable : avec l'index, après un tri ou une insertion, l'état d'une carte (image
+          // déchiffrée) restait attaché à la mauvaise ligne
+          <div key={m.mid ?? (m.id !== undefined ? `id-${m.id}` : m.clientMsgId ?? `i-${i}`)} className="msg-line">
              {isSystemLine(m) ? (
                <div className="msg-system">
                  {m.text}

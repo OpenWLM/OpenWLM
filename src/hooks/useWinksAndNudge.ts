@@ -113,6 +113,9 @@ export function useWinksAndNudge(options: UseWinksAndNudgeOptions): WinksAndNudg
   const handleSendWink = async (winkId: string, received: boolean = false, fromId: number = 0) => {
     const targetId = received ? fromId : activeChatId;
     const wink = WINKS.find(w => w.id === winkId);
+    // Clin d'œil reçu inconnu de cette version : rien à jouer (pas de chemin construit à partir
+    // d'un identifiant arbitraire)
+    if (received && !wink) return;
     const winkName = wink?.name || winkId;
     const winkTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 

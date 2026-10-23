@@ -12,7 +12,7 @@
 | **Messages texte** | AES‑GCM 256 + clé AES emballée **RSA‑OAEP 2048/SHA‑256** pour le destinataire **et** l'expéditeur, puis enveloppe **signée RSA‑PSS** par l'expéditeur (cf. §2 bis) | Client (`src/utils/MessageEnvelope.ts`) — le serveur ne stocke que l'enveloppe `{v,from,to,mid,ts,iv,payload,keyReceiver,keySender,sig}` |
 | **Clips vocaux** | inclus dans le **payload chiffré** du message | Client |
 | **Fichiers / pièces jointes** | **chiffrés côté client avant upload** (AES‑GCM 256 + clé RSA‑OAEP), serveur = coffre opaque | `encryptFileBinary` (client) |
-| **Émoticônes personnalisées** | **chiffrées côté client avant upload** ; la clé AES voyage dans le message E2EE | `encryptCustomEmoticon` (client) |
+| **Émoticônes personnalisées** | **chiffrées côté client avant upload** ; la clé AES voyage dans le message E2EE ; pour son propriétaire, une copie de la clé chiffrée pour sa propre clé publique (RSA-OAEP + AES-GCM, `encryptForLocal`) est gardée par le serveur, qui ne peut pas la lire | `encryptCustomEmoticon`, `encryptForLocal` (client) |
 | **Appels — média** | **DTLS‑SRTP** (imposé par WebRTC) : chiffré **pair‑à‑pair** ; TURN et Tunnel ne voient que du chiffré | Navigateur (WebRTC) |
 | **Appels — signalisation (SDP/ICE)** | **chiffrée E2EE** + **empreinte DTLS signée RSA‑PSS**, vérification **obligatoire** : une offre/réponse non signée ou invérifiable est refusée (anti‑MITM) | `src/components/VideoCall.tsx` |
 

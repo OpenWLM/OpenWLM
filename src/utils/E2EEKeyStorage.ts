@@ -32,7 +32,7 @@ export interface KeyStorageResult<T = void> {
 }
 
 const DB_NAME = 'WLM_DeviceVault_v1';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = 'e2ee_keys';
 
 class E2EEKeyStorage {
@@ -71,6 +71,10 @@ class E2EEKeyStorage {
           }
           if (!db.objectStoreNames.contains('verified_contacts')) {
             db.createObjectStore('verified_contacts', { keyPath: 'contactId' });
+          }
+          // v3 : vérifications par compte (clé `userId_contactId`), cf. VerifiedContactsStorage
+          if (!db.objectStoreNames.contains('verified_contacts_v2')) {
+            db.createObjectStore('verified_contacts_v2', { keyPath: 'key' });
           }
         };
 

@@ -33,8 +33,35 @@ const uploadEmoticon = multer({
   limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 8, parts: 10, fieldSize: 4 * 1024, fieldNameSize: 100 }
 });
 
+/** Format de encryptForLocal (src/utils/Security.ts) : { iv, data, key } en base64, ≤ 4 Ko. */
+const isValidEncryptedKey = (value) => {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 4096) return false;
+  try {
+    const o = JSON.parse(value);
+    const b64 = /^[A-Za-z0-9+/]+={0,2}$/;
+    return !!o && typeof o === 'object' && ['iv', 'data', 'key'].every((k) => typeof o[k] === 'string' && o[k].length > 0 && b64.test(o[k]));
+  } catch {
+    return false;
+  }
+};
+
 export const createEmoticonsRouter = () => {
   const router = Router();
+
+  /**
+   * Copie chiffrée de la clé d'une émoticône (émoticônes créées avant cette sauvegarde) :
+   * uniquement par son propriétaire, et seulement si aucune copie n'existe encore.
+   */
+  router.post('/emoticons/custom/key', authenticateToken, (req, res) => {
+    const id = String(req.body?.id || '');
+    const encryptedKey = String(req.body?.encryptedKey || '');
+    if (!/^emo_[0-9a-f-]{36}$/.test(id) || !isValidEncryptedKey(encryptedKey)) {
+      return res.status(400).json({ error: 'Requête invalide.' });
+    }
+    const result = db.prepare('UPDATE custom_emoticons SET encrypted_key = ? WHERE id = ? AND owner_id = ? AND encrypted_key IS NULL').run(encryptedKey, id, req.user.id);
+    if (result.changes === 0) return res.status(404).json({ error: 'Émoticône introuvable ou clé déjà enregistrée.' });
+    res.json({ success: true });
+  });
 
   /**
    * Métadonnées des émoticônes de l'utilisateur connecté
@@ -42,7 +69,7 @@ export const createEmoticonsRouter = () => {
   router.get('/emoticons/custom/my', authenticateToken, (req, res) => {
     try {
       const rows = db.prepare(`
-        SELECT id, shortcut, mime_type, file_size, width, height, is_animated, created_at 
+        SELECT id, shortcut, mime_type, file_size, width, height, is_animated, created_at, encrypted_key 
         FROM custom_emoticons 
         WHERE owner_id = ? 
         ORDER BY created_at ASC
@@ -117,14 +144,20 @@ export const createEmoticonsRouter = () => {
           return res.status(400).json({ error: isAnimated ? "Le GIF animé dépasse 1 Mo." : "L'image statique dépasse 256 Ko." });
         }
 
+        const encryptedKey = req.body.encryptedKey === undefined ? null : String(req.body.encryptedKey);
+        if (encryptedKey !== null && !isValidEncryptedKey(encryptedKey)) {
+          cleanupFile();
+          return res.status(400).json({ error: "Clé chiffrée invalide." });
+        }
+
         const assetId = 'emo_' + crypto.randomUUID();
         const now = Date.now();
 
         const stmt = db.prepare(`
-          INSERT INTO custom_emoticons (id, owner_id, shortcut, mime_type, file_size, width, height, is_animated, asset_filename, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO custom_emoticons (id, owner_id, shortcut, mime_type, file_size, width, height, is_animated, asset_filename, created_at, encrypted_key)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(assetId, req.user.id, shortcut, mimeType, req.file.size, width, height, isAnimated, req.file.filename, now);
+        stmt.run(assetId, req.user.id, shortcut, mimeType, req.file.size, width, height, isAnimated, req.file.filename, now, encryptedKey);
 
         res.json({
           success: true,

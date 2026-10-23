@@ -369,12 +369,13 @@ test('Réinitialiser mes clés : seules les données de CE compte sont effacées
   // Données d'un AUTRE compte utilisé dans ce navigateur : clés mémorisées + copie locale
   await p.evaluate(() => Promise.all([
     new Promise<void>((resolve) => {
-      // Même schéma que l'app (src/utils/E2EEKeyStorage.ts, version 2)
-      const req = indexedDB.open('WLM_DeviceVault_v1', 2);
+      // Même schéma que l'app (src/utils/E2EEKeyStorage.ts, version 3)
+      const req = indexedDB.open('WLM_DeviceVault_v1', 3);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains('e2ee_keys')) db.createObjectStore('e2ee_keys', { keyPath: 'userId' });
         if (!db.objectStoreNames.contains('verified_contacts')) db.createObjectStore('verified_contacts', { keyPath: 'contactId' });
+        if (!db.objectStoreNames.contains('verified_contacts_v2')) db.createObjectStore('verified_contacts_v2', { keyPath: 'key' });
       };
       req.onsuccess = () => {
         const tx = req.result.transaction('e2ee_keys', 'readwrite');

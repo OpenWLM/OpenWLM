@@ -120,6 +120,8 @@ export async function showSystemNotification(params: {
           icon: params.icon || defaultIcon,
           badge: defaultIcon,
           tag: params.tag || defaultTag,
+          // Le clic est traité par le Service Worker (public/sw.js) : il ouvre la conversation
+          // seulement si `senderId` est présent (OPEN_CHAT) ; `onClick` ne sert qu'au repli
           data: { url: '/', ...(params.data || {}) }
         });
         return true;

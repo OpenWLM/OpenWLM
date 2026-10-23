@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { encryptCustomEmoticon, validateImageSignature } from '../utils/Security';
+import { encryptCustomEmoticon, encryptForLocal, validateImageSignature } from '../utils/Security';
 import CustomEmoticonsDB, { type MyEmoticonRecord } from '../utils/CustomEmoticonsDB';
 import { useI18n } from '../i18n';
 import { serverErrorText, serverErrorFromResponse } from '../utils/serverError';
@@ -10,6 +10,8 @@ interface CustomEmoticonsModalProps {
   isOpen: boolean;
   onClose: () => void;
   userToken?: string;
+  /** Clé publique du compte : la clé AES de l'émoticône est sauvegardée chiffrée pour soi sur le serveur. */
+  publicKeyJwk?: JsonWebKey;
   onEmoticonsChange: (deletedShortcut?: string) => void;
   onSelectEmoticon?: (shortcut: string) => void;
 }
@@ -18,6 +20,7 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
   isOpen,
   onClose,
   userToken,
+  publicKeyJwk,
   onEmoticonsChange,
   onSelectEmoticon
 }) => {
@@ -305,6 +308,11 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
       formData.append('width', imageMeta.width.toString());
       formData.append('height', imageMeta.height.toString());
       formData.append('isAnimated', imageMeta.isAnimated ? '1' : '0');
+      // Copie de la clé chiffrée pour sa propre clé publique (le serveur ne peut pas la lire) :
+      // retrouvée à la prochaine connexion, sur n'importe quel appareil
+      if (publicKeyJwk) {
+        formData.append('encryptedKey', JSON.stringify(await encryptForLocal({ k: keyBase64 }, publicKeyJwk)));
+      }
 
       const res = await axios.post('/api/emoticons/custom/upload', formData, {
         headers: {

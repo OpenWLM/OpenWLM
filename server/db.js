@@ -156,6 +156,14 @@ try {
   console.warn("Index unique messages(sender_id, mid) déjà présent ou erreur:", e.message);
 }
 
+// Clé AES de chaque émoticône personnalisée, chiffrée par le client pour sa propre clé publique
+// (RSA-OAEP + AES-GCM, format de encryptForLocal) : le serveur ne peut pas la lire. Sans cette
+// copie, la clé n'existait qu'en IndexedDB et disparaissait à la déconnexion.
+const emoColumns = db.prepare("PRAGMA table_info(custom_emoticons)").all().map((c) => c.name);
+if (!emoColumns.includes('encrypted_key')) {
+  db.exec("ALTER TABLE custom_emoticons ADD COLUMN encrypted_key TEXT;");
+}
+
 // Curseur minimal de lecture par conversation
 try {
   db.exec(`

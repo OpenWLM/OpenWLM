@@ -28,7 +28,7 @@ const timeOf = (m: Message): number | null => {
  * (lignes système) gardent leur place relative : ils héritent de l'heure du message qui les
  * précédait dans la liste affichée.
  */
-export const mergeServerHistory = (current: Message[], server: Message[]): Message[] => {
+export const mergeServerHistory = (current: Message[], server: Message[], keepSince?: number): Message[] => {
   const serverIds = new Set(server.map((m) => m.id).filter(Boolean));
   const serverMids = new Set(server.map((m) => m.mid).filter(Boolean));
   const serverClientIds = new Set(server.map((m) => m.clientMsgId).filter(Boolean));
@@ -44,10 +44,33 @@ export const mergeServerHistory = (current: Message[], server: Message[]): Messa
   current.forEach((m) => {
     const t = timeOf(m);
     if (t !== null) previousKey = t;
-    if (!isLocalOnly(m) || inServer(m)) return;
+    if (inServer(m)) return;
+    // Message normal absent de la réponse du serveur : conservé s'il est arrivé en direct
+    // pendant le chargement (la requête est partie avant lui), sinon il a été supprimé.
+    const receivedMeanwhile = keepSince !== undefined && t !== null && t >= keepSince;
+    if (!isLocalOnly(m) && !receivedMeanwhile) return;
     entries.push({ msg: m, key: t ?? previousKey, seq: seq++ });
   });
 
+  return entries.sort((a, b) => a.key - b.key || a.seq - b.seq).map((e) => e.msg);
+};
+
+/**
+ * Insère des messages (rattrapage après une coupure) à leur place chronologique dans la liste
+ * affichée, au lieu de les ajouter en fin de liste après ce qui est arrivé en direct entre-temps.
+ */
+export const insertByTime = (current: Message[], incoming: Message[]): Message[] => {
+  if (incoming.length === 0) return current;
+  type Entry = { msg: Message; key: number; seq: number };
+  const entries: Entry[] = [];
+  let seq = 0;
+  let previousKey = 0;
+  current.forEach((m) => {
+    const t = timeOf(m);
+    if (t !== null) previousKey = t;
+    entries.push({ msg: m, key: t ?? previousKey, seq: seq++ });
+  });
+  incoming.forEach((m) => entries.push({ msg: m, key: timeOf(m) ?? Number.MAX_SAFE_INTEGER, seq: seq++ }));
   return entries.sort((a, b) => a.key - b.key || a.seq - b.seq).map((e) => e.msg);
 };
 

@@ -7,6 +7,10 @@
  * 3. Migration idempotente automatique depuis l'ancien localStorage['wlm_verified_contacts_v1'].
  * 4. Préservation des données en cas d'échec de migration (ne supprime pas le legacy si la migration échoue).
  * 5. Tolérance aux pannes : Fallback transparent si IndexedDB est indisponible (navigation privée stricte, quotas).
+ * 6. Par COMPTE : les vérifications sont rangées sous `userId_contactId` (store v2). Sur un
+ *    navigateur partagé, un badge « vérifié » posé par un compte ne s'affichait pas seulement
+ *    chez lui, et un reset E2E d'un compte effaçait les vérifications des autres. L'ancien store
+ *    (sans compte) est repris une fois, par le premier compte qui s'en sert, puis vidé.
  * 
  * Note de sécurité :
  * IndexedDB améliore l'architecture de stockage et la cohérence avec le vault navigateur existant ;
@@ -35,8 +39,9 @@ export interface MigrationResult {
 }
 
 const DB_NAME = 'WLM_DeviceVault_v1';
-const DB_VERSION = 2;
-const STORE_NAME = 'verified_contacts';
+const DB_VERSION = 3;
+const LEGACY_STORE = 'verified_contacts';
+const STORE_NAME = 'verified_contacts_v2';
 const KEYS_STORE = 'e2ee_keys';
 
 const LEGACY_STORAGE_KEY = 'wlm_verified_contacts_v1';
@@ -47,6 +52,45 @@ class VerifiedContactsStorage {
   private initPromise: Promise<void> | null = null;
   private useFallback: boolean = false;
   private fallbackMemory: Record<number, VerifiedContactRecord> = {};
+  private userId: number | null = null;
+
+  /** Compte courant : toutes les opérations qui suivent lui sont réservées (null = aucun). */
+  public setUser(userId: number | null): void {
+    this.userId = userId;
+    this.fallbackMemory = {};
+  }
+
+  private keyFor(contactId: number): string {
+    return `${this.userId ?? 0}_${contactId}`;
+  }
+
+  private toStored(record: VerifiedContactRecord) {
+    return { ...record, key: this.keyFor(record.contactId), userId: this.userId ?? 0 };
+  }
+
+  /** Ancien store sans compte : repris par le premier compte qui lit ses vérifications, puis vidé. */
+  private async adoptLegacy(): Promise<void> {
+    if (!this.db || this.userId === null || !this.db.objectStoreNames.contains(LEGACY_STORE)) return;
+    await new Promise<void>((resolve) => {
+      try {
+        const tx = this.db!.transaction([LEGACY_STORE, STORE_NAME], 'readwrite');
+        const legacy = tx.objectStore(LEGACY_STORE);
+        const store = tx.objectStore(STORE_NAME);
+        const req = legacy.getAll();
+        req.onsuccess = () => {
+          const list = (req.result || []) as VerifiedContactRecord[];
+          for (const item of list) {
+            if (item && typeof item.contactId === 'number') store.put(this.toStored(item));
+          }
+          if (list.length > 0) legacy.clear();
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
+  }
 
   /**
    * Vérifie si IndexedDB est disponible dans l'environnement actuel
@@ -76,8 +120,11 @@ class VerifiedContactsStorage {
           if (!db.objectStoreNames.contains(KEYS_STORE)) {
             db.createObjectStore(KEYS_STORE, { keyPath: 'userId' });
           }
+          if (!db.objectStoreNames.contains(LEGACY_STORE)) {
+            db.createObjectStore(LEGACY_STORE, { keyPath: 'contactId' });
+          }
           if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME, { keyPath: 'contactId' });
+            db.createObjectStore(STORE_NAME, { keyPath: 'key' });
           }
         };
 
@@ -118,6 +165,8 @@ class VerifiedContactsStorage {
       if (this.useFallback || !this.db) {
         return this.getFallbackAll();
       }
+      if (this.userId === null) return {};
+      await this.adoptLegacy();
 
       return await new Promise<Record<number, VerifiedContactRecord>>((resolve) => {
         try {
@@ -126,11 +175,12 @@ class VerifiedContactsStorage {
           const req = store.getAll();
 
           req.onsuccess = () => {
-            const list = (req.result || []) as VerifiedContactRecord[];
+            const list = (req.result || []) as Array<VerifiedContactRecord & { userId?: number }>;
             const map: Record<number, VerifiedContactRecord> = {};
             for (const item of list) {
-              if (item && typeof item.contactId === 'number') {
-                map[item.contactId] = item;
+              if (item && typeof item.contactId === 'number' && item.userId === this.userId) {
+                const { key: _k, userId: _u, ...rec } = item as VerifiedContactRecord & { key?: string; userId?: number };
+                map[item.contactId] = rec;
               }
             }
             resolve(map);
@@ -167,7 +217,7 @@ class VerifiedContactsStorage {
         try {
           const tx = this.db!.transaction([STORE_NAME], 'readonly');
           const store = tx.objectStore(STORE_NAME);
-          const req = store.get(contactId);
+          const req = store.get(this.keyFor(contactId));
 
           req.onsuccess = () => {
             resolve((req.result as VerifiedContactRecord) || null);
@@ -201,7 +251,7 @@ class VerifiedContactsStorage {
         try {
           const tx = this.db!.transaction([STORE_NAME], 'readwrite');
           const store = tx.objectStore(STORE_NAME);
-          store.put(record);
+          store.put(this.toStored(record));
 
           tx.oncomplete = () => {
             resolve({ success: true });
@@ -246,7 +296,7 @@ class VerifiedContactsStorage {
           const store = tx.objectStore(STORE_NAME);
 
           for (const rec of records) {
-            store.put(rec);
+            store.put(this.toStored(rec));
           }
 
           tx.oncomplete = () => {
@@ -284,7 +334,7 @@ class VerifiedContactsStorage {
         try {
           const tx = this.db!.transaction([STORE_NAME], 'readwrite');
           const store = tx.objectStore(STORE_NAME);
-          store.delete(contactId);
+          store.delete(this.keyFor(contactId));
 
           tx.oncomplete = () => resolve({ success: true });
           tx.onerror = () => resolve({ success: false, error: tx.error?.message });
@@ -319,7 +369,13 @@ class VerifiedContactsStorage {
         try {
           const tx = this.db!.transaction([STORE_NAME], 'readwrite');
           const store = tx.objectStore(STORE_NAME);
-          store.clear();
+          // Uniquement les vérifications du compte courant (jamais celles des autres comptes)
+          const req = store.getAll();
+          req.onsuccess = () => {
+            for (const item of (req.result || []) as Array<{ key: string; userId?: number }>) {
+              if (item.userId === this.userId) store.delete(item.key);
+            }
+          };
 
           tx.oncomplete = () => {
             try {
@@ -427,10 +483,14 @@ class VerifiedContactsStorage {
 
   // --- MÉTHODES DE FALLBACK (LocalStorage / Mémoire) ---
 
+  private fallbackKey(): string {
+    return this.userId === null ? LEGACY_STORAGE_KEY : `${LEGACY_STORAGE_KEY}_${this.userId}`;
+  }
+
   private getFallbackAll(): Record<number, VerifiedContactRecord> {
     try {
       if (typeof localStorage !== 'undefined') {
-        const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+        const raw = localStorage.getItem(this.fallbackKey());
         if (raw) {
           const parsed = JSON.parse(raw);
           return parsed as Record<number, VerifiedContactRecord>;
@@ -446,7 +506,7 @@ class VerifiedContactsStorage {
       if (typeof localStorage !== 'undefined') {
         const all = this.getFallbackAll();
         all[record.contactId] = record;
-        localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(all));
+        localStorage.setItem(this.fallbackKey(), JSON.stringify(all));
       }
     } catch {}
   }
@@ -457,7 +517,7 @@ class VerifiedContactsStorage {
       if (typeof localStorage !== 'undefined') {
         const all = this.getFallbackAll();
         delete all[contactId];
-        localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(all));
+        localStorage.setItem(this.fallbackKey(), JSON.stringify(all));
       }
     } catch {}
   }

@@ -6,7 +6,6 @@ import './WLM.css';
 import SoundManager from './utils/SoundManager';
 import LocalDB from './utils/LocalDB';
 import { 
-  sanitize, 
   generateKeyPair, 
   encryptPrivateKeyVault, 
   decryptPrivateKeyVault,
@@ -16,7 +15,9 @@ import {
   importPrivateCryptoKey,
   importPrivateKeyForSigning,
   calculatePublicKeyFingerprint,
-  formatSafetyNumber
+  formatSafetyNumber,
+  decryptFromLocal,
+  encryptForLocal
 } from './utils/Security';
 import E2EEKeyStorage from './utils/E2EEKeyStorage';
 import { type EnvelopeStatus } from './utils/MessageEnvelope';
@@ -102,8 +103,8 @@ import {
   isPresenceStatus
 } from './utils/profileStorage';
 import { useAppPrefs, getAppPrefs, updateAppPrefs, setPresenceForSounds, isSoundAllowed } from './utils/appPrefs';
-import { mergeServerHistory, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
-import { systemLine } from './utils/systemLine';
+import { mergeServerHistory, insertByTime, cacheableHistory, withLocalOnly, isLocalOnly } from './utils/historyMerge';
+import { systemLine, isSystemLine } from './utils/systemLine';
 import { commandSuggestions, isTestContactCommand } from './utils/chatCommands';
 import { hasPlusFormatting, renderPlusText, stripPlusTags, visibleLength } from './utils/plusFormat';
 import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
@@ -121,6 +122,10 @@ const gameIcon = (gameType?: string) =>
 
 /** Taille max. d'un message sur la socket (le serveur borne les trames à 1 Mo). */
 const MAX_SOCKET_MESSAGE_CHARS = 900_000;
+// Raccourci et identifiant d'émoticône personnalisée reçus d'un contact : même forme que ce
+// que le serveur accepte à la création (server/routes/emoticons.js)
+const RECEIVED_SHORTCUT_RE = /^[\w\-():;@#!?*~[\]{}]{2,32}$/;
+const RECEIVED_ASSET_ID_RE = /^emo_[0-9a-f-]{36}$/;
 /** Délai d'attente de l'accusé du serveur pour une tentative d'envoi. */
 const SEND_ACK_TIMEOUT_MS = 15_000;
 /** Envoi pendant une reconnexion : attente de la connexion au plus ce délai avant « Non envoyé ». */
@@ -470,6 +475,8 @@ const App: React.FC = () => {
 
   // --- ÉTAT SOCKET & NAVIGATION ---
   const [socket, setSocket] = useState<Socket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  useEffect(() => { socketRef.current = socket; }, [socket]);
   const [openChatIds, setOpenChatIds] = useState<number[]>(loadOpenChatIds);
   const [activeChatId, setActiveChatId] = useState<number>(loadActiveChatId);
   const activeChatIdRef = useRef(activeChatId);
@@ -481,8 +488,13 @@ const App: React.FC = () => {
   // Stocké dans le coffre-fort d'appareil local IndexedDB ('WLM_DeviceVault_v1')
   const [verifiedContacts, setVerifiedContacts] = useState<Record<number, VerifiedContactRecord>>({});
 
+  // Par compte : chargées une fois le compte connu, vidées à la déconnexion
+  const verifiedUserId = user?.id ?? null;
   useEffect(() => {
     let isMounted = true;
+    VerifiedContactsStorage.setUser(verifiedUserId);
+    // Déconnexion : la page est rechargée (purgeLocalSession), l'état repart vide
+    if (verifiedUserId === null) return;
     const initVerifiedContacts = async () => {
       try {
         await VerifiedContactsStorage.migrateFromLocalStorage();
@@ -496,7 +508,7 @@ const App: React.FC = () => {
     };
     initVerifiedContacts();
     return () => { isMounted = false; };
-  }, []);
+  }, [verifiedUserId]);
 
   // Alerte si la clé d'un contact a changé par rapport à l'empreinte connue
   const [keyAlertContactId, setKeyAlertContactId] = useState<number | null>(null);
@@ -899,19 +911,22 @@ const App: React.FC = () => {
     setNativeSoundPrefs({ message: isSoundAllowed('message'), nudge: isSoundAllowed('nudge') });
   }, [appPrefs.sounds, myStatus]);
 
-  // Conversation affichée ET fenêtre au premier plan : ses messages sont lus
+  // Conversation affichée ET fenêtre au premier plan : ses messages sont lus. `focusTick`
+  // relance l'accusé de lecture au retour au premier plan.
+  const [focusTick, setFocusTick] = useState(0);
   useEffect(() => {
     const markRead = () => {
       const id = activeChatIdRef.current;
       if (!id || document.visibilityState !== 'visible' || !document.hasFocus()) return;
       setUnreadCounts(prev => { if (!prev[id]) return prev; const next = { ...prev }; delete next[id]; return next; });
     };
+    const onForeground = () => { markRead(); setFocusTick(n => n + 1); };
     markRead();
-    window.addEventListener('focus', markRead);
-    document.addEventListener('visibilitychange', markRead);
+    window.addEventListener('focus', onForeground);
+    document.addEventListener('visibilitychange', onForeground);
     return () => {
-      window.removeEventListener('focus', markRead);
-      document.removeEventListener('visibilitychange', markRead);
+      window.removeEventListener('focus', onForeground);
+      document.removeEventListener('visibilitychange', onForeground);
     };
   }, [activeChatId]);
 
@@ -1092,19 +1107,31 @@ const App: React.FC = () => {
         // 1. Tenter de synchroniser la session avec le serveur via le cookie HttpOnly
         let sessionToken = '';
         let serverUser: any = null;
+        // Seule une RÉPONSE du serveur peut invalider l'appareil mémorisé : une erreur réseau
+        // (mode avion, serveur injoignable, 502) le laissait croire à une session expirée et
+        // effaçait « se souvenir de cet appareil ».
+        let serverAnswered = false;
         try {
           const res = await axios.get('/api/user/me');
+          serverAnswered = true;
           if (res.data && res.data.success && res.data.user) {
             serverUser = res.data.user;
             sessionToken = res.data.token || '';
           }
         } catch (authErr) {
-          console.warn("[E2EE Session] Session serveur expirée ou invalide:", authErr);
+          const status = (authErr as { response?: { status?: number } }).response?.status;
+          serverAnswered = typeof status === 'number' && status < 500;
+          console.warn("[E2EE Session] Session serveur non confirmée :", status ?? 'réseau');
         }
 
         if (!serverUser) {
-          console.warn("[E2EE Session] Session expirée ou invalide côté serveur.");
-          localStorage.removeItem('wlm_user');
+          if (serverAnswered) {
+            console.warn("[E2EE Session] Session expirée ou invalide côté serveur.");
+            localStorage.removeItem('wlm_user');
+            try { sessionStorage.setItem('wlm_session_notice', 'expired'); } catch { /* ignore */ }
+          } else {
+            try { sessionStorage.setItem('wlm_session_notice', 'offline'); } catch { /* ignore */ }
+          }
           if (!isCancelled) setIsAuthInitializing(false);
           return;
         }
@@ -1421,6 +1448,11 @@ const App: React.FC = () => {
 
     for (const [shortcut, info] of Object.entries(receivedMap)) {
       if (!info || !info.assetId || !info.key) continue;
+      // Même forme qu'à la création (serveur) : sans cela, un contact pouvait envoyer « e » ou
+      // un espace comme raccourci et remplacer chaque lettre de toutes les conversations par son
+      // image, ou écraser un raccourci personnel
+      if (!RECEIVED_SHORTCUT_RE.test(shortcut) || !RECEIVED_ASSET_ID_RE.test(String(info.assetId))) continue;
+      if (myCustomShortcutsRef.current.has(shortcut)) continue;
 
       // 1. Déjà en mémoire ?
       const existingUrl = CustomEmoticonsDB.getMemoryUrl(info.assetId);
@@ -1527,9 +1559,25 @@ const App: React.FC = () => {
       const newMap: Record<string, { assetId: string; url: string; shortcut: string; isAnimated?: number; width?: number; height?: number }> = {};
 
       const listToProcess = serverRecords !== null ? serverRecords : localRecords;
+      const keys = myKeysRef.current;
       for (const item of listToProcess) {
         const local = localRecords.find(l => l.id === item.id);
-        const keyBase64 = local?.keyBase64 || (item as any).keyBase64 || '';
+        let keyBase64 = local?.keyBase64 || (item as any).keyBase64 || '';
+        const encryptedKey = (item as { encrypted_key?: string | null }).encrypted_key;
+        if (!keyBase64 && encryptedKey && keys) {
+          // Clé absente de cet appareil (déconnexion, autre appareil) : reprise depuis la copie
+          // chiffrée pour notre clé publique, puis remise dans le trousseau local
+          try {
+            const opened = await decryptFromLocal<{ k?: string }>(JSON.parse(encryptedKey), keys.privateKeyJwk);
+            if (opened && typeof opened.k === 'string' && opened.k) keyBase64 = opened.k;
+          } catch { /* copie illisible : émoticône sans clé */ }
+        } else if (keyBase64 && serverRecords !== null && encryptedKey === null && keys) {
+          // Émoticône créée avant la sauvegarde des clés : copie envoyée une fois
+          try {
+            const payload = JSON.stringify(await encryptForLocal({ k: keyBase64 }, keys.publicKeyJwk));
+            await axios.post('/api/emoticons/custom/key', { id: item.id, encryptedKey: payload }, { headers: authHeaders });
+          } catch { /* réessayé au prochain chargement */ }
+        }
         const record: MyEmoticonRecord = {
           id: item.id,
           shortcut: item.shortcut,
@@ -1541,6 +1589,9 @@ const App: React.FC = () => {
           createdAt: item.created_at || item.createdAt || Date.now()
         };
         merged.push(record);
+        if (keyBase64 && !local?.keyBase64) {
+          try { await CustomEmoticonsDB.saveMyEmoticon(record); } catch { /* trousseau indisponible */ }
+        }
 
         let cachedBlob = await CustomEmoticonsDB.getCachedAsset(item.id);
         if (!cachedBlob && keyBase64) {
@@ -1747,6 +1798,8 @@ const App: React.FC = () => {
 
       // 2. Synchronisation avec l'historique officiel du serveur (source de vérité)
       try {
+        // Un message reçu en direct APRÈS ce moment n'est pas dans la réponse : il est conservé
+        const requestedAt = Date.now();
         const res = await axios.get(`/api/messages/${user.id}/${chatId}`);
         if (Array.isArray(res.data)) {
           const serverMsgs = await decryptMessageArray(res.data);
@@ -1755,39 +1808,57 @@ const App: React.FC = () => {
           const validServerMsgs = serverMsgs.filter(m => m._auth !== 'undecryptable');
 
           if (incremental) {
-            setMessages(prev => {
-              const currentMsgs = prev[chatId] || [];
-              const knownIds = new Set(currentMsgs.map(m => m.id).filter(Boolean));
-              const knownMids = new Set(currentMsgs.map(m => m.mid).filter(Boolean));
-              const serverById = new Map(validServerMsgs.filter(m => m.id).map(m => [m.id, m]));
-              let changed = false;
-              // Statuts (remis / lu) mis à jour pendant la coupure
-              const updated = currentMsgs.map(m => {
-                const srv = m.id ? serverById.get(m.id) : undefined;
-                if (srv && srv.delivery_status && srv.delivery_status !== m.delivery_status) {
-                  changed = true;
-                  return { ...m, delivery_status: srv.delivery_status };
-                }
-                return m;
-              });
-              const missing = validServerMsgs.filter(m =>
-                (!m.id || !knownIds.has(m.id)) && (!m.mid || !knownMids.has(m.mid))
-              );
-              if (missing.length === 0 && !changed) return prev;
-              return { ...prev, [chatId]: [...updated, ...missing] };
+            const currentMsgs = messagesRef.current[chatId] || [];
+            const knownIds = new Set(currentMsgs.map(m => m.id).filter(Boolean));
+            const knownMids = new Set(currentMsgs.map(m => m.mid).filter(Boolean));
+            const serverById = new Map(validServerMsgs.filter(m => m.id).map(m => [m.id, m]));
+            let changed = false;
+            // Statuts (remis / lu) mis à jour pendant la coupure
+            const updated = currentMsgs.map(m => {
+              const srv = m.id ? serverById.get(m.id) : undefined;
+              if (srv && srv.delivery_status && srv.delivery_status !== m.delivery_status) {
+                changed = true;
+                return { ...m, delivery_status: srv.delivery_status };
+              }
+              return m;
             });
+            const missing = validServerMsgs.filter(m =>
+              (!m.id || !knownIds.has(m.id)) && (!m.mid || !knownMids.has(m.mid))
+            );
+            if (missing.length > 0 || changed) {
+              // À leur place chronologique (pas après ce qui est arrivé en direct entre-temps)
+              setMessages(prev => ({ ...prev, [chatId]: insertByTime(updated, missing) }));
+            }
+            // Messages du contact manqués pendant la coupure : mêmes effets qu'une réception en
+            // direct (non-lu, son, accusé « remis ») — avant, ils apparaissaient en silence et
+            // l'expéditeur ne les voyait jamais « remis » avant l'accusé de lecture.
+            const fromContact = missing.filter(m => (m.sender_id ?? m.senderId) === chatId && !isSystemLine(m));
+            if (fromContact.length > 0) {
+              const visibleHere = typeof document !== 'undefined' && document.visibilityState === 'visible'
+                && document.hasFocus() && activeChatIdRef.current === chatId;
+              if (!visibleHere) setUnreadCounts(prev => ({ ...prev, [chatId]: (prev[chatId] || 0) + fromContact.length }));
+              SoundManager.play('NEW_MESSAGE');
+              const s = socketRef.current;
+              if (s) {
+                for (const m of fromContact) {
+                  if (typeof m.id === 'number' && !m.isPrivate) s.emit('message_delivered', { messageId: m.id, senderId: chatId });
+                }
+              }
+            }
           } else {
             // Historique serveur + ce qui n'existe que sur l'appareil (messages privés, lignes
             // système, envois en cours) : rien de local n'est plus écrasé par le rechargement
             const baseFor = (current: Message[] | undefined) => withLocalOnly(current || [], cachedBase);
-            setMessages(prev => ({ ...prev, [chatId]: mergeServerHistory(baseFor(prev[chatId]), validServerMsgs) }));
+            // Tolérance d'une minute entre l'horloge du serveur (horodatage) et celle d'ici
+            const keepSince = requestedAt - 60000;
+            setMessages(prev => ({ ...prev, [chatId]: mergeServerHistory(baseFor(prev[chatId]), validServerMsgs, keepSince) }));
             // Copie locale chiffrée : historique serveur ET messages privés (sinon perdus au
             // rechargement, puisque le serveur ne les a jamais eus). Calculée avec la même base
             // que l'affichage, copie lue au préchargement comprise.
             if (getAppPrefs().messages.keepLocalHistory) {
               // + messages locaux enregistrés pendant le chargement (pas encore affichés)
               const recent = recentLocalSavesRef.current.get(chatId) || [];
-              const merged = mergeServerHistory(withLocalOnly(baseFor(messagesRef.current[chatId]), recent), validServerMsgs);
+              const merged = mergeServerHistory(withLocalOnly(baseFor(messagesRef.current[chatId]), recent), validServerMsgs, keepSince);
               await LocalDB.setHistory(`${user.id}_${chatId}`, cacheableHistory(merged), keys.publicKeyJwk);
               // Ceux qui sont maintenant dans la copie réécrite n'ont plus besoin d'être suivis
               const left = (recentLocalSavesRef.current.get(chatId) || []).filter((m) => !recent.includes(m));
@@ -1934,15 +2005,23 @@ const App: React.FC = () => {
       // vérifie donc la session avant tout. Valide → simple reconnexion ; révoquée → retour à
       // l'écran de connexion, sans appeler /api/logout (qui révoquerait la session des autres).
       let checkingSession = false;
+      // Erreur réseau pendant la vérification : nouvel essai (5 s, 15 s, 45 s, puis 60 s) tant que
+      // la connexion temps réel n'est pas rétablie — avant, l'app restait affichée mais morte.
+      let sessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
+      let sessionRetryDelay = 5000;
       const verifySessionOrLogout = async () => {
         if (checkingSession || loggingOutRef.current) return;
         checkingSession = true;
+        if (sessionRetryTimer) { clearTimeout(sessionRetryTimer); sessionRetryTimer = null; }
         // Une seconde chance après un court délai : un autre onglet de ce navigateur vient
         // peut-être de recevoir le cookie renouvelé (même stockage de cookies)
         const sessionStatus = async () => {
           try { await axios.get('/api/user/me'); return 'valid'; } catch (err) {
             const r = (err as { response?: { status?: number; data?: { code?: string } } }).response;
-            return r?.status === 401 && r.data?.code === 'session_revoked' ? 'revoked' : 'unknown';
+            if (r?.status === 401 && r.data?.code === 'session_revoked') return 'revoked';
+            // Jeton expiré (403 sans code) ou refusé : la session est terminée
+            if (r?.status === 401 || r?.status === 403) return 'expired';
+            return 'unknown';
           }
         };
         try {
@@ -1952,15 +2031,22 @@ const App: React.FC = () => {
             st = await sessionStatus();
           }
           if (st === 'valid') {
+            sessionRetryDelay = 5000;
             if (!newSocket.connected) newSocket.connect();
           } else if (st === 'revoked') {
             await handleLogoutRef.current?.('session_revoked', { local: true });
+          } else if (st === 'expired') {
+            await handleLogoutRef.current?.('session_expired', { local: true });
+          } else if (!newSocket.connected) {
+            sessionRetryTimer = setTimeout(() => { sessionRetryTimer = null; if (!newSocket.connected) verifySessionOrLogout(); }, sessionRetryDelay);
+            sessionRetryDelay = Math.min(sessionRetryDelay * 3, 60000);
           }
         } finally {
           checkingSession = false;
         }
       };
       newSocket.on('session_revoked', () => { verifySessionOrLogout(); });
+      newSocket.on('session_expired', () => { verifySessionOrLogout(); });
       // Connexion coupée PAR LE SERVEUR (changement de mot de passe, déconnexion sur un autre
       // appareil…) : Socket.IO ne se reconnecte pas seul dans ce cas. Session toujours valide
       // (cookie renouvelé) → reconnexion ; révoquée → écran de connexion.
@@ -2141,6 +2227,8 @@ const App: React.FC = () => {
             body: previewText,
             icon: contactAvatar,
             tag: `openwlm-chat-${senderId}`,
+            // Voie Service Worker : le clic ouvre la conversation grâce à `senderId` (OPEN_CHAT)
+            data: { senderId, url: `/?chat=${senderId}` },
             onClick: () => {
               setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
               setActiveChatId(senderId);
@@ -2192,6 +2280,8 @@ const App: React.FC = () => {
             body: `💥 [Wizz !]`,
             icon: contactAvatar,
             tag: `openwlm-chat-${senderId}`,
+            // Voie Service Worker : le clic ouvre la conversation grâce à `senderId` (OPEN_CHAT)
+            data: { senderId, url: `/?chat=${senderId}` },
             onClick: () => {
               setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
               setActiveChatId(senderId);
@@ -2258,6 +2348,12 @@ const App: React.FC = () => {
         }
         // Déjà présenté (nouvelle remise au retour au premier plan) : rien à refaire
         if (activeCallIdRef.current === Number(data.caller)) return;
+        // Déjà en appel avec quelqu'un d'autre : refus (l'appelant voit « refusé ») au lieu
+        // d'écraser l'appel en cours dans le même composant
+        if (activeCallIdRef.current) {
+          newSocket.emit('call_reject', { target: Number(data.caller) });
+          return;
+        }
 
         // La signalisation est chiffrée E2EE : on la transmet BRUTE à <VideoCall/> qui la déchiffre.
         setCallSignal(data.signal);
@@ -2518,6 +2614,7 @@ const App: React.FC = () => {
         document.removeEventListener('visibilitychange', checkLiveness);
         window.removeEventListener('pageshow', checkLiveness);
         window.removeEventListener('online', checkLiveness);
+        if (sessionRetryTimer) clearTimeout(sessionRetryTimer);
         newSocket.disconnect();
       };
     }
@@ -2535,6 +2632,9 @@ const App: React.FC = () => {
   // Émission de l'accusé de lecture lorsque la conversation est active et des messages sont présents
   useEffect(() => {
     if (!socket || !user || activeChatId === 0 || activeChatId === SYSTEM_BOT_ID) return;
+    // Fenêtre réduite ou autre onglet au premier plan : rien n'a été lu (l'expéditeur voyait
+    // « lu » alors que l'onglet clignotait encore) ; l'accusé partira au retour (focusTick)
+    if (typeof document !== 'undefined' && (document.visibilityState !== 'visible' || !document.hasFocus())) return;
     const currentMsgs = messages[activeChatId] || [];
     if (currentMsgs.length === 0) return;
 
@@ -2558,7 +2658,7 @@ const App: React.FC = () => {
         isPrivate: isPriv
       });
     }
-  }, [activeChatId, messages[activeChatId]?.length, socket, user, effectivePrivateModes]);
+  }, [activeChatId, messages[activeChatId]?.length, socket, user, effectivePrivateModes, focusTick]);
 
   /**
    * RÉCUPÉRATION DE LA CLÉ PUBLIQUE D'UN CONTACT (Cache-first)
@@ -2836,7 +2936,7 @@ const App: React.FC = () => {
 
     // --- INTERCEPTION DE L'ASSISTANT OPENWLM (TESTS LOCAUX 100% CLIENT) ---
     if (activeChatId === SYSTEM_BOT_ID) {
-      const userText = sanitize(outgoing);
+      const userText = outgoing;
       const nowIso = new Date().toISOString();
       const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -2977,8 +3077,9 @@ const App: React.FC = () => {
         }
       }
 
+      // Texte brut : React l'affiche littéralement ; l'échapper ici faisait apparaître « &amp; »
       const unencryptedPayload: any = { 
-        text: sanitize(text), 
+        text, 
         sender: myNickname, 
         style: { ...fontSettings }, 
         type: 'text' 
@@ -3685,6 +3786,7 @@ const App: React.FC = () => {
       sessionStorage.clear();
       // Message affiché sur l'écran de connexion après le rechargement
       if (reason === 'session_revoked') sessionStorage.setItem('wlm_session_notice', 'revoked');
+      if (reason === 'session_expired') sessionStorage.setItem('wlm_session_notice', 'expired');
     } catch {}
 
     // SÉCURITÉ : Purger les clés E2EE mémorisées sur cet appareil
@@ -5038,6 +5140,7 @@ const App: React.FC = () => {
         isOpen={showCustomEmoticonsModal}
         onClose={() => setShowCustomEmoticonsModal(false)}
         userToken={user?.token}
+        publicKeyJwk={myKeys?.publicKeyJwk}
         onEmoticonsChange={handleCustomEmoticonsChange}
         onSelectEmoticon={(shortcut) => {
           insertChatText(shortcut);
@@ -5205,6 +5308,7 @@ const App: React.FC = () => {
       {/* Interface d'appel Audio/Vidéo */}
       {activeCallId && (
         <VideoCall 
+          key={activeCallId}
           socket={socket} 
           activeChatId={activeCallId} 
           myId={user?.id || 0} 

@@ -57,7 +57,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
   // la prochaine tentative (pas effacé au montage : la page se recharge juste après la déconnexion)
   const [error, setError] = useState(() => {
     try {
-      if (sessionStorage.getItem('wlm_session_notice') === 'revoked') return t.auth.sessionRevokedNotice;
+      const notice = sessionStorage.getItem('wlm_session_notice');
+      if (notice === 'revoked') return t.auth.sessionRevokedNotice;
+      if (notice === 'expired') return t.auth.sessionExpiredNotice;
+      if (notice === 'offline') return t.auth.sessionOfflineNotice;
     } catch { /* stockage indisponible */ }
     return '';
   });

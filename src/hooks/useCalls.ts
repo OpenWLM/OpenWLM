@@ -51,6 +51,12 @@ export function useCalls({ user, activeChatId }: UseCallsOptions): CallsApi {
       notify(t.notices.callsBotOnly);
       return;
     }
+    // Déjà en appel (ou en train d'appeler) : un second appel écrasait le premier dans le même
+    // composant, la signalisation partait vers le nouveau contact et l'ancien n'était jamais prévenu
+    if (activeCallId) {
+      notify(t.notices.callAlreadyActive);
+      return;
+    }
     setIsAudioOnly(audioOnly);
     setActiveCallId(activeChatId);
     setIsReceivingCall(false);

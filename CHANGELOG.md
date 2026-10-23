@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **Security review, batch 2 (interface + server)**: `server/db.js` (new `custom_emoticons.encrypted_key` column, created automatically at startup), `server/routes/emoticons.js` (`encryptedKey` upload field, **new route `POST /api/emoticons/custom/key`**: WAF rule regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`): restart the service.
 - **October 2026 security review, batch 1 (server)**: `server/index.js`, `server/db.js`, `server/clientIdentity.js`, `server/routes/{auth,users,files,emoticons}.js`, `server/sockets/{messages,games,webrtc}.js` changed: restart the service. **Behind a local cloudflared tunnel, add `CLOUDFLARE_IP_RANGES=127.0.0.1/32,::1/128` to `.env`** (see docs/DEPLOYMENT.md): without it, every per-IP limit was global. **WAF rule changed**: `DELETE /api/emoticons/custom/:assetId` now expects an `emo_<uuid>` id (previously a number, which would have blocked emoticon deletion in Block mode) — update the Cloudflare rule from `docs/cloudflare-waf.generated.json`.
 - **Node.js 22.23.4 required** (security release of 2026-10-21, including CVE-2026-111497: Brotli decoder, possible code execution, reachable because Express decompresses `Content-Encoding: br` request bodies). With NodeSource: `sudo apt update && sudo apt install --only-upgrade nodejs`, then restart the service. Vite 8.3.5 (build tool, dev-server flaw fixed): `npm ci`.
 - `server/routes/users.js` and `server/middleware/auth.js` changed (E2E reset, blocking, profile change limit): restart the service. No new route or WAF rule.
@@ -32,6 +33,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- `e2e/session-robustness.spec.ts` (offline start, expired session, message received while loading, read receipt in background), `e2e/account-scoped-data.spec.ts` (emoticon key after sign-out, per-account verified contacts), `tests/test_emoticon_key_backup.js`; all fail on the previous version.
 - `tests/test_lot1_hardening.js` (isolated server, 11 tests: multipart, presence, invitations, message bounds and budget, receipt, games, calls) and 3 tunnel tests in `tests/test_client_ip_resolution.js`; all fail on the previous version. `test_call_delivery.js` and `test_route_authorization.js` adapted (cooldown after rejection, "Play again" at game end).
 - `e2e/android-sounds.spec.ts`: Sound settings (sounds off, nudge unticked, Busy) passed to a simulated APK v7, nothing sent to an APK v6.
 - `e2e/image-viewer.spec.ts`: large received screenshot, large viewer (desktop) and full screen (phone), fitted view, double-click actual size, bounded panning, mouse wheel, 0 key, pinch, double-tap, Back.
@@ -48,6 +50,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Interface (review, batch 2)**:
+  - **Custom emoticons lost at sign-out**: their key only existed on the device and was wiped at sign-out; they stayed listed but no longer displayed. The key is now also saved on the server, encrypted for your own public key (the server cannot read it), and recovered at sign-in on any device; emoticons created earlier get their copy on first load.
+  - **Opening the app offline no longer forgets the remembered device**: only a server reply (expired or refused session) invalidates it; offline, the sign-in screen says so and automatic sign-in returns with the network.
+  - **Expired session**: the app stayed displayed but dead (frozen list, "Not sent"). It returns to the sign-in screen with a message; a network error during the check is retried (5 s, 15 s, 45 s, 60 s).
+  - **Message received while a conversation is loading**: it vanished from the screen (and the local copy) once the history arrived; it is kept.
+  - **Catch-up after a disconnection**: missed messages trigger the unread counter, the sound and the "delivered" receipt (before: silent, and the sender never saw them "delivered"), and are inserted in chronological order.
+  - **Read receipt**: no longer sent while the window is minimized or another tab is in front; it goes out when you come back.
+  - **Calls**: starting a second call during a call is refused (explicit message); an incoming call during a call is declined instead of overriding the current one; the call screen is recreated for each call.
+  - **Message text**: `&`, `<` and `>` showed as `&amp;`, `&lt;`, `&gt;` (needless HTML escaping before encryption).
+  - **Emoticons received from a contact**: shortcut and id validated (same form as at creation) and never overriding your own shortcuts; before, a contact could replace every letter or space of all your conversations with their image.
+  - **Verified contacts** (safety number): stored per account; on a shared browser, a "verified" badge set by one account no longer shows for another, and "Reset E2E" no longer wipes other accounts' verifications. Existing verifications are taken over by the first account that signs in.
+  - **Clicking a system notification** (PWA, Chromium browsers): opens the conversation instead of just focusing the window.
 - **Server security (review, batch 1)**:
   - Per-IP limits behind a local cloudflared tunnel: the server now reports at startup and in its log when Cloudflare requests arrive from an address outside the trusted ranges (all visitors then shared IP 127.0.0.1: 10 logins/min for everyone). `CLOUDFLARE_IP_RANGES` documented in `.env.example`.
   - File and emoticon uploads: number and size of text fields bounded (one account could exhaust server memory with a single multipart request of thousands of fields).

@@ -74,7 +74,9 @@
     "logout": "Se déconnecter de partout",
     "changePassword": "Changer le mot de passe",
     "logoutFailed": "La déconnexion n'a pas pu être enregistrée par le serveur (connexion perdue ou erreur du serveur) : vos sessions restent ouvertes. Réessayer ?",
-    "logoutRetry": "Réessayer"
+    "logoutRetry": "Réessayer",
+    "sessionExpiredNotice": "Votre session a expiré : reconnectez-vous.",
+    "sessionOfflineNotice": "Serveur injoignable pour le moment : vérifiez votre connexion, puis réessayez. Cet appareil reste mémorisé."
   },
   "status": {
     "online": "Disponible",
@@ -735,7 +737,8 @@
     "toastOpenHint": "Cliquer pour ouvrir la conversation",
     "winkAlt": "Clin d'œil {name}",
     "pushTestNotConfigured": "Le Push n'est pas configuré sur le serveur (clés VAPID manquantes).",
-    "profileSaveFailed": "Le profil n'a pas pu être enregistré (pseudo ou message perso refusé par le serveur, ou connexion perdue)."
+    "profileSaveFailed": "Le profil n'a pas pu être enregistré (pseudo ou message perso refusé par le serveur, ou connexion perdue).",
+    "callAlreadyActive": "Un appel est déjà en cours. Raccrochez avant d'en passer un autre."
   },
   "errors": {
     "invalid_credentials": "Identifiants invalides.",

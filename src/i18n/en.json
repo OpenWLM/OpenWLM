@@ -74,7 +74,9 @@
     "logout": "Sign out everywhere",
     "changePassword": "Change password",
     "logoutFailed": "Sign-out could not be recorded by the server (connection lost or server error): your sessions are still open. Try again?",
-    "logoutRetry": "Try again"
+    "logoutRetry": "Try again",
+    "sessionExpiredNotice": "Your session has expired: please sign in again.",
+    "sessionOfflineNotice": "The server cannot be reached right now: check your connection, then try again. This device stays remembered."
   },
   "status": {
     "online": "Available",
@@ -735,7 +737,8 @@
     "toastOpenHint": "Click to open the conversation",
     "winkAlt": "Wink {name}",
     "pushTestNotConfigured": "Push is not configured on the server (missing VAPID keys).",
-    "profileSaveFailed": "Your profile could not be saved (nickname or personal message refused by the server, or connection lost)."
+    "profileSaveFailed": "Your profile could not be saved (nickname or personal message refused by the server, or connection lost).",
+    "callAlreadyActive": "A call is already in progress. Hang up before starting another one."
   },
   "errors": {
     "invalid_credentials": "Invalid sign-in address or password.",

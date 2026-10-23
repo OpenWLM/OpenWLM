@@ -51,6 +51,7 @@ public class IncomingCallActivity extends AppCompatActivity {
         }
         showing = new WeakReference<>(this);
         setContentView(R.layout.activity_incoming_call);
+        OverlayGuard.protect(this);
         bind(callerId);
     }
 
@@ -126,7 +127,7 @@ public class IncomingCallActivity extends AppCompatActivity {
         Context loc = OpenWLMNotifications.localized(context);
         OpenWLMNotifications.ensureChannels(context);
         // Pas de CallStyle ici : Android l'exige associé à un service de premier plan
-        NotificationCompat.Builder b = new NotificationCompat.Builder(context, OpenWLMNotifications.CHANNEL_MESSAGES)
+        NotificationCompat.Builder b = new NotificationCompat.Builder(context, OpenWLMNotifications.CHANNEL_CALL_FALLBACK)
             .setSmallIcon(R.drawable.ic_stat_openwlm)
             .setColor(ContextCompat.getColor(context, R.color.colorPrimary))
             .setContentTitle(name)

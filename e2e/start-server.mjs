@@ -13,6 +13,10 @@ const root = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openwlm-e2e-'));
 const PORT = process.env.E2E_PORT || '3100';
 const JWT_SECRET = 'e2e-secret-'.repeat(6);
+// Dossier de la base temporaire, pour les specs qui jouent un geste d'administrateur
+// (scripts/auth-recovery.mjs, cf. e2e/auth-recovery.spec.ts)
+export const E2E_DIR_FILE = path.join(os.tmpdir(), `openwlm-e2e-dir-${PORT}`);
+fs.writeFileSync(E2E_DIR_FILE, tmp);
 
 // Comptes de démonstration (npm run db:seed) dans la base temporaire : e2e/auth.spec.ts
 // vérifie qu'on peut s'y connecter comme l'annonce le README
@@ -32,6 +36,7 @@ const child = spawn(process.execPath, [path.join(root, 'server', 'index.js')], {
 });
 
 const cleanup = () => {
+  try { fs.rmSync(E2E_DIR_FILE, { force: true }); } catch { /* ignore */ }
   try { child.kill('SIGTERM'); } catch { /* ignore */ }
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
 };

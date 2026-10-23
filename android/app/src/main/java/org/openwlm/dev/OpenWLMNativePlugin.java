@@ -491,14 +491,14 @@ public class OpenWLMNativePlugin extends Plugin {
                 ret.put("saved", false);
                 call.resolve(ret);
             };
-            new AlertDialog.Builder(getActivity())
+            OverlayGuard.protect(new AlertDialog.Builder(getActivity())
                 .setTitle(loc.getString(R.string.save_confirm_title))
                 .setMessage(loc.getString(R.string.save_confirm_message, name, sizeText))
                 .setPositiveButton(loc.getString(R.string.save_confirm_ok), (d, w) -> bridge.execute(onConfirmed))
                 .setNegativeButton(loc.getString(R.string.server_cancel), (d, w) -> cancelled.run())
                 .setOnCancelListener((d) -> cancelled.run())
                 .setOnDismissListener((d) -> pendingConfirms--)
-                .show();
+                .show());
         });
     }
 

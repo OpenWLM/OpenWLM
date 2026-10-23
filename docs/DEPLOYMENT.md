@@ -152,3 +152,41 @@ s'appliquent au monde entier : quelques requêtes par minute suffisent à bloque
 Le serveur le signale au démarrage (`[IP client] … tunnel local NON reconnu`) et dans le
 journal à la première requête Cloudflare concernée (`[Sécurité] Requête Cloudflare (cf-ray)
 reçue depuis 127.0.0.1, hors des plages de confiance`).
+
+## Portée de la clé d'authentification (`AUTH_KEY_SCOPE`) et changement de domaine
+
+Le mot de passe ne quitte jamais l'appareil : le client en dérive une clé d'authentification
+**liée à ce serveur**, pour qu'elle ne puisse pas être rejouée sur une autre instance
+OpenWLM. Le serveur n'en garde qu'une empreinte.
+
+La portée vaut `AUTH_KEY_SCOPE` (dans `.env`, annoncée par `GET /api/auth/scope`) ou, si elle
+n'est pas définie, le nom d'hôte de la page (sans `www.`, port compris). **Définissez-la dès
+l'installation** avec un nom stable (le nom de domaine actuel, par exemple) et ne la changez
+plus :
+
+```
+AUTH_KEY_SCOPE=messenger.example.org
+```
+
+Avec elle, changer de nom de domaine, de port ou passer derrière un autre proxy ne change pas
+la clé. Sans elle (ou si vous la modifiez), plus aucun compte déjà connecté une fois ne peut se
+connecter : il faut alors ouvrir une **fenêtre de récupération** :
+
+```bash
+node scripts/auth-recovery.mjs --all --hours 72     # tous les comptes
+node scripts/auth-recovery.mjs alice@example.org    # un compte (24 h par défaut)
+node scripts/auth-recovery.mjs --close --all        # refermer avant l'échéance
+```
+
+Pendant la fenêtre, chacun se connecte normalement avec son mot de passe : l'app prouve le
+mot de passe en ouvrant le coffre de clés du compte (qui ne dépend pas de la portée) et
+enregistre la nouvelle clé ; mot de passe, clés de chiffrement et historique sont conservés.
+La fenêtre de chaque compte se referme dès qu'il est récupéré. Pendant qu'elle est ouverte,
+le coffre chiffré d'un compte est remis à qui donne son identifiant (une attaque hors ligne sur
+le mot de passe reste nécessaire) : gardez-la courte.
+
+La liaison au serveur protège contre une fuite **passive** (journaux d'un proxy, d'un WAF,
+d'un opérateur) : la clé lue ne sert sur aucune autre instance. Elle ne protège pas contre un
+serveur **actif** malveillant, qui sert lui-même le code de l'interface et peut lire le mot de
+passe tapé ; d'où l'avertissement de l'app Android avant de faire confiance à un serveur.
+

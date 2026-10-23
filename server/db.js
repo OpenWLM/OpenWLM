@@ -139,6 +139,12 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0;");
 } catch(e) {}
 
+// Récupération de la clé d'authentification ouverte par l'administrateur (scripts/auth-recovery.mjs) :
+// jusqu'à cette date (ms), le compte peut prouver son mot de passe par son coffre de clés
+try {
+  db.exec("ALTER TABLE users ADD COLUMN auth_recovery_until INTEGER DEFAULT 0;");
+} catch { /* colonne déjà présente */ }
+
 // STATUTS DE MESSAGES (envoyé / remis / lu)
 try {
   db.exec("ALTER TABLE messages ADD COLUMN delivery_status TEXT DEFAULT 'sent';");

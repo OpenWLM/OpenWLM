@@ -33,7 +33,8 @@ OpenWLM is an independent educational, open-source project and a tribute to 2000
 - **Winks & nudges**: animated full-screen winks and the screen-shaking Wizz.
 - **Presence**: Available, Busy, Away and Appear offline; the status you pick is restored when the app restarts; automatic "Away" after a configurable inactivity delay, optionally based on the inactivity of the whole computer (see [Automatic "Away" status](#automatic-away-status)).
 - **1v1 mini-games**: real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), Connect Four (Puissance 4, 7x6 board) and Minesweeper Flags (find the mines: 16x16, 51 mines, first to 26, one 5x5 bomb per round), with server-side move validation against cheating — the mine positions never leave the server — and collapsible game panels.
-- **Encrypted file transfer**: temporary file sharing between contacts (4-hour TTL), decrypted in the browser, with image previews in a lightbox.
+- **Encrypted file transfer**: temporary file sharing between contacts (4-hour TTL), decrypted in the browser, with image previews in a zoomable full-screen viewer (mouse wheel, pinch, double-click).
+- **Android app**: native client (Capacitor) with fingerprint or PIN lock, Firebase notifications (app sounds for messages and nudges), native call screen and file saving to Downloads. Build, signing and install: [docs/ANDROID.md](docs/ANDROID.md).
 - **English / French interface**: the language can be switched without reloading and is detected from the browser; both languages fit the Aero layout without overflow.
 
 ### Automatic "Away" status
@@ -81,13 +82,14 @@ OpenWLM applies the security measures below. They are checked by an automated te
    - Asymmetric RSA-OAEP 2048-bit encryption for session key exchange.
    - Symmetric AES-256-GCM encryption for messages, file transfers, and custom emoticons.
    - Zero-Knowledge architecture: the server never has access to plaintext messages or private decryption keys.
-   - Messages are signed (RSA-PSS) by the sender; only signed and verified messages are displayed (unsigned or unverifiable messages are rejected).
+   - Messages are signed (RSA-PSS) by the sender; only signed and verified messages are displayed (unsigned or unverifiable messages are rejected). Their signed date is compared with the server's (15 min tolerance).
+   - The password never leaves the device: an authentication key is derived from it (PBKDF2 600,000 + HKDF), **bound to this server** (`AUTH_KEY_SCOPE`) so it cannot be replayed on another instance. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) before any domain name change.
 2. **Client storage and non-extractable CryptoKey vault (`IndexedDB + Web Crypto`)**:
    - No JWT, raw RSA private key, JWK or crypto blob is kept in `localStorage` or `sessionStorage`.
    - The device vault (`WLM_DeviceVault_v1`) stores the private key as a native `CryptoKey` with `extractable: false` via IndexedDB structured cloning. Private key material is designed to prevent direct browser-side export through standard Web Crypto APIs (`crypto.subtle.exportKey()`), which significantly reduces exfiltration risk and helps contain sensitive material outside Web Storage.
    - `wlm_user` in `localStorage` is limited to an explicit whitelist of non-sensitive display fields (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
 3. **Server-side sessions in `HttpOnly; SameSite=Strict` cookies**:
-   - JWT tokens are issued as secure `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` cookies (`Secure` in HTTPS/Cloudflare production).
+   - JWT tokens are issued as secure `HttpOnly; SameSite=Strict; Path=/` cookies valid for 24 h, or 30 rolling days with "Remember this device" (`Secure` in HTTPS/Cloudflare production).
    - The same authentication fallback (header, then cookie) on Express endpoints and Socket.IO handshakes (`io.use`).
    - Server-side token version revocation (`token_version`) and cookie purging on `/api/logout`.
 4. **Centralized Access Authorization (`canInteract`)**:
@@ -109,7 +111,7 @@ OpenWLM applies the security measures below. They are checked by an automated te
 ## Tech Stack
 
 - **Frontend**: React 19, TypeScript, Vite, Vanilla CSS (Aero retro theme).
-- **Client Platforms**: Web browser, Progressive Web App (PWA) with Service Worker & Web App Manifest, Desktop (Optional Electron wrapper).
+- **Client Platforms**: Web browser, Progressive Web App (PWA) with Service Worker & Web App Manifest, Android app (Capacitor, [docs/ANDROID.md](docs/ANDROID.md)), Desktop (Optional Electron wrapper).
 - **Backend**: Node.js, Express, Socket.IO.
 - **Database**: SQLite (via `better-sqlite3`).
 - **Cryptography**: Web Crypto API (`SubtleCrypto`), Node.js `crypto` (PBKDF2 SHA-512, AES-GCM, RSA-OAEP).
@@ -126,7 +128,7 @@ OpenWLM applies the security measures below. They are checked by an automated te
 ## Installation & Quickstart
 
 ### Prerequisites
-- **Node.js**: v20 or higher recommended (tested on v22 LTS).
+- **Node.js**: v22 LTS (22.23.4 or later; required by `firebase-admin` and `@capacitor/cli`).
 - **npm**: v10 or higher.
 
 ### 1. Clone the repository
@@ -169,9 +171,8 @@ npm run dev
 npm run build
 
 # Start the Node.js production server
-npm run server
-# or directly:
 NODE_ENV=production node server/index.js
+# (npm run server restarts the server on every file change: for development only)
 ```
 
 > ⚠️ **In production, run the server under a supervisor** (systemd, pm2, Docker restart policy). It deliberately exits with code 1 after an unhandled error so it can be restarted in a clean state. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -207,7 +208,7 @@ It issues direct API and WebSocket requests (bypassing the UI) and checks the se
 - File download attempts without valid secret tokens (HTTP 401/403)
 - Directory traversal attacks on avatars or scenes (HTTP 400)
 
-Browser end-to-end tests (Playwright, temporary database) cover sign-up/login, an encrypted message between two accounts, and an audio call switching to camera and screen sharing:
+Browser end-to-end tests (Playwright, temporary database, about sixty scenarios) cover sign-up and sign-in, encrypted messages, files and voice clips, calls, games, options, connection robustness and the simulated Android app:
 
 ```bash
 npm run test:e2e
@@ -233,7 +234,7 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ## Version & References
 
-- **Current Version**: `v1.7.0`
+- **Current Version**: `v1.7.0` (Android app: versionCode 10)
 - **Git Reference Tag**: `v1.7.0`
 - **Changelog**: See [CHANGELOG.md](CHANGELOG.md) (or [French version](CHANGELOG.fr.md)).
 

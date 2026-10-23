@@ -15,6 +15,7 @@ import {
   verifyPasswordHash,
   burnPasswordCheck,
   issueSessionCookie,
+  safeTokenEqual,
   SESSION_RENEW_AFTER_S
 } from '../middleware/auth.js';
 import { getClientIp } from '../clientIdentity.js';
@@ -32,6 +33,14 @@ export const signupIpCounter = createSuccessCounter({
   windowMs: 24 * 60 * 60 * 1000,
   limit: getSignupIpDailyLimit()
 });
+
+/** Portée stable de la clé d'authentification (cf. GET /api/auth/scope, docs/DEPLOYMENT.md). */
+const AUTH_KEY_SCOPE = typeof process.env.AUTH_KEY_SCOPE === 'string' && /^[\w.:-]{1,253}$/.test(process.env.AUTH_KEY_SCOPE.trim())
+  ? process.env.AUTH_KEY_SCOPE.trim().toLowerCase()
+  : '';
+
+/** Défis de récupération en cours (userId → nonce, 5 min), cf. /auth/recovery/*. */
+export const recoveryChallenges = new Map();
 
 export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   const router = Router();
@@ -58,11 +67,71 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
    * Déconnexion explicite
    */
   /**
+   * Portée de la clé d'authentification (cf. deriveZeroKnowledgeKeys) : identifiant STABLE de ce
+   * serveur, indépendant de son nom d'hôte. Sans AUTH_KEY_SCOPE, le client utilise l'hôte de la
+   * page (comportement d'origine) : changer de nom de domaine ou de port rendrait alors les
+   * clés de tous les comptes invalides (récupération : scripts/auth-recovery.mjs).
+   */
+  router.get('/auth/scope', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ scope: AUTH_KEY_SCOPE || null });
+  });
+
+  /**
+   * Récupération de compte ouverte par l'administrateur (scripts/auth-recovery.mjs) : le client
+   * prouve son mot de passe en ouvrant son coffre de clés (la clé du coffre ne dépend pas de la
+   * portée), puis enregistre une nouvelle clé d'authentification. Le coffre n'est remis que
+   * pour un compte en récupération, pendant la fenêtre fixée par l'administrateur.
+   */
+  router.post('/auth/recovery/challenge', authRateLimiter, (req, res) => {
+    const normalized = String(req.body?.username || '').trim().toLowerCase();
+    const user = normalized ? db.prepare('SELECT id, public_key, encrypted_private_key, auth_recovery_until FROM users WHERE LOWER(username) = ?').get(normalized) : null;
+    if (!user || !(Number(user.auth_recovery_until) > Date.now()) || !user.public_key || !user.encrypted_private_key) {
+      return res.status(404).json({ error: 'Aucune récupération en cours pour ce compte.', code: 'no_recovery' });
+    }
+    let encryptedNonce;
+    const nonce = crypto.randomBytes(32).toString('hex');
+    try {
+      const jwk = typeof user.public_key === 'string' ? JSON.parse(user.public_key) : user.public_key;
+      const key = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+      encryptedNonce = crypto.publicEncrypt({ key, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, Buffer.from(nonce)).toString('base64');
+    } catch (err) {
+      console.error('[Auth] Récupération : clé publique inutilisable :', err);
+      return res.status(500).json({ error: 'Erreur serveur.' });
+    }
+    recoveryChallenges.set(user.id, { nonce, expires: Date.now() + 5 * 60 * 1000 });
+    res.json({ success: true, vault: user.encrypted_private_key, encryptedNonce });
+  });
+
+  router.post('/auth/recovery/complete', authRateLimiter, async (req, res) => {
+    const { username, nonce, newAuthKeyHex, remember } = req.body || {};
+    const normalized = String(username || '').trim().toLowerCase();
+    const user = normalized ? db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(normalized) : null;
+    const challenge = user ? recoveryChallenges.get(user.id) : null;
+    if (!user || !challenge || challenge.expires < Date.now() || !(Number(user.auth_recovery_until) > Date.now())
+      || typeof nonce !== 'string' || !safeTokenEqual(nonce, challenge.nonce) || !/^[a-fA-F0-9]{64}$/.test(String(newAuthKeyHex))) {
+      return res.status(401).json({ error: 'Récupération refusée.', code: 'recovery_failed' });
+    }
+    recoveryChallenges.delete(user.id);
+    const salt = crypto.randomBytes(16).toString('hex');
+    try {
+      const hash = await hashPassword(newAuthKeyHex, salt);
+      db.prepare('UPDATE users SET password_hash = ?, salt = ?, auth_recovery_until = 0 WHERE id = ?').run(hash, salt, user.id);
+    } catch (err) {
+      console.error('[Auth] Récupération : enregistrement impossible :', err);
+      return res.status(500).json({ error: 'Erreur serveur.' });
+    }
+    issueSessionCookie(req, res, { id: user.id, username: user.username, tv: user.token_version || 0, remember: remember === true }, isProd);
+    res.json({ success: true, user: toPrivateUserDTO(user) });
+  });
+
+  /**
    * Abandon d'une ouverture de session sur CET appareil (clés de chiffrement impossibles à
    * mettre en place) : seul le cookie de ce navigateur est retiré. Les autres appareils restent
    * connectés (contrairement à /logout, qui révoque toutes les sessions du compte).
+   * Authentifiée : sans cookie valide, rien à retirer (pas de déconnexion provoquée par un autre site).
    */
-  router.post('/logout-device', (req, res) => {
+  router.post('/logout-device', authenticateToken, (req, res) => {
     const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
     const isCloudflare = Boolean(req.headers['cf-ray'] || isHttps);
     res.clearCookie('token', { httpOnly: true, secure: (isProd || isCloudflare) && isHttps, sameSite: 'strict', path: '/' });

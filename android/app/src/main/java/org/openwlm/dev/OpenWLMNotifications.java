@@ -43,6 +43,11 @@ final class OpenWLMNotifications {
     static final String CHANNEL_INCOMING_CALLS = "incoming_calls";
     /** Appel en cours : notification discrète du service de premier plan. */
     static final String CHANNEL_ONGOING_CALL = "ongoing_call";
+    /**
+     * Appel entrant quand le service d'appel n'a pas pu démarrer (rare : restrictions d'arrière-
+     * plan) : notification simple, avec la SONNERIE du téléphone (et non le son de message).
+     */
+    static final String CHANNEL_CALL_FALLBACK = "calls_fallback";
     /** Canal de la v2 (sonnerie portée par la notification), remplacé par CHANNEL_INCOMING_CALLS. */
     private static final String LEGACY_CHANNEL_CALLS = "calls";
 
@@ -123,6 +128,16 @@ final class OpenWLMNotifications {
         nm.createNotificationChannel(nudges);
 
         nm.deleteNotificationChannel(LEGACY_CHANNEL_CALLS);
+        NotificationChannel fallback = new NotificationChannel(CHANNEL_CALL_FALLBACK, loc.getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH);
+        fallback.setDescription(loc.getString(R.string.channel_call_fallback_desc));
+        fallback.setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE),
+            new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build());
+        fallback.enableVibration(true);
+        fallback.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        nm.createNotificationChannel(fallback);
         NotificationChannel incoming = new NotificationChannel(CHANNEL_INCOMING_CALLS, loc.getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH);
         incoming.setDescription(loc.getString(R.string.channel_calls_desc));
         incoming.setSound(null, null);

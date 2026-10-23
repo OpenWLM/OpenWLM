@@ -53,4 +53,17 @@ public class BridgeTrustTest {
         assertFalse(BridgeTrust.isForbiddenLocalPath("/assets/_capacitor_file_.png"));
         assertFalse(BridgeTrust.isForbiddenLocalPath(null));
     }
+
+    @Test
+    public void cheminsLocauxNormalisesAvantComparaison() {
+        assertTrue(BridgeTrust.isForbiddenLocalPath("/foo/../_capacitor_file_/data/x"));
+        assertTrue(BridgeTrust.isForbiddenLocalPath("//_capacitor_file_/data/x"));
+        assertTrue(BridgeTrust.isForbiddenLocalPath("/./_capacitor_content_/x"));
+        assertTrue(BridgeTrust.isForbiddenLocalPath("/%2e%2e/_capacitor_file_/x"));
+        assertTrue(BridgeTrust.isForbiddenLocalPath("/a/%252e%252e/_capacitor_file_/x"));
+        assertTrue(BridgeTrust.isForbiddenLocalPath("/%5f%63apacitor_file_/x"));
+        assertTrue(BridgeTrust.isForbiddenLocalPath("\\_capacitor_file_\\x"));
+        assertFalse(BridgeTrust.isForbiddenLocalPath("/assets/../index.html"));
+        assertFalse(BridgeTrust.isForbiddenLocalPath("/api/files/download/abc"));
+    }
 }

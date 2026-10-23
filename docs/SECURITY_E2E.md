@@ -17,7 +17,7 @@
 | **Appels — signalisation (SDP/ICE)** | **chiffrée E2EE** + **empreinte DTLS signée RSA‑PSS**, vérification **obligatoire** : une offre/réponse non signée ou invérifiable est refusée (anti‑MITM) | `src/components/VideoCall.tsx` |
 
 **Primitives utilisées** : AES‑GCM 256, RSA‑OAEP 2048 (SHA‑256), RSA‑PSS (SHA‑256, salt 32), PBKDF2‑HMAC‑SHA256 **600 000** itérations, HKDF‑SHA256, DTLS‑SRTP.
-- **Portée serveur de la clé d'authentification** : `authKeyHex` est dérivée avec l'hôte du serveur (`openwlm-auth-key-v2:<hôte>`) : elle ne peut pas être rejouée sur une autre instance OpenWLM. L'ancienne dérivation (`openwlm-auth-key-v1`) sert uniquement à se connecter puis migrer les comptes existants (`POST /api/user/migrate-auth-key`, preuve de l'ancienne clé, sessions et coffre inchangés).
+- **Portée serveur de la clé d'authentification** : `authKeyHex` est dérivée avec une portée propre au serveur (`openwlm-auth-key-v2:<portée>`, portée = `AUTH_KEY_SCOPE` annoncée par `GET /api/auth/scope`, sinon l'hôte de la page sans `www.`). Elle protège contre une fuite **passive** (journaux d'un proxy, d'un WAF, d'un opérateur) : la clé lue ne sert sur aucune autre instance. Elle ne protège pas contre un serveur **actif** malveillant, qui sert lui-même le code de l'interface et peut lire le mot de passe tapé (c'est aussi pourquoi une portée annoncée par le serveur ne fait rien perdre). L'ancienne dérivation (`openwlm-auth-key-v1`) sert à se connecter puis migrer les comptes existants (`POST /api/user/migrate-auth-key`). Changement de portée (domaine) : `scripts/auth-recovery.mjs` ouvre une fenêtre où l'app prouve le mot de passe par le coffre de clés (cf. docs/DEPLOYMENT.md).
 
 **Dérivation des clés (zero‑knowledge)** : le **mot de passe ne quitte jamais le navigateur**.
 `PBKDF2(600k)` → *MasterKey* → `HKDF` → `authKey` (transport) + `vaultKey` (AES‑GCM) qui
@@ -80,8 +80,12 @@ l'historique revérifie le message.
 ---
 
 - **Horodatage signé** (`ts`) : à la réception, il est comparé à la date de réception annoncée
-  par le serveur (tolérance 15 min, `OpenContext.serverTimestamp`). Un serveur qui re-présente
-  un ancien message comme nouveau (rejeu après rechargement, re-datation) est refusé.
+  par le serveur (tolérance 15 min, `OpenContext.serverTimestamp`). Un serveur ne peut pas
+  **re-dater** un ancien message pour le faire passer pour récent. Un ancien message re-présenté
+  avec sa vraie date reste accepté (il s'affiche à sa date ; un doublon déjà vu est écarté par son
+  `mid`). Limite : une horloge (serveur ou appareil de l'expéditeur) décalée de plus de 15 min fait
+  rejeter des messages authentiques, affichés avec un motif explicite (« date signée différente
+  de celle du serveur »). Gardez le serveur synchronisé (NTP).
 
 
 ## 2. Ce qui N'EST PAS chiffré de bout en bout (visible par le serveur)

@@ -251,18 +251,37 @@ export const sanitize = (str: string) => {
  *   * info: 'openwlm-vault-encryption-key-v1' -> vaultKey (CryptoKey AES-GCM 256 bits non exportable)
  */
 /**
- * Portée de la clé d'authentification : l'hôte du serveur (nom + port). Sans elle, la même
- * clé servait sur toute instance OpenWLM où l'on utilisait le même identifiant et mot de passe :
- * l'opérateur d'une instance tierce pouvait la rejouer sur une autre. L'ancienne dérivation
- * (sans portée) reste calculée pour se connecter puis migrer les comptes existants.
+ * Portée de la clé d'authentification. Sans elle, la même clé servait sur toute instance
+ * OpenWLM où l'on utilisait le même identifiant et mot de passe : un opérateur (ou ses journaux)
+ * pouvait la rejouer sur une autre instance.
+ *
+ * Valeur : l'identifiant STABLE annoncé par le serveur (AUTH_KEY_SCOPE, GET /api/auth/scope),
+ * sinon l'hôte de la page sans « www. ». Un identifiant fourni par le serveur ne protège pas
+ * contre un serveur malveillant ACTIF, mais celui-ci sert de toute façon le code de cette page
+ * et lit le mot de passe tapé : la portée vise les fuites passives (journaux), et un nom
+ * stable évite de verrouiller tous les comptes lors d'un changement de domaine ou de port.
  */
-export const authKeyScope = (): string =>
-  typeof window !== 'undefined' && window.location ? window.location.host.toLowerCase() : '';
+export const hostAuthScope = (): string => {
+  if (typeof window === 'undefined' || !window.location) return '';
+  return window.location.host.toLowerCase().replace(/^www\./, '');
+};
+
+let scopePromise: Promise<string> | null = null;
+export const fetchAuthKeyScope = (): Promise<string> => {
+  if (!scopePromise) {
+    scopePromise = fetch('/api/auth/scope', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { scope?: unknown } | null) => (typeof d?.scope === 'string' && d.scope ? d.scope.toLowerCase() : hostAuthScope()))
+      .catch(() => { scopePromise = null; return hostAuthScope(); });
+  }
+  return scopePromise;
+};
 
 export const deriveZeroKnowledgeKeys = async (
   username: string, 
   masterPassword: string
 ): Promise<ZeroKnowledgeKeys> => {
+  const scope = await fetchAuthKeyScope();
   const enc = new TextEncoder();
   const salt = enc.encode('openwlm-salt:' + username.trim().toLowerCase());
 
@@ -308,7 +327,7 @@ export const deriveZeroKnowledgeKeys = async (
     );
     return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
   };
-  const authKeyHex = await deriveAuthHex('openwlm-auth-key-v2:' + authKeyScope());
+  const authKeyHex = await deriveAuthHex('openwlm-auth-key-v2:' + scope);
   const legacyAuthKeyHex = await deriveAuthHex('openwlm-auth-key-v1');
 
   // 5. Dérivation de vaultKey (CryptoKey AES-GCM 256 bits non exportable)

@@ -18,6 +18,7 @@
     <string name="channel_nudges">Wizz</string>
     <string name="channel_nudges_desc">Wizz reçus (son du Wizz d\'OpenWLM)</string>
     <string name="channel_calls">Appels</string>
+    <string name="channel_call_fallback_desc">Appels entrants quand l\'écran d\'appel ne peut pas s\'afficher (sonnerie du téléphone)</string>
     <string name="channel_calls_desc">Appels audio et vidéo entrants (écran d\'appel)</string>
     <string name="notif_message">Nouveau message reçu</string>
     <string name="notif_private_message">🔒 Nouveau message privé</string>

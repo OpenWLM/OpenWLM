@@ -60,13 +60,18 @@ Téléchargements, service d'appel micro / caméra, écran allumé, autorisation
   plugin Filesystem, absent ici) ; une page compromise ou un serveur personnalisé malveillant y
   lirait les cookies de session et les clés E2EE de la WebView, malgré `setAllowFileAccess(false)`
   et la CSP. `GuardedWebViewClient` répond 404 à ces chemins (`BridgeTrust.isForbiddenLocalPath`,
-  testé).
-- **Origine vérifiée** : chacune de ces méthodes refuse (`untrusted_origin`) si la page chargée
-  n'est pas le serveur choisi en HTTPS (`BridgeTrust`, testé : `BridgeTrustTest`), en plus de la
-  navigation déjà limitée à cet hôte. Depuis la v8, aussi `setLanguage` et `setSoundPrefs`
-  (réglages). Exceptions voulues : `changeServer` et `retry` (page hors ligne locale), les
-  lectures d'état (`getInfo`, `isAppLocked`, `getCallPermissions`,
-  `getNotificationPermission`) et les arrêts (`stopOngoingCall`, `abortSave`).
+  testé). Depuis la v10, le chemin est d'abord ramené à sa forme canonique (décodage des `%xx`,
+  barres multiples, segments `.` et `..`) : `/a/../_capacitor_file_/…` est aussi refusé.
+- **Origine vérifiée** (`fromTrustedPage`) : les méthodes suivantes refusent
+  (`untrusted_origin`) si la page chargée n'est pas le serveur choisi en HTTPS (`BridgeTrust`,
+  testé : `BridgeTrustTest`), en plus de la navigation déjà limitée à cet hôte :
+  `getFcmToken`, `resetPushToken`, `requestNotificationPermission`, `openNotificationSettings`,
+  `requestCallPermission`, `dismissIncomingCall`, `startOngoingCall`, `updateOngoingCall`,
+  `setKeepScreenOn`, `beginSave`, `appendChunk`, `finishSave`, `saveFile`, `setLanguage`,
+  `setSoundPrefs`. **Sans ce contrôle**, volontairement : `changeServer` et `retry` (appelées
+  par la page hors ligne locale), les lectures d'état (`getInfo`, `isAppLocked`,
+  `getCallPermissions`, `getNotificationPermission`) et les arrêts (`stopOngoingCall`,
+  `abortSave`).
 - **Micro / caméra** (`GuardedWebChromeClient`, avant Capacitor) : accordés seulement à
   l'origine du serveur choisi, et seulement si l'app est visible et déverrouillée, si un appel
   est en cours (service d'appel), ou dans la minute qui suit « Répondre ». Une page compromise
@@ -76,8 +81,11 @@ Téléchargements, service d'appel micro / caméra, écran allumé, autorisation
 - **Fichiers** : confirmation native avant chaque enregistrement (Android 10+), 2 à la fois.
 - **Changement de serveur** : écran non exporté (`ServerSettingsActivity`) ; le lanceur
   exporté (`ServerActivity`) ne sert qu'au premier choix et ne transmet aucune URI reçue.
-  Écrans de choix du serveur, de verrouillage et d'appel protégés contre le « tapjacking »
-  (`filterTouchesWhenObscured`).
+  Protection contre le « tapjacking » (touches ignorées quand une autre app recouvre la
+  fenêtre, `filterTouchesWhenObscured` ; fenêtres superposées masquées sur Android 12+,
+  `HIDE_OVERLAY_WINDOWS`) : écrans de choix du serveur, de verrouillage et d'appel, et depuis
+  la v10 les **dialogues** « Faire confiance à ce serveur » et de confirmation d'enregistrement
+  (`OverlayGuard`).
 - **Service d'appel** arrêté si l'app est retirée des applications récentes (`onTaskRemoved`).
 
 ## Appels natifs
@@ -126,6 +134,12 @@ Options → Alertes → Appels. Sans l'autorisation plein écran, un appel tél�
 s'affiche en notification (avec sonnerie) au lieu de l'écran d'appel.
 
 Journaux utiles : `adb logcat | grep -iE "openwlm|IncomingCall|OngoingCall|FirebaseMessaging|chromium"`.
+
+Si Android refuse de démarrer le service d'appel (rare : restrictions d'arrière-plan), une
+notification d'appel simple le remplace (Répondre / Refuser), sur le canal « Appels » de
+secours (`calls_fallback`, APK v10+) qui joue la **sonnerie du téléphone** une fois, sans
+boucle ; avant la v10, elle utilisait le canal des messages (son de message).
+
 
 ## Notifications (Firebase Cloud Messaging)
 

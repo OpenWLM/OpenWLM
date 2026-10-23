@@ -204,7 +204,8 @@
     "voiceClipMaxReached": "Maximum duration reached: the voice clip is being sent.",
     "winkNotSentNetwork": "Wink not sent: the connection to the server was lost while sending.",
     "winkNotSentOffline": "Wink not sent: the contact is offline in private mode, and private winks are not stored.",
-    "loadOlderMessages": "Earlier messages"
+    "loadOlderMessages": "Earlier messages",
+    "authRejectedClock": "Message rejected: its signed date differs by more than 15 minutes from the server's. The server's clock or the sender's device clock may be off (or the message was re-dated)."
   },
   "bot": {
     "name": "OpenWLM",

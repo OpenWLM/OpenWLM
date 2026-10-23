@@ -74,6 +74,8 @@ export interface Message {
   isPrivate?: boolean;
   /** Verdict d'authenticité de l'enveloppe signée (cf. utils/MessageEnvelope). */
   _auth?: EnvelopeStatus;
+  /** Motif précis d'un rejet (cf. OpenedMessage.code). */
+  _authCode?: 'clock';
   /** Identifiant aléatoire signé par l'émetteur (détection des rejeux). */
   mid?: string;
   /** Échec d'envoi : le message n'a pas été accepté par le serveur. */

@@ -64,6 +64,7 @@ public class ServerActivity extends AppCompatActivity {
         }
 
         setContentView(R.layout.activity_server);
+        OverlayGuard.protect(this);
         input = findViewById(R.id.server_input);
         connect = findViewById(R.id.server_connect);
         progress = findViewById(R.id.server_progress);
@@ -106,12 +107,14 @@ public class ServerActivity extends AppCompatActivity {
                 // Autre serveur que celui par défaut, choisi pour la première fois : rien ne prouve
                 // qui l'exploite, l'utilisateur doit confirmer qu'il lui fait confiance
                 if (!host.equals(ServerConfig.DEFAULT_HOST) && !host.equals(previous)) {
-                    new AlertDialog.Builder(this)
+                    // Dernière barrière avant de confier l'app à ce serveur : pas de validation
+                    // possible au travers d'une fenêtre superposée
+                    OverlayGuard.protect(new AlertDialog.Builder(this)
                         .setTitle(R.string.server_trust_title)
                         .setMessage(getString(R.string.server_trust_message, host))
                         .setPositiveButton(R.string.server_trust_confirm, (d, w) -> applyServer(host, previous))
                         .setNegativeButton(R.string.server_cancel, null)
-                        .show();
+                        .show());
                     return;
                 }
                 applyServer(host, previous);

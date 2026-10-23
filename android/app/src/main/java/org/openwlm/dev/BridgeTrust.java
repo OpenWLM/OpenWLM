@@ -48,8 +48,40 @@ final class BridgeTrust {
      */
     static boolean isForbiddenLocalPath(String path) {
         if (path == null) return false;
-        String p = path.toLowerCase(Locale.ROOT);
-        return p.startsWith("/_capacitor_file_") || p.startsWith("/_capacitor_content_");
+        String p = normalizePath(path).toLowerCase(Locale.ROOT);
+        return p.startsWith("/_capacitor_file_") || p.startsWith("/_capacitor_content_")
+            // Chemin qu'on ne sait pas ramener à une forme sûre : refusé aussi
+            || p.equals(UNSAFE_PATH);
+    }
+
+    private static final String UNSAFE_PATH = "/\u0000unsafe";
+
+    /**
+     * Forme canonique d'un chemin : décodage des %xx (répété, contre le double encodage),
+     * « \ » comme « / », barres multiples réduites, segments « . » et « .. » résolus. Ainsi
+     * « /a/../_capacitor_file_/… », « //_capacitor_file_ » ou « /%2e%2e/_capacitor_file_ » sont
+     * reconnus comme le chemin interdit qu'ils désignent.
+     */
+    static String normalizePath(String path) {
+        String p = path;
+        for (int i = 0; i < 3 && p.indexOf('%') >= 0; i++) {
+            try {
+                p = java.net.URLDecoder.decode(p.replace("+", "%2B"), "UTF-8");
+            } catch (Exception e) {
+                return UNSAFE_PATH;
+            }
+        }
+        p = p.replace('\\', '/');
+        java.util.ArrayDeque<String> out = new java.util.ArrayDeque<>();
+        for (String seg : p.split("/")) {
+            if (seg.isEmpty() || seg.equals(".")) continue;
+            if (seg.equals("..")) {
+                if (!out.isEmpty()) out.removeLast();
+                continue;
+            }
+            out.addLast(seg);
+        }
+        return "/" + String.join("/", out);
     }
 
     static boolean allowMediaCapture(String origin, String serverHost, boolean userVisible, boolean callActive, long now, long answerGraceUntil) {

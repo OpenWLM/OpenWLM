@@ -25,6 +25,7 @@ class GuardedWebViewClient extends BridgeWebViewClient {
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         Uri url = request.getUrl();
+        // Chemin décodé ET brut, chacun normalisé (segments « .. », barres multiples, %xx)
         if (url != null && (BridgeTrust.isForbiddenLocalPath(url.getPath()) || BridgeTrust.isForbiddenLocalPath(url.getEncodedPath()))) {
             Log.w("OpenWLM", "Accès à un fichier local refusé : " + url.getPath());
             return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));

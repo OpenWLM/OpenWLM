@@ -126,6 +126,8 @@ const MAX_SOCKET_MESSAGE_CHARS = 900_000;
 // Raccourci et identifiant d'émoticône personnalisée reçus d'un contact : même forme que ce
 // que le serveur accepte à la création (server/routes/emoticons.js)
 const RECEIVED_SHORTCUT_RE = /^[\w\-():;@#!?*~[\]{}]{2,32}$/;
+// Un raccourci reçu doit contenir au moins un symbole : « le », « ok » ou « de » remplaceraient
+// des mots courants
 const RECEIVED_ASSET_ID_RE = /^emo_[0-9a-f-]{36}$/;
 /** Délai d'attente de l'accusé du serveur pour une tentative d'envoi. */
 const SEND_ACK_TIMEOUT_MS = 15_000;
@@ -558,6 +560,16 @@ const App: React.FC = () => {
     height?: number;
   }>>({});
   const myCustomShortcutsRef = useRef<Set<string>>(new Set());
+  // Émoticônes personnalisées REÇUES, par expéditeur : elles ne s'appliquent qu'à ses messages
+  // (un contact ne peut plus changer le rendu des autres conversations)
+  const [receivedEmoticons, setReceivedEmoticons] = useState<Record<number, Record<string, {
+    assetId: string;
+    url: string;
+    shortcut: string;
+    isAnimated?: number;
+    width?: number;
+    height?: number;
+  }>>>({});
 
   // --- ÉTAT DU COLLAGE DE CAPTURE D'ÉCRAN ---
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
@@ -1480,8 +1492,16 @@ const App: React.FC = () => {
    * ENREGISTREMENT ET DÉCHIFFREMENT ASYNCHRONE DES ÉMOTICÔNES PERSONNALISÉES REÇUES
    */
   const registerReceivedCustomEmoticons = useCallback(async (
-    receivedMap: Record<string, CustomEmoticonPayload>
+    receivedMap: Record<string, CustomEmoticonPayload>,
+    ownerId: number
   ) => {
+    // Une émoticône reçue est rangée sous son expéditeur, jamais dans la table globale
+    const setCustomEmoticonsMap = (update: (prev: Record<string, { assetId: string; url: string; shortcut: string; isAnimated?: number; width?: number; height?: number }>) => Record<string, { assetId: string; url: string; shortcut: string; isAnimated?: number; width?: number; height?: number }>) =>
+      setReceivedEmoticons(all => {
+        const prev = all[ownerId] || {};
+        const next = update(prev);
+        return next === prev ? all : { ...all, [ownerId]: next };
+      });
     if (!receivedMap || typeof receivedMap !== 'object') return;
     const token = user?.token;
 
@@ -1491,6 +1511,7 @@ const App: React.FC = () => {
       // un espace comme raccourci et remplacer chaque lettre de toutes les conversations par son
       // image, ou écraser un raccourci personnel
       if (!RECEIVED_SHORTCUT_RE.test(shortcut) || !RECEIVED_ASSET_ID_RE.test(String(info.assetId))) continue;
+      if (!/[^A-Za-z0-9_]/.test(shortcut) || shortcut in EMOTICON_MAP) continue;
       if (myCustomShortcutsRef.current.has(shortcut)) continue;
 
       // 1. Déjà en mémoire ?
@@ -1742,7 +1763,7 @@ const App: React.FC = () => {
         if (payload.audio) decryptedAudio = payload.audio;
         if (payload.style) decryptedStyle = payload.style;
         if (payload.customEmoticons) {
-          registerReceivedCustomEmoticons(payload.customEmoticons);
+          registerReceivedCustomEmoticons(payload.customEmoticons, Number(m.sender_id ?? m.senderId));
         }
       }
 
@@ -1772,6 +1793,7 @@ const App: React.FC = () => {
         delivery_status: m.delivery_status || 'sent',
         type: payload?.type || 'text',
         _auth: opened.status,
+        _authCode: opened.code,
         mid: opened.mid
       });
     }
@@ -2202,7 +2224,7 @@ const App: React.FC = () => {
             decryptedData.text = tRef.current.notices.fileLabel.replace('{name}', payload.fileName || tRef.current.notices.fileDefaultName);
           }
           if (payload.customEmoticons) {
-            registerReceivedCustomEmoticons(payload.customEmoticons);
+            registerReceivedCustomEmoticons(payload.customEmoticons, senderIdNum);
           }
         }
 
@@ -2237,6 +2259,7 @@ const App: React.FC = () => {
           timestamp: decryptedData.timestamp || new Date().toISOString(),
           fileData: fileData || (decryptedData.type === 'file' && decryptedData.fileId ? decryptedData : undefined),
           _auth: authStatus,
+          _authCode: opened.code,
           mid: opened.mid
         };
 
@@ -4115,15 +4138,17 @@ const App: React.FC = () => {
    * RENDU DU CONTENU DES MESSAGES (Gestion des émoticônes)
    */
   // Émoticônes (personnalisées puis standard) d'un texte sans mise en forme
-  const emoticonizeMessage = useCallback((text: string, keyPrefix: string): (string | React.ReactNode)[] => {
+  const emoticonizeMessage = useCallback((text: string, keyPrefix: string, senderId?: number): (string | React.ReactNode)[] => {
     let parts: (string | React.ReactNode)[] = [text];
     
-    // 1. Émoticônes personnalisées (E2EE) - Triées par longueur décroissante
+    // 1. Émoticônes personnalisées (E2EE) - Triées par longueur décroissante : les miennes, plus
+    //    celles de l'expéditeur de CE message (jamais celles d'un autre contact)
     // Options → Messages : émoticônes en images, ou laissées en texte (« :) »)
     const showEmoticonImages = appPrefs.messages.emoticonImages;
-    const customShortcuts = showEmoticonImages ? Object.keys(customEmoticonsMap).sort((a, b) => b.length - a.length) : [];
+    const available = { ...(senderId !== undefined ? receivedEmoticons[senderId] : undefined), ...customEmoticonsMap };
+    const customShortcuts = showEmoticonImages ? Object.keys(available).sort((a, b) => b.length - a.length) : [];
     customShortcuts.forEach(shortcut => {
-      const emoInfo = customEmoticonsMap[shortcut];
+      const emoInfo = available[shortcut];
       if (!emoInfo || !emoInfo.url) return; // Fallback texte brut si l'asset n'est pas encore disponible
 
       const newParts: (string | React.ReactNode)[] = [];
@@ -4182,18 +4207,18 @@ const App: React.FC = () => {
       parts = newParts;
     });
     return parts;
-  }, [customEmoticonsMap, appPrefs.messages.emoticonImages]);
+  }, [customEmoticonsMap, receivedEmoticons, appPrefs.messages.emoticonImages]);
 
-  const renderMessageContent = useCallback((text: string, style: any) => {
+  const renderMessageContent = useCallback((text: string, style: any, senderId?: number) => {
     if (!text) return null;
     // Mise en forme ([c=4], [b]…) rendue segment par segment, ou retirée si l'option est désactivée
     let parts: React.ReactNode;
     if (hasPlusFormatting(text)) {
       parts = appPrefs.messages.showFormatting
-        ? renderPlusText(text, (plain, key) => emoticonizeMessage(plain, key), 'msg')
-        : emoticonizeMessage(stripPlusTags(text), 'msg');
+        ? renderPlusText(text, (plain, key) => emoticonizeMessage(plain, key, senderId), 'msg')
+        : emoticonizeMessage(stripPlusTags(text), 'msg', senderId);
     } else {
-      parts = emoticonizeMessage(text, 'msg');
+      parts = emoticonizeMessage(text, 'msg', senderId);
     }
 
     const s = style || { family: 'Segoe UI', weight: 'normal', style: 'normal', color: '#333', size: '10' };

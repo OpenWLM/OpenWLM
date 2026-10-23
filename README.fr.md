@@ -33,7 +33,8 @@ OpenWLM est un projet éducatif indépendant, open-source et un hommage aux logi
 - **Winks & Wizz** : clins d'œil animés et Wizz qui secoue la fenêtre.
 - **Présence** : Disponible, Occupé, Absent et Apparaître hors ligne ; le statut choisi est restauré au redémarrage de l'app ; passage automatique en « Absent » après un délai d'inactivité réglable, éventuellement basé sur l'inactivité de tout l'ordinateur (voir [Statut « Absent » automatique](#statut--absent--automatique)).
 - **Jeux 1v1** : Morpion (Tic-Tac-Toe), Jeu de dames (Checkers), Puissance 4 (Connect Four, grille 7x6) et Démineur à deux (Minesweeper Flags : trouver les mines, 16x16, 51 mines, premier à 26, une bombe 5x5 par manche) en temps réel, avec validation des coups côté serveur contre la triche — l'emplacement des mines ne quitte jamais le serveur — et panneau de jeu réductible.
-- **Transfert de fichiers chiffré** : partage temporaire entre contacts (expiration 4 h), déchiffré dans le navigateur, avec aperçu des images.
+- **Transfert de fichiers chiffré** : partage temporaire entre contacts (expiration 4 h), déchiffré dans le navigateur, avec aperçu des images dans une visionneuse plein écran zoomable (molette, pincement, double-clic).
+- **Application Android** : client natif (Capacitor) avec verrouillage par empreinte ou code, notifications Firebase (sons de l'app pour les messages et les Wizz), écran d'appel natif et enregistrement des fichiers dans Téléchargements. Compilation, signature et installation : [docs/ANDROID.md](docs/ANDROID.md).
 - **Interface français / anglais** : la langue se change sans rechargement et est détectée depuis le navigateur ; les deux langues tiennent dans la mise en page Aero sans débordement.
 
 ### Statut « Absent » automatique
@@ -81,13 +82,14 @@ OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées pa
    - Chiffrement asymétrique RSA-OAEP 2048 bits pour l'échange de clés de session.
    - Chiffrement symétrique AES-256-GCM pour les messages, fichiers et émoticônes.
    - Le serveur ne voit jamais le texte en clair ni les clés de déchiffrement (Zero-Knowledge).
-   - Les messages sont signés (RSA-PSS) par l'expéditeur ; seuls les messages signés et vérifiés sont affichés (les messages non signés ou invérifiables sont rejetés).
+   - Les messages sont signés (RSA-PSS) par l'expéditeur ; seuls les messages signés et vérifiés sont affichés (les messages non signés ou invérifiables sont rejetés). Leur date signée est comparée à celle du serveur (tolérance 15 min).
+   - Le mot de passe ne quitte jamais l'appareil : une clé d'authentification en est dérivée (PBKDF2 600 000 + HKDF), **liée à ce serveur** (`AUTH_KEY_SCOPE`) pour ne pas être rejouable sur une autre instance. Voir [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) avant tout changement de nom de domaine.
 2. **Stockage client et coffre local (`IndexedDB + Web Crypto`)** :
    - Aucun jeton JWT, clé privée RSA brute, JWK ou blob cryptographique n'est conservé dans `localStorage` ni `sessionStorage`.
    - Le coffre local (`WLM_DeviceVault_v1`) persiste la clé privée sous forme de `CryptoKey` native avec `extractable: false` via le clonage structuré IndexedDB. Le matériel cryptographique de la clé privée est conçu pour ne pas être exportable via les API Web Crypto standard (`crypto.subtle.exportKey()`), ce qui réduit significativement le risque d'exfiltration directe par rapport à un stockage classique et aide à maintenir les données sensibles à l'écart du Web Storage.
    - `wlm_user` dans `localStorage` est limité aux champs d'affichage non sensibles (`id`, `username`, `nickname`, `avatar`, `scene`, `status`, `rememberMe`).
 3. **Sessions serveur en cookie `HttpOnly; SameSite=Strict`** :
-   - Les jetons JWT sont émis sous forme de cookies `HttpOnly; SameSite=Strict; Path=/; Max-Age=24h` (`Secure` en production HTTPS / Cloudflare).
+   - Les jetons JWT sont émis sous forme de cookies `HttpOnly; SameSite=Strict; Path=/` valables 24 h, ou 30 jours glissants avec « Se souvenir de cet appareil » (`Secure` en production HTTPS / Cloudflare).
    - Même prise en charge des cookies sur les routes Express et à la négociation WebSocket (`io.use`).
    - Révocation côté serveur (`token_version`) et suppression du cookie lors de la déconnexion (`/api/logout`).
 4. **Autorisation centralisée (`canInteract`)** :
@@ -109,7 +111,7 @@ OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées pa
 ## Tech Stack
 
 - **Frontend** : React 19, TypeScript, Vite, CSS Vanilla (thème Aero rétro).
-- **Plateformes Client** : Navigateur web, Progressive Web App (PWA) avec Service Worker & Manifeste Web, Desktop (wrapper Electron optionnel).
+- **Plateformes Client** : Navigateur web, Progressive Web App (PWA) avec Service Worker & Manifeste Web, application Android (Capacitor, [docs/ANDROID.md](docs/ANDROID.md)), Desktop (wrapper Electron optionnel).
 - **Backend** : Node.js, Express, Socket.IO.
 - **Base de données** : SQLite (via `better-sqlite3`).
 - **Cryptographie** : Web Crypto API (`SubtleCrypto`), Node.js `crypto` (PBKDF2 SHA-512, AES-GCM, RSA-OAEP).
@@ -126,7 +128,7 @@ OpenWLM applique les mesures de sécurité ci-dessous. Elles sont vérifiées pa
 ## Installation & Lancement
 
 ### Prérequis
-- **Node.js** : v20 ou supérieur recommandé (testé sous v22 LTS).
+- **Node.js** : v22 LTS (22.23.4 ou plus récent ; requis par `firebase-admin` et `@capacitor/cli`).
 - **npm** : v10 ou supérieur.
 
 ### 1. Cloner le dépôt
@@ -169,9 +171,8 @@ npm run dev
 npm run build
 
 # Démarrer le serveur Node.js en mode production
-npm run server
-# ou en direct :
 NODE_ENV=production node server/index.js
+# (npm run server relance le serveur à chaque modification de fichier : à réserver au développement)
 ```
 
 > ⚠️ **En production, lancez le serveur sous un superviseur** (systemd, pm2, politique de redémarrage Docker). Il s'arrête volontairement (code 1) après une erreur non gérée afin d'être relancé dans un état sain. Voir [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -207,7 +208,7 @@ Elle envoie des requêtes API et WebSocket directes (sans passer par l'interface
 - Téléchargement de fichiers sans token cryptographique d'accès (rejet HTTP 401/403)
 - Injection de chemin (Path Traversal) sur les avatars/scènes (rejet HTTP 400)
 
-Des tests de bout en bout dans le navigateur (Playwright, base temporaire) couvrent l'inscription/connexion, un message chiffré entre deux comptes, et un appel audio qui passe à la caméra et au partage d'écran :
+Des tests de bout en bout dans le navigateur (Playwright, base temporaire, une soixantaine de scénarios) couvrent notamment l'inscription et la connexion, les messages chiffrés, les fichiers et messages vocaux, les appels, les jeux, les options, la robustesse de la connexion et l'app Android simulée :
 
 ```bash
 npm run test:e2e
@@ -233,7 +234,7 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ## Version & Référence
 
-- **Version actuelle** : `v1.7.0`
+- **Version actuelle** : `v1.7.0` (application Android : versionCode 10)
 - **Tag Git de référence** : `v1.7.0`
 - **Historique** : Voir le fichier [CHANGELOG.md](CHANGELOG.md).
 

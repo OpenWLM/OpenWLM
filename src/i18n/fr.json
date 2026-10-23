@@ -204,7 +204,8 @@
     "voiceClipMaxReached": "Durée maximale atteinte : le clip vocal est envoyé.",
     "winkNotSentNetwork": "Clin d'œil non envoyé : connexion au serveur perdue pendant l'envoi.",
     "winkNotSentOffline": "Clin d'œil non envoyé : le contact est hors ligne en mode privé, et les clins d'œil privés ne sont pas conservés.",
-    "loadOlderMessages": "Messages précédents"
+    "loadOlderMessages": "Messages précédents",
+    "authRejectedClock": "Message rejeté : sa date signée diffère de plus de 15 minutes de celle du serveur. L'horloge du serveur ou de l'appareil de l'expéditeur est peut-être décalée (ou le message a été re-daté)."
   },
   "bot": {
     "name": "OpenWLM",

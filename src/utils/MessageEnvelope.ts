@@ -55,6 +55,8 @@ export interface OpenedMessage<T = Record<string, unknown>> {
   mid?: string;
   ts?: number;
   reason?: string;
+  /** 'clock' : horodatage signé trop éloigné de la date du serveur (horloge décalée ou message re-daté). */
+  code?: 'clock';
 }
 
 export interface OpenContext {
@@ -70,7 +72,11 @@ export interface OpenContext {
   /**
    * Date de réception annoncée par le serveur (ms). Si elle est fournie, un écart de plus de
    * `clockToleranceMs` (15 min par défaut) avec l'horodatage SIGNÉ par l'émetteur rejette le
-   * message : un serveur malveillant ne peut pas re-présenter un vieux message comme nouveau.
+   * message : un serveur ne peut pas re-DATER un vieux message pour le faire passer pour récent.
+   * Un ancien message re-présenté avec sa vraie date reste accepté (et s'affiche à sa date) ;
+   * le doublon d'un message déjà vu est écarté par son `mid`. Une horloge (serveur ou appareil
+   * de l'expéditeur) décalée de plus de 15 min fait aussi rejeter des messages authentiques :
+   * motif « clock », affiché tel quel.
    */
   serverTimestamp?: number;
   clockToleranceMs?: number;
@@ -280,7 +286,7 @@ export const openMessage = async <T = Record<string, unknown>>(
   if (typeof ctx.serverTimestamp === 'number' && Number.isFinite(ctx.serverTimestamp)) {
     const tolerance = ctx.clockToleranceMs ?? DEFAULT_CLOCK_TOLERANCE_MS;
     if (Math.abs(env.ts - ctx.serverTimestamp) > tolerance) {
-      return { status: 'invalid', payload: null, reason: 'Horodatage signé incohérent avec la date du serveur (message rejoué ou re-daté)' };
+      return { status: 'invalid', payload: null, code: 'clock', reason: 'Horodatage signé incohérent avec la date du serveur (horloge décalée de plus de 15 min, ou message re-daté)' };
     }
   }
 

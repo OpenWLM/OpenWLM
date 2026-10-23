@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **External review**: `server/db.js` (`users.auth_recovery_until` column, created at startup), `server/routes/auth.js` (**new routes** `GET /api/auth/scope`, `POST /api/auth/recovery/challenge`, `POST /api/auth/recovery/complete`; `/api/logout-device` now requires a session — WAF rules regenerated) and `server/index.js`: restart the service. **Add `AUTH_KEY_SCOPE=<current domain>` to `.env`** (see docs/DEPLOYMENT.md): without it, a domain or port change would block every sign-in. New admin script `scripts/auth-recovery.mjs`.
 - **Security review, batch 5**: `server/routes/messages.js` (paginated history: last 300 messages, `?before=` and `?limit=`, `X-Has-More` header) and `server/routes/auth.js` (**new route `POST /api/logout-device`**, WAF rule regenerated, to copy into Cloudflare): restart the service.
 - **Security review, batch 4**: `server/middleware/auth.js`, `server/routes/{auth,users}.js`, `server/sockets/messages.js`, `server/db.js` (new `messages(sender_id)` index, created at startup) changed: restart the service. **New route `POST /api/user/migrate-auth-key`**: WAF rule regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`.
 - **Security review, batch 2 (interface + server)**: `server/db.js` (new `custom_emoticons.encrypted_key` column, created automatically at startup), `server/routes/emoticons.js` (`encryptedKey` upload field, **new route `POST /api/emoticons/custom/key`**: WAF rule regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`): restart the service.
@@ -35,6 +36,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- `tests/test_auth_scope_recovery.js` (scope, recovery, script, `logout-device`), `e2e/auth-recovery.spec.ts` (scope change then recovery), per-sender emoticons in `e2e/peer-payload.spec.ts`, JVM test `BridgeTrustTest.cheminsLocauxNormalisesAvantComparaison`; fail on the previous version.
 - `tests/test_history_pagination.js` (pagination, `logout-device`), peer payload test in `tests/test_message_envelope.js`, `e2e/peer-payload.spec.ts` (IME, abandoned sign-in, "Earlier messages"); fail on the previous version.
 - `tests/test_lot4_hardening.js` (per-IP lockout, key migration, quota), timestamp test in `tests/test_message_envelope.js`, `e2e/auth-key-scope.spec.ts` (legacy-key account migrated; window and menu keyboard); all fail on the previous version.
 - JVM tests `BridgeTrustTest.cheminsLocauxCapacitorRefuses` and `FileNamesTest.typeMimeControle`.
@@ -55,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Following an external review**:
+  - **Authentication key: no more lockout on a domain change.** Its scope is now a stable server identifier (`AUTH_KEY_SCOPE`, announced by `GET /api/auth/scope`), otherwise the host without `www.`. If the scope changes anyway, the administrator opens a recovery window (`node scripts/auth-recovery.mjs <username>` or `--all`): everyone signs in again with their password, the app proves it by opening the account's key vault, and stores the new key (password, encryption keys and history kept). Threat model documented: the scope protects against a passive leak (logs), not against an active malicious server, which serves the interface code itself.
+  - **Received emoticons limited to their sender**: they only apply to that contact's messages; a received shortcut must contain a symbol (no more "le" or "ok") and cannot take over a standard emoticon (`:)`, `:D`…).
+  - **Message rejected for its timestamp**: explicit reason ("signed date more than 15 min away from the server's: clock skew or re-dated message") instead of "invalid signature"; documentation corrected (an old message with its real date is still accepted, only a re-dated one is refused).
+  - `/api/logout-device` requires a session (no sign-out triggered by another site).
+  - **Android app (APK v10)**: "Trust this server" and save-confirmation dialogs protected against overlay by another app (touches ignored, overlay windows hidden on Android 12+), like the call and server screens; Capacitor local paths normalized before the check (`/a/../_capacitor_file_/…`, `//…`, `%2e%2e` refused); fallback call notification with the phone ringtone instead of the message sound.
+  - **Documentation**: README (24 h / 30-day sessions, Node.js 22, Android app, image viewer, server-bound key, production start, E2E tests, versionCode), docs/ANDROID.md (exact list of guarded and unguarded bridge methods), docs/DEPLOYMENT.md (`AUTH_KEY_SCOPE`, domain change procedure), docs/SECURITY_E2E.md.
 - **Security review, batch 5**:
   - **Received message style bounded** (size 8 to 20, `#RRGGBB` color, font, bold/italic): a contact can no longer display giant text that breaks the conversation, nor transparent text.
   - **Addresses supplied by a contact**: download link, wink id and voice-clip sound accepted only in their exact form; a contact can no longer make the app load another server path. An unknown wink is not played.

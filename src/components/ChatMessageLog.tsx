@@ -26,7 +26,8 @@ interface ChatMessageLogProps {
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   onResend: (chatId: number, clientMsgId: string) => void;
   onAssistantAction: (action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'puissance4' | 'help') => void;
-  renderMessageContent: (text: string, style?: any) => React.ReactNode;
+  /** `senderId` : les émoticônes personnalisées reçues ne s'appliquent qu'aux messages de leur expéditeur. */
+  renderMessageContent: (text: string, style?: any, senderId?: number) => React.ReactNode;
   /** Rejoue un clin d'œil reçu (quand la lecture automatique est désactivée). */
   onPlayWink?: (winkId: string) => void;
   /** Le serveur a des messages plus anciens que ceux affichés. */
@@ -140,6 +141,7 @@ const ChatMessageLogInner: React.FC<ChatMessageLogProps> = ({
                      ⛔ {m._auth === 'plaintext' ? t.chat.authRejectedPlaintext
                        : m._auth === 'unsigned-legacy' ? t.chat.authUnsignedLegacy
                        : m._auth === 'unverifiable' ? t.chat.authUnverifiable
+                       : m._authCode === 'clock' ? t.chat.authRejectedClock
                        : t.chat.authRejectedInvalid}
                    </div>
                  ) : m.fileData ? (
@@ -152,9 +154,9 @@ const ChatMessageLogInner: React.FC<ChatMessageLogProps> = ({
                    <VoiceClipPlayer src={m.audio} />
                  ) : m.action ? (
                    // /me : « * Pseudo texte »
-                   <div className="msg-action" data-testid="msg-action">* {formatNickname(senderDisplayName)} {renderMessageContent(m.text, m.style)}</div>
+                   <div className="msg-action" data-testid="msg-action">* {formatNickname(senderDisplayName)} {renderMessageContent(m.text, m.style, Number(m.sender_id ?? m.senderId))}</div>
                  ) : (
-                   renderMessageContent(m.text, m.style)
+                   renderMessageContent(m.text, m.style, Number(m.sender_id ?? m.senderId))
                  )}
                </>
              )}

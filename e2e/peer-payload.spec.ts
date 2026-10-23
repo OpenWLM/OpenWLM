@@ -121,3 +121,50 @@ test('historique paginé : « Messages précédents » charge la page d\'avant',
   const order = texts.filter((x) => x.includes(String(stamp))).map((x) => Number(x.match(/page (\d)/)?.[1]));
   expect(order).toEqual([1, 2, 3, 4, 5]);
 });
+
+test('émoticônes reçues : propres à leur expéditeur, jamais un mot courant', async ({ browser }) => {
+  test.setTimeout(150000);
+  const stamp = Date.now();
+  const nameA = `ema_${stamp}`;
+  const nameB = `emb_${stamp}`;
+  const a = await newPage(browser);
+  await register(a, nameA);
+  await fillLogin(a, nameA);
+  await expect(a.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
+  const b = await newPage(browser);
+  await register(b, nameB);
+  await fillLogin(b, nameB);
+  await expect(b.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
+  expect((await a.request.post('/api/invite', { data: { receiverUsername: nameB } })).ok()).toBeTruthy();
+  const meB = await (await b.request.get('/api/user/me')).json();
+  const invites = await (await b.request.get(`/api/invitations/${meB.user.id}`)).json();
+  expect((await b.request.post('/api/accept-invite', { data: { invitationId: invites[0].id } })).ok()).toBeTruthy();
+  await expect(b.locator('.contact-row', { hasText: nameA })).toBeVisible({ timeout: 45000 });
+
+  await a.locator('.contact-row', { hasText: nameB }).click();
+  // Émoticône personnalisée réelle, téléversée par A
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  await a.locator('.tool-icon[title="Emoticons"]').first().click();
+  await a.locator('.emoticon-popup .tout-afficher', { hasText: /My emoticons|Mes émoticônes/ }).first().click();
+  await a.locator('.wlm-custom-emo-add-section input[type="file"]').setInputFiles({ name: 'c.png', mimeType: 'image/png', buffer: png });
+  await a.locator('.wlm-custom-emo-add-section input[placeholder*="(cat)"]').fill('(chat)');
+  await a.locator('.wlm-custom-emo-add-section button.win-btn-primary').click();
+  await expect(a.locator('.wlm-custom-emo-item', { hasText: '(chat)' })).toBeVisible({ timeout: 20000 });
+  await a.getByRole('button', { name: /^Close$|^Fermer$/ }).last().click();
+  await a.locator('.chat-input-rich').click();
+  await a.keyboard.type(`mon (chat) ${stamp}`);
+  await a.keyboard.press('Enter');
+
+  // Chez B : l'émoticône de A s'affiche dans le message de A…
+  await b.locator('.contact-row', { hasText: nameA }).click();
+  const fromA = b.locator('.msg-line', { hasText: String(stamp) });
+  await expect(fromA.locator('img.custom-emoticon[alt="(chat)"]')).toBeVisible({ timeout: 20000 });
+  // … mais pas dans un message de B lui-même qui contient le même raccourci
+  await b.locator('.chat-input-rich').click();
+  await b.keyboard.type(`le (chat) de B ${stamp}`);
+  await b.keyboard.press('Enter');
+  const fromB = b.locator('.msg-line', { hasText: `de B ${stamp}` });
+  await expect(fromB).toBeVisible({ timeout: 10000 });
+  await expect(fromB.locator('img.custom-emoticon')).toHaveCount(0);
+  await expect(fromB).toContainText('(chat)');
+});

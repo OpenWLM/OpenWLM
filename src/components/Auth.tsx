@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { deriveZeroKnowledgeKeys } from '../utils/Security';
+import { deriveZeroKnowledgeKeys, decryptPrivateKeyVault, importPrivateCryptoKey, base64ToArrayBuffer } from '../utils/Security';
 import { useI18n } from '../i18n';
 import { PASSWORD_MIN_LENGTH } from '../utils/PasswordStrength';
 import { serverErrorText } from '../utils/serverError';
@@ -160,12 +160,20 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
           // silencieuse (même mot de passe, même coffre, autres sessions conservées)
           const status = (firstErr as { response?: { status?: number } }).response?.status;
           if (status !== 401) throw firstErr;
-          res = await axios.post('/api/login', { username, password: legacyAuthKeyHex, remember: rememberMe });
-          effectiveAuthKeyHex = legacyAuthKeyHex;
           try {
-            await axios.post('/api/user/migrate-auth-key', { oldAuthKeyHex: legacyAuthKeyHex, newAuthKeyHex: authKeyHex });
-            effectiveAuthKeyHex = authKeyHex;
-          } catch { /* retentée à la prochaine connexion ; l'ancienne clé reste valable */ }
+            res = await axios.post('/api/login', { username, password: legacyAuthKeyHex, remember: rememberMe });
+            effectiveAuthKeyHex = legacyAuthKeyHex;
+            try {
+              await axios.post('/api/user/migrate-auth-key', { oldAuthKeyHex: legacyAuthKeyHex, newAuthKeyHex: authKeyHex });
+              effectiveAuthKeyHex = authKeyHex;
+            } catch { /* retentée à la prochaine connexion ; l'ancienne clé reste valable */ }
+          } catch (legacyErr) {
+            // Portée du serveur changée (nouveau domaine…) et récupération ouverte par
+            // l'administrateur : preuve du mot de passe par le coffre, nouvelle clé enregistrée
+            const recovered = await recoverWithVault(username, vaultKey, authKeyHex, rememberMe);
+            if (!recovered) throw legacyErr;
+            res = recovered;
+          }
         }
 
         // M2 : le JWT n'est plus renvoyé dans le corps (auth par cookie HttpOnly uniquement).
@@ -386,6 +394,32 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
       </div>
     </div>
   );
+};
+
+/**
+ * Récupération de compte ouverte par l'administrateur (scripts/auth-recovery.mjs), après un
+ * changement de portée de la clé d'authentification. Le serveur remet le coffre de clés et un
+ * défi chiffré pour la clé publique du compte : l'ouvrir prouve le mot de passe ; la nouvelle
+ * clé d'authentification est alors enregistrée. Renvoie la réponse de connexion, ou null.
+ */
+const recoverWithVault = async (username: string, vaultKey: CryptoKey, newAuthKeyHex: string, remember: boolean) => {
+  let challenge: { vault: unknown; encryptedNonce: string };
+  try {
+    challenge = (await axios.post('/api/auth/recovery/challenge', { username })).data;
+  } catch {
+    return null; // pas de récupération en cours pour ce compte
+  }
+  try {
+    const vault = typeof challenge.vault === 'string' ? JSON.parse(challenge.vault) : challenge.vault;
+    const privJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
+    if (!privJwk) return null; // mauvais mot de passe
+    const priv = await importPrivateCryptoKey(privJwk, false);
+    const nonceBytes = await window.crypto.subtle.decrypt({ name: 'RSA-OAEP' }, priv, base64ToArrayBuffer(challenge.encryptedNonce));
+    const nonce = new TextDecoder().decode(nonceBytes);
+    return await axios.post('/api/auth/recovery/complete', { username, nonce, newAuthKeyHex, remember });
+  } catch {
+    return null;
+  }
 };
 
 export default Auth;

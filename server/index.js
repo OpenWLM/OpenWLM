@@ -18,7 +18,7 @@ import {
   accountLimiters, 
   ipRateLimiters 
 } from './middleware/auth.js';
-import { createAuthRouter, captchas, signupIpCounter } from './routes/auth.js';
+import { createAuthRouter, captchas, signupIpCounter, recoveryChallenges } from './routes/auth.js';
 import { createUsersRouter } from './routes/users.js';
 import { createMessagesRouter } from './routes/messages.js';
 import { createFilesRouter, cleanupExpiredFiles, cleanupOrphanUploads } from './routes/files.js';
@@ -232,6 +232,10 @@ const broadcastStatusToContacts = (userId, payload) => {
 const cleanupMemoryMaps = () => {
   const now = Date.now();
   
+  for (const [id, data] of recoveryChallenges.entries()) {
+    if (!data || now > data.expires) recoveryChallenges.delete(id);
+  }
+
   for (const [id, data] of captchas.entries()) {
     if (!data || now > data.expires) {
       captchas.delete(id);

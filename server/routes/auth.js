@@ -7,7 +7,8 @@ import { getUserRoom } from '../sessionStore.js';
 import { 
   authRateLimiter, 
   authenticateToken, 
-  loginAccountLimiter, 
+  loginAccountLimiter,
+  loginUsernameLimiter, 
   signupAccountLimiter, 
   captchaRateLimiter, 
   hashPassword, 
@@ -179,8 +180,8 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     
     if (!username || !password) return res.status(400).json({ error: 'Identifiants requis.', code: 'credentials_required' });
 
-    const loginLimit = loginAccountLimiter.attempt(username);
-    if (!loginLimit.allowed) {
+    const loginKey = `${String(username).trim().toLowerCase()}|${getClientIp(req) || '?'}`;
+    if (!loginAccountLimiter.attempt(loginKey).allowed || !loginUsernameLimiter.attempt(username).allowed) {
       return res.status(429).json({ error: "Trop de tentatives de connexion pour ce compte. Veuillez réessayer plus tard.", code: 'login_rate_limited' });
     }
 
@@ -203,7 +204,8 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     }
 
     if (user && passwordOk) {
-      loginAccountLimiter.reset(username);
+      loginAccountLimiter.reset(loginKey);
+      loginUsernameLimiter.reset(username);
       issueSessionCookie(req, res, { id: user.id, username: user.username, tv: user.token_version || 0, remember: remember === true }, isProd);
 
       res.json({ success: true, user: toPrivateUserDTO(user) });

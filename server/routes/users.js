@@ -16,7 +16,8 @@ import {
   canInteract, 
   isValidPath, 
   hashPassword, 
-  verifyPasswordHash 
+  verifyPasswordHash,
+  migrateAuthKeyAccountLimiter
 } from '../middleware/auth.js';
 
 // SÉCURITÉ : validation stricte du coffre chiffré — champs, base64, longueurs DÉCODÉES
@@ -242,6 +243,38 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Erreur lors de la suppression." });
+    }
+  });
+
+  /**
+   * Nouvelle dérivation de la clé d'authentification (liée au serveur, cf. Security.ts) : le
+   * client prouve l'ancienne clé et enregistre la nouvelle. Contrairement au changement de mot
+   * de passe, rien d'autre ne change : le mot de passe et le coffre sont les mêmes, les autres
+   * sessions restent ouvertes (pas de token_version ni de cookie renouvelé).
+   */
+  router.post('/user/migrate-auth-key', authenticateToken, sensitiveRateLimiter, async (req, res) => {
+    const { oldAuthKeyHex, newAuthKeyHex } = req.body || {};
+    const userId = req.user.id;
+    if (!migrateAuthKeyAccountLimiter.attempt(userId).allowed) {
+      return res.status(429).json({ error: 'Trop de tentatives. Veuillez réessayer plus tard.' });
+    }
+    if (!/^[a-fA-F0-9]{64}$/.test(String(oldAuthKeyHex)) || !/^[a-fA-F0-9]{64}$/.test(String(newAuthKeyHex))) {
+      return res.status(400).json({ error: "Format des clés d'authentification invalide (hex 256 bits requis)." });
+    }
+    const user = db.prepare('SELECT password_hash, salt FROM users WHERE id = ?').get(userId);
+    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+    if (!(await verifyPasswordHash(oldAuthKeyHex, user.salt, user.password_hash))) {
+      return res.status(401).json({ error: 'Clé d\'authentification actuelle incorrecte.' });
+    }
+    const newSalt = crypto.randomBytes(16).toString('hex');
+    try {
+      const newHash = await hashPassword(newAuthKeyHex, newSalt);
+      db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?').run(newHash, newSalt, userId);
+      migrateAuthKeyAccountLimiter.reset(userId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Erreur migration clé d\'authentification :', err);
+      res.status(500).json({ error: 'Erreur lors de la mise à jour.' });
     }
   });
 

@@ -25,6 +25,30 @@ export const MESSAGE_BYTES_MAX = (process.env.NODE_ENV === 'test' && Number(proc
   : 24 * 1024 * 1024;
 // Tailles par message : une enveloppe de texte ou de fichier tient en quelques Ko ; seul un
 // message vocal (90 s, base64 dans l'enveloppe) approche la trame socket de 1 Mo.
+// Quota de stockage persisté par expéditeur (texte + audio) : au-delà, les nouveaux messages
+// sont refusés (code 'storage_quota') jusqu'à ce que l'utilisateur efface des conversations.
+// Le volume est relu en base au plus toutes les 60 s, puis tenu à jour à chaque insertion.
+export const SENDER_STORAGE_QUOTA = (process.env.NODE_ENV === 'test' && Number(process.env.OPENWLM_TEST_SENDER_STORAGE_QUOTA) > 0)
+  ? Number(process.env.OPENWLM_TEST_SENDER_STORAGE_QUOTA)
+  : 512 * 1024 * 1024;
+const senderStorage = new Map(); // senderId -> { bytes, at }
+const senderStoredBytes = (senderId, now = Date.now()) => {
+  const cached = senderStorage.get(senderId);
+  if (cached && now - cached.at < 60000) return cached.bytes;
+  const row = db.prepare("SELECT COALESCE(SUM(LENGTH(text)) + SUM(LENGTH(COALESCE(audio, ''))), 0) AS bytes FROM messages WHERE sender_id = ?").get(senderId);
+  const bytes = Number(row?.bytes) || 0;
+  senderStorage.set(senderId, { bytes, at: now });
+  return bytes;
+};
+const noteStored = (senderId, bytes) => {
+  const cached = senderStorage.get(senderId);
+  if (cached) cached.bytes += bytes;
+};
+export const cleanupSenderStorage = (now = Date.now()) => {
+  for (const [key, entry] of senderStorage.entries()) {
+    if (now - entry.at > 10 * 60 * 1000) senderStorage.delete(key);
+  }
+};
 export const MAX_TEXT_CHARS = 64 * 1024;
 export const MAX_AUDIO_CHARS = 900 * 1024;
 export const MAX_MID_CHARS = 64;
@@ -167,8 +191,13 @@ export const registerMessageHandlers = (io, socket) => {
       if (typeof callback === 'function') callback({ success: false, error: "Audio trop volumineux.", code: 'too_large' });
       return;
     }
-    if (!finalIsPrivate && !byteBudgetAllows(senderId, (text ? text.length : 0) + (audio ? audio.length : 0))) {
+    const messageBytes = (text ? text.length : 0) + (audio ? audio.length : 0);
+    if (!finalIsPrivate && !byteBudgetAllows(senderId, messageBytes)) {
       if (typeof callback === 'function') callback({ success: false, error: "Volume de messages trop important, réessayez plus tard.", code: 'quota' });
+      return;
+    }
+    if (!finalIsPrivate && senderStoredBytes(senderId) + messageBytes > SENDER_STORAGE_QUOTA) {
+      if (typeof callback === 'function') callback({ success: false, error: "Espace de stockage de vos messages épuisé : effacez d'anciennes conversations.", code: 'storage_quota' });
       return;
     }
     
@@ -195,6 +224,7 @@ export const registerMessageHandlers = (io, socket) => {
           VALUES (?, ?, ?, ?, ?, ?, 'sent', ?, ?)
         `);
         const info = stmt.run(senderId, receiverId, text, JSON.stringify(style), audio, type || 'text', nowIso, envelopeMid);
+        noteStored(senderId, messageBytes);
         messageToDeliver.id = info.lastInsertRowid;
         messageToDeliver.delivery_status = 'sent';
       } catch (err) {

@@ -390,7 +390,8 @@
     "defaultDevice": "Par défaut",
     "unsecureContext": "Votre navigateur bloque l'accès à la caméra/micro car le site n'est pas sécurisé (HTTPS requis).",
     "expand": "Agrandir l'appel",
-    "minimizeWindow": "Réduire l'appel"
+    "minimizeWindow": "Réduire l'appel",
+    "noCameraAudioOnly": "Caméra indisponible : l'appel continue en audio (vous pourrez l'activer si elle se libère)."
   },
   "settings": {
     "optionsTitle": "Options",

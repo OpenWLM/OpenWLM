@@ -390,7 +390,8 @@
     "defaultDevice": "Default",
     "unsecureContext": "Your browser blocks camera/microphone access because the site is not secure (HTTPS required).",
     "expand": "Expand call",
-    "minimizeWindow": "Minimize call"
+    "minimizeWindow": "Minimize call",
+    "noCameraAudioOnly": "Camera unavailable: the call continues in audio (you can turn it on if it becomes available)."
   },
   "settings": {
     "optionsTitle": "Options",

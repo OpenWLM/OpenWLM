@@ -146,11 +146,27 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
       // DÉRIVATION ZERO-KNOWLEDGE STRICTE :
       // PBKDF2 (600 000 itérations) + HKDF-SHA256
       // Le mot de passe maître NE QUITTE JAMAIS le navigateur
-      const { authKeyHex, vaultKey } = await deriveZeroKnowledgeKeys(username, password);
+      const { authKeyHex, legacyAuthKeyHex, vaultKey } = await deriveZeroKnowledgeKeys(username, password);
 
       if (isLogin) {
         // Envoi uniquement de authKeyHex (jamais le mot de passe brut)
-        const res = await axios.post('/api/login', { username, password: authKeyHex, remember: rememberMe });
+        let res;
+        // Clé qui prouve le mot de passe pour la suite de la session (création des clés E2EE…)
+        let effectiveAuthKeyHex = authKeyHex;
+        try {
+          res = await axios.post('/api/login', { username, password: authKeyHex, remember: rememberMe });
+        } catch (firstErr) {
+          // Compte créé avant la clé liée au serveur : ancienne dérivation, puis migration
+          // silencieuse (même mot de passe, même coffre, autres sessions conservées)
+          const status = (firstErr as { response?: { status?: number } }).response?.status;
+          if (status !== 401) throw firstErr;
+          res = await axios.post('/api/login', { username, password: legacyAuthKeyHex, remember: rememberMe });
+          effectiveAuthKeyHex = legacyAuthKeyHex;
+          try {
+            await axios.post('/api/user/migrate-auth-key', { oldAuthKeyHex: legacyAuthKeyHex, newAuthKeyHex: authKeyHex });
+            effectiveAuthKeyHex = authKeyHex;
+          } catch { /* retentée à la prochaine connexion ; l'ancienne clé reste valable */ }
+        }
 
         // M2 : le JWT n'est plus renvoyé dans le corps (auth par cookie HttpOnly uniquement).
         // On ne l'exige donc plus pour valider la réponse de login.
@@ -160,7 +176,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
             // Champ distinct : `status` de la réponse serveur n'est PAS un choix de l'utilisateur
             ...(chosenStatus ? { loginStatus: chosenStatus } : {}),
             rememberMe: rememberMe
-          }, vaultKey, authKeyHex);
+          }, vaultKey, effectiveAuthKeyHex);
         } else {
           setError(t.auth.invalidServerResponse);
         }

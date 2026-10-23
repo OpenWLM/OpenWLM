@@ -67,7 +67,16 @@ export interface OpenContext {
   myPrivateKey: CryptoKey | JsonWebKey;
   /** Clé publique JWK de l'émetteur (moi-même si le message vient d'une autre de mes sessions). */
   senderPublicKeyJwk: JsonWebKey | null | undefined;
+  /**
+   * Date de réception annoncée par le serveur (ms). Si elle est fournie, un écart de plus de
+   * `clockToleranceMs` (15 min par défaut) avec l'horodatage SIGNÉ par l'émetteur rejette le
+   * message : un serveur malveillant ne peut pas re-présenter un vieux message comme nouveau.
+   */
+  serverTimestamp?: number;
+  clockToleranceMs?: number;
 }
+
+export const DEFAULT_CLOCK_TOLERANCE_MS = 15 * 60 * 1000;
 
 // ---------------------------------------------------------------- utilitaires
 
@@ -265,6 +274,14 @@ export const openMessage = async <T = Record<string, unknown>>(
   // n'étant pas authentifié, il n'est pas renvoyé (il ne doit pas alimenter l'anti-rejeu).
   if (!signatureChecked) {
     return { status: 'unverifiable', payload: null, reason: 'Clé publique de l\'émetteur indisponible : refusé' };
+  }
+
+  // 3 bis) Horodatage signé cohérent avec la date de réception annoncée par le serveur
+  if (typeof ctx.serverTimestamp === 'number' && Number.isFinite(ctx.serverTimestamp)) {
+    const tolerance = ctx.clockToleranceMs ?? DEFAULT_CLOCK_TOLERANCE_MS;
+    if (Math.abs(env.ts - ctx.serverTimestamp) > tolerance) {
+      return { status: 'invalid', payload: null, reason: 'Horodatage signé incohérent avec la date du serveur (message rejoué ou re-daté)' };
+    }
   }
 
   // 4) Déchiffrement + cohérence interne (anti « signature stripping »)

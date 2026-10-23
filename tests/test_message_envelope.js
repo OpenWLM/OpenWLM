@@ -211,4 +211,26 @@ test('sanitizeDecryptedPayload ne garde que les champs de contenu', () => {
   assert.deepEqual(sanitizeDecryptedPayload({ type: 'admin' }), {}, 'type inconnu ignoré');
   assert.deepEqual(sanitizeDecryptedPayload(null), {});
 });
+
+// ---------------------------------------------------------------- horodatage signé vs serveur
+
+test('horodatage signé : un vieux message re-présenté comme nouveau est rejeté', async () => {
+  const old = await seal(alice, bob, { type: 'text', text: 'OK pour le virement' }, { now: Date.now() - 6 * 3600 * 1000 });
+  const replayed = await openMessage(JSON.stringify(old), {
+    serverSenderId: old.from, serverReceiverId: old.to, myId: bob.id, myPrivateKey: bob.privateKey,
+    senderPublicKeyJwk: alice.publicKeyJwk, serverTimestamp: Date.now()
+  });
+  assert.equal(replayed.status, 'invalid');
+  assert.match(replayed.reason, /Horodatage/);
+  // Le même message, avec sa vraie date de réception : accepté (petit écart d'horloge toléré)
+  const genuine = await openMessage(JSON.stringify(old), {
+    serverSenderId: old.from, serverReceiverId: old.to, myId: bob.id, myPrivateKey: bob.privateKey,
+    senderPublicKeyJwk: alice.publicKeyJwk, serverTimestamp: old.ts + 4 * 60 * 1000
+  });
+  assert.equal(genuine.status, 'verified');
+  // Sans date serveur (ancien appelant) : comportement inchangé
+  const noServerTs = await openAs(bob, old);
+  assert.equal(noServerTs.status, 'verified');
+});
+
 } // fin du bloc exécuté si le module .ts est chargeable

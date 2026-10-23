@@ -50,7 +50,8 @@ export interface MessageCryptoApi {
     rawText: unknown,
     senderId: number,
     receiverId: number,
-    myId: number
+    myId: number,
+    serverTimestamp?: number
   ) => Promise<OpenedMessage>;
   sealForContact: (
     payload: unknown,
@@ -81,14 +82,17 @@ export function useMessageCrypto({
   }, [userId]);
 
   const authenticateIncoming = useCallback(async (
-    rawText: unknown, senderId: number, receiverId: number, myId: number
+    rawText: unknown, senderId: number, receiverId: number, myId: number, serverTimestamp?: number
   ): Promise<OpenedMessage> => {
     const keys = myKeysRef.current;
     if (!keys) return { status: 'undecryptable', payload: null };
     const isSelf = senderId === myId;
     const resolveKey = async (force: boolean): Promise<JsonWebKey | null> =>
       isSelf ? keys.publicKeyJwk : ((await getPublicKeyRef.current(senderId, force)) ?? null);
-    const ctx = { serverSenderId: senderId, serverReceiverId: receiverId, myId, myPrivateKey: keys.privateKeyJwk };
+    const ctx = {
+      serverSenderId: senderId, serverReceiverId: receiverId, myId, myPrivateKey: keys.privateKeyJwk,
+      serverTimestamp: Number.isFinite(serverTimestamp) ? serverTimestamp : undefined
+    };
 
     let opened = await openMessage(rawText, { ...ctx, senderPublicKeyJwk: await resolveKey(false) });
     if (!isSelf && (opened.status === 'invalid' || opened.status === 'unverifiable')) {

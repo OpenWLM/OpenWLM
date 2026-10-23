@@ -26,7 +26,7 @@ import { createEmoticonsRouter } from './routes/emoticons.js';
 import { createPushRouter } from './routes/push.js';
 import { createGamesRouter, activeGames, getGamePlayers } from './routes/games.js';
 import createRtcRouter from './routes/rtc.js';
-import { messageLimits, wizzLimits, winkLimits, ackLimits, privateToggleLimits, cleanupByteBudget } from './sockets/messages.js';
+import { messageLimits, wizzLimits, winkLimits, ackLimits, privateToggleLimits, cleanupByteBudget, cleanupSenderStorage } from './sockets/messages.js';
 import { cleanupWindow } from './utils/rateWindow.js';
 import { gameMoveLimits, gameEventLimits, GAME_MOVE_WINDOW_MS } from './sockets/games.js';
 import { setupSocketHandlers } from './sockets/index.js';
@@ -270,6 +270,7 @@ const cleanupMemoryMaps = () => {
   cleanupWindow(ackLimits, 10000, now);
   cleanupWindow(privateToggleLimits, 10000, now);
   cleanupByteBudget(now);
+  cleanupSenderStorage(now);
 
   for (const [key, game] of activeGames.entries()) {
     const players = getGamePlayers(game);

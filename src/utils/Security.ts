@@ -51,6 +51,8 @@ export interface VaultData {
 export interface ZeroKnowledgeKeys {
   authKeyHex: string;
   vaultKey: CryptoKey;
+  /** Ancienne dérivation (sans portée serveur), pour migrer un compte existant. */
+  legacyAuthKeyHex: string;
 }
 
 export interface LocalEncryptedData {
@@ -248,6 +250,15 @@ export const sanitize = (str: string) => {
  *   * info: 'openwlm-auth-key-v1' -> authKeyHex (256 bits en hex pour transport HTTP)
  *   * info: 'openwlm-vault-encryption-key-v1' -> vaultKey (CryptoKey AES-GCM 256 bits non exportable)
  */
+/**
+ * Portée de la clé d'authentification : l'hôte du serveur (nom + port). Sans elle, la même
+ * clé servait sur toute instance OpenWLM où l'on utilisait le même identifiant et mot de passe :
+ * l'opérateur d'une instance tierce pouvait la rejouer sur une autre. L'ancienne dérivation
+ * (sans portée) reste calculée pour se connecter puis migrer les comptes existants.
+ */
+export const authKeyScope = (): string =>
+  typeof window !== 'undefined' && window.location ? window.location.host.toLowerCase() : '';
+
 export const deriveZeroKnowledgeKeys = async (
   username: string, 
   masterPassword: string
@@ -287,21 +298,18 @@ export const deriveZeroKnowledgeKeys = async (
 
   const fixedHkdfSalt = new Uint8Array(32); // Sel fixe 32 octets à zéro (RFC 5869)
 
-  // 4. Dérivation de authKeyHex (pour transport HTTP)
-  const authKeyBits = await window.crypto.subtle.deriveBits(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: fixedHkdfSalt,
-      info: enc.encode('openwlm-auth-key-v1')
-    },
-    masterCryptoKey,
-    256
-  );
-
-  const authKeyHex = Array.from(new Uint8Array(authKeyBits))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+  // 4. Dérivation de authKeyHex (pour transport HTTP) : v2 liée au serveur, v1 (ancienne) pour
+  //    les comptes pas encore migrés (même MasterKey : pas de second PBKDF2)
+  const deriveAuthHex = async (info: string) => {
+    const bits = await window.crypto.subtle.deriveBits(
+      { name: 'HKDF', hash: 'SHA-256', salt: fixedHkdfSalt, info: enc.encode(info) },
+      masterCryptoKey,
+      256
+    );
+    return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+  const authKeyHex = await deriveAuthHex('openwlm-auth-key-v2:' + authKeyScope());
+  const legacyAuthKeyHex = await deriveAuthHex('openwlm-auth-key-v1');
 
   // 5. Dérivation de vaultKey (CryptoKey AES-GCM 256 bits non exportable)
   const vaultKey = await window.crypto.subtle.deriveKey(
@@ -317,7 +325,7 @@ export const deriveZeroKnowledgeKeys = async (
     ['encrypt', 'decrypt']
   );
 
-  return { authKeyHex, vaultKey };
+  return { authKeyHex, legacyAuthKeyHex, vaultKey };
 };
 
 /**

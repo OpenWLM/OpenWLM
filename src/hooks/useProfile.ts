@@ -306,7 +306,7 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
     if (!user || !oldP || !newP) return { ok: false, error: 'failed' };
     try {
       // 1. Dériver oldAuthKeyHex et oldVaultKey depuis l'ancien mot de passe
-      const { authKeyHex: oldAuthKeyHex, vaultKey: oldVaultKey } = await deriveZeroKnowledgeKeys(user.username, oldP);
+      const { authKeyHex: oldAuthKeyHex, legacyAuthKeyHex: oldLegacyAuthKeyHex, vaultKey: oldVaultKey } = await deriveZeroKnowledgeKeys(user.username, oldP);
 
       // 2. Clé privée RSA en clair (JWK), obtenue en déchiffrant le coffre avec l'ancien mot de
       //    passe (échec = ancien mot de passe incorrect). La clé de la session ne convient pas :
@@ -338,14 +338,15 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       // Les autres appareils sont déconnectés et ne reçoivent plus de notifications : on indique
       // au serveur les cibles Push de CET appareil, à garder
       const [pushSub, fcmToken] = await Promise.all([getExistingPushSubscription().catch(() => null), getNativeFcmToken()]);
-      const res = await axios.post('/api/user/change-password', {
-        oldAuthKeyHex,
-        newAuthKeyHex,
-        newEncryptedPrivateKey,
-        socketId,
-        keepPushEndpoint: pushSub?.endpoint,
-        keepFcmToken: fcmToken ?? undefined
-      });
+      const body = { newAuthKeyHex, newEncryptedPrivateKey, socketId, keepPushEndpoint: pushSub?.endpoint, keepFcmToken: fcmToken ?? undefined };
+      let res;
+      try {
+        res = await axios.post('/api/user/change-password', { oldAuthKeyHex, ...body });
+      } catch (firstErr) {
+        // Compte pas encore migré (connecté par un appareil mémorisé) : ancienne clé
+        if ((firstErr as { response?: { status?: number } }).response?.status !== 401) throw firstErr;
+        res = await axios.post('/api/user/change-password', { oldAuthKeyHex: oldLegacyAuthKeyHex, ...body });
+      }
       if (res.data && res.data.success) {
         setUser(prev => prev ? { ...prev, encrypted_private_key: JSON.stringify(newEncryptedPrivateKey) } : null);
         return { ok: true };

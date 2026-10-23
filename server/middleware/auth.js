@@ -259,7 +259,12 @@ export const uploadRateLimiter = (req, res, next) => {
   next();
 };
 
+// Connexion : 10 échecs par (identifiant + IP) sur 15 min — un tiers ne peut plus bloquer un
+// compte en tapant 10 mauvais mots de passe depuis chez lui — et, contre une attaque répartie
+// sur plusieurs adresses, un plafond large par identifiant seul.
 export const loginAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+export const loginUsernameLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 100 });
+export const migrateAuthKeyAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 export const signupAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 5 });
 export const changePasswordAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 export const resetE2eAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
@@ -270,6 +275,8 @@ export const profileUpdateAccountLimiter = createAccountRateLimiter({ windowMs: 
 
 export const accountLimiters = [
   loginAccountLimiter,
+  loginUsernameLimiter,
+  migrateAuthKeyAccountLimiter,
   signupAccountLimiter,
   changePasswordAccountLimiter,
   resetE2eAccountLimiter,

@@ -31,7 +31,7 @@ interface ChatMessageLogProps {
   onPlayWink?: (winkId: string) => void;
 }
 
-export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
+const ChatMessageLogInner: React.FC<ChatMessageLogProps> = ({
   messages,
   activeChatId,
   contacts,
@@ -176,3 +176,9 @@ export const ChatMessageLog: React.FC<ChatMessageLogProps> = ({
     </>
   );
 };
+
+/**
+ * Mémoïsé : `App` se rend à chaque frappe dans le champ de saisie ; sans cela, tout le journal
+ * (émoticônisation de chaque message) était recalculé à chaque caractère tapé.
+ */
+export const ChatMessageLog = React.memo(ChatMessageLogInner);

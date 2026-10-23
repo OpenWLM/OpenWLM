@@ -152,6 +152,8 @@ try {
 } catch(e) {}
 try {
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_sender_mid ON messages(sender_id, mid) WHERE mid IS NOT NULL;");
+  // Quota de stockage par expéditeur (somme des messages persistés)
+  db.exec("CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);");
 } catch (e) {
   console.warn("Index unique messages(sender_id, mid) déjà présent ou erreur:", e.message);
 }

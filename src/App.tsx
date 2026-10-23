@@ -25,6 +25,7 @@ import { useMessageCrypto } from './hooks/useMessageCrypto';
 import { useContacts } from './hooks/useContacts';
 import { useGames } from './hooks/useGames';
 import { useCalls } from './hooks/useCalls';
+import { useDialogKeys } from './hooks/useDialogKeys';
 import { useWinksAndNudge } from './hooks/useWinksAndNudge';
 import { useProfile } from './hooks/useProfile';
 import { useNotifications } from './hooks/useNotifications';
@@ -906,6 +907,30 @@ const App: React.FC = () => {
   // Préférences locales (Options → Disposition, Messages, Sons)
   const appPrefs = useAppPrefs();
 
+  // Fenêtres et menu accessibles au clavier : Échap ferme, Tab reste à l'intérieur
+  const safetyModalRef = useRef<HTMLDivElement>(null);
+  const resetModalRef = useRef<HTMLDivElement>(null);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+  const closeSafetyModal = useCallback(() => setShowSafetyModal(false), []);
+  const closeResetModal = useCallback(() => { if (!isResettingE2E) setShowResetE2EModal(false); }, [isResettingE2E]);
+  const closeStatusMenu = useCallback(() => setShowStatusMenu(false), []);
+  useDialogKeys(showSafetyModal, closeSafetyModal, safetyModalRef);
+  useDialogKeys(showResetE2EModal, closeResetModal, resetModalRef);
+  useDialogKeys(showStatusMenu, closeStatusMenu, statusMenuRef);
+  /** Menu : flèches pour se déplacer, Entrée ou Espace pour choisir. */
+  const menuKeyNav = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = e.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length;
+      items[next]?.focus();
+    } else if ((e.key === 'Enter' || e.key === ' ') && index >= 0) {
+      e.preventDefault();
+      items[index].click();
+    }
+  };
+
   // Sons des notifications de l'app Android (message, Wizz) alignés sur Options → Sons et le statut
   useEffect(() => {
     setNativeSoundPrefs({ message: isSoundAllowed('message'), nudge: isSoundAllowed('nudge') });
@@ -1683,7 +1708,8 @@ const App: React.FC = () => {
         m.text,
         Number(m.sender_id ?? m.senderId),
         Number(m.receiver_id ?? m.receiverId),
-        Number(user?.id)
+        Number(user?.id),
+        m.timestamp ? Date.parse(String(m.timestamp)) : undefined
       );
       // Anti-rejeu : un même message signé n'apparaît qu'une fois dans l'historique
       if (opened.mid) {
@@ -1971,12 +1997,36 @@ const App: React.FC = () => {
   /**
    * AUTO-SCROLL DES MESSAGES
    */
+  // Suivi de la position de lecture : « en bas » (moins de 80 px) → le journal suit les nouveaux messages
+  const stickToBottomRef = useRef(true);
+  const lastScrolledChatRef = useRef(0);
   useEffect(() => {
+    const container = chatEndRef.current?.parentElement;
+    if (!container) return;
+    const onScroll = () => {
+      stickToBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+    };
+    stickToBottomRef.current = true;
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, [activeChatId]);
+
+  // Défilement automatique seulement si l'utilisateur était en bas (ou vient d'envoyer), et
+  // seulement pour la conversation affichée : relire l'historique n'est plus interrompu par un
+  // accusé ou un message d'une autre conversation
+  const activeChatMessages = messages[activeChatId];
+  useEffect(() => {
+    const list = activeChatMessages || [];
+    const last = list[list.length - 1];
+    const mine = !!last && !!user && resolveMessageSide(last, user.id) === 'self';
+    const chatChanged = lastScrolledChatRef.current !== activeChatId;
+    lastScrolledChatRef.current = activeChatId;
+    if (!chatChanged && !mine && !stickToBottomRef.current) return;
     const timer = setTimeout(() => {
       chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
     }, 50);
     return () => clearTimeout(timer);
-  }, [messages, activeChatId]);
+  }, [activeChatMessages, activeChatId, user]);
 
   /**
    * GESTION DES SOCKETS (CONNEXION & ÉVÉNEMENTS)
@@ -2072,7 +2122,9 @@ const App: React.FC = () => {
         // AUTHENTIFICATION + DÉCHIFFREMENT (enveloppe signée v2)
         const myIdNum = Number(user.id);
         const senderIdNum = Number(senderId);
-        const opened = await authenticateIncoming(data.text, senderIdNum, Number(data.receiverId ?? data.receiver_id), myIdNum);
+        // La date de réception du serveur sert à rejeter un vieux message re-présenté comme nouveau
+        const opened = await authenticateIncoming(data.text, senderIdNum, Number(data.receiverId ?? data.receiver_id), myIdNum,
+          data.timestamp ? Date.parse(String(data.timestamp)) : undefined);
         const authStatus: EnvelopeStatus = opened.status;
         if (authStatus !== 'verified') {
           console.warn(`[Security] Message ${data.id ?? ''} de ${senderIdNum} : ${authStatus}${opened.reason ? ' (' + opened.reason + ')' : ''}`);
@@ -2812,6 +2864,13 @@ const App: React.FC = () => {
   };
 
   /** Renvoie un message « Non envoyé » en réutilisant le mid d'origine (le serveur déduplique). */
+  // Rappels stables (le journal est mémoïsé) : ils lisent la dernière version via une ref
+  const resendRef = useRef<(chatId: number, clientMsgId: string) => Promise<void>>(async () => {});
+  const assistantActionRef = useRef<(action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'puissance4' | 'help') => void>(() => {});
+  const onResendStable = useCallback((chatId: number, clientMsgId: string) => resendRef.current(chatId, clientMsgId), []);
+  const onAssistantActionStable = useCallback((action: 'emo' | 'wizz' | 'sons' | 'morpion' | 'puissance4' | 'help') => assistantActionRef.current(action), []);
+  const onPlayWinkStable = useCallback((winkId: string) => { setActiveWink(winkId); setWinkCounter(c => c + 1); }, [setActiveWink, setWinkCounter]);
+
   const handleResendMessage = async (chatId: number, clientMsgId: string) => {
     const info = resendInfoRef.current.get(clientMsgId);
     const localMsg = (messages[chatId] || []).find(m => m.clientMsgId === clientMsgId);
@@ -2845,6 +2904,8 @@ const App: React.FC = () => {
   /**
    * Action utilisateur : basculer le statut vérifié localement
    */
+  useEffect(() => { resendRef.current = handleResendMessage; });
+
   const handleToggleContactVerification = (contactId: number, currentFp: string) => {
     setVerifiedContacts(prev => {
       const existing = prev[contactId];
@@ -3627,7 +3688,7 @@ const App: React.FC = () => {
 
     try {
       // 1. Dérivation Zero-Knowledge locale depuis le mot de passe utilisateur
-      const { authKeyHex, vaultKey } = await deriveZeroKnowledgeKeys(user.username, resetE2EPassword);
+      const { authKeyHex, legacyAuthKeyHex, vaultKey } = await deriveZeroKnowledgeKeys(user.username, resetE2EPassword);
 
       // 2. Génération d'une nouvelle paire de clés cryptographiques RSA 2048 bits
       const newKeyPair = await generateKeyPair();
@@ -3638,11 +3699,14 @@ const App: React.FC = () => {
       const newVault = await encryptPrivateKeyVault(privJwk, vaultKey);
 
       // 4. Appel sécurisé de l'API avec JWT
-      const res = await axios.post('/api/user/reset-e2e-keys', {
-        authKeyHex,
-        publicKey: pubJwk,
-        encryptedPrivateKey: newVault
-      });
+      let res;
+      try {
+        res = await axios.post('/api/user/reset-e2e-keys', { authKeyHex, publicKey: pubJwk, encryptedPrivateKey: newVault });
+      } catch (firstErr) {
+        // Compte pas encore migré vers la clé liée au serveur (connecté par un appareil mémorisé)
+        if ((firstErr as { response?: { status?: number } }).response?.status !== 401) throw firstErr;
+        res = await axios.post('/api/user/reset-e2e-keys', { authKeyHex: legacyAuthKeyHex, publicKey: pubJwk, encryptedPrivateKey: newVault });
+      }
 
       if (res.data && res.data.success) {
         // 5. Purge complète des données locales chiffrées (messages, clés privées, contacts vérifiés)
@@ -3907,6 +3971,7 @@ const App: React.FC = () => {
       }, 300);
     }
   };
+  useEffect(() => { assistantActionRef.current = handleAssistantAction; });
 
   /**
    * GESTION DES DISCUSSIONS OUVERTES
@@ -3999,7 +4064,7 @@ const App: React.FC = () => {
    * RENDU DU CONTENU DES MESSAGES (Gestion des émoticônes)
    */
   // Émoticônes (personnalisées puis standard) d'un texte sans mise en forme
-  const emoticonizeMessage = (text: string, keyPrefix: string): (string | React.ReactNode)[] => {
+  const emoticonizeMessage = useCallback((text: string, keyPrefix: string): (string | React.ReactNode)[] => {
     let parts: (string | React.ReactNode)[] = [text];
     
     // 1. Émoticônes personnalisées (E2EE) - Triées par longueur décroissante
@@ -4066,9 +4131,9 @@ const App: React.FC = () => {
       parts = newParts;
     });
     return parts;
-  };
+  }, [customEmoticonsMap, appPrefs.messages.emoticonImages]);
 
-  const renderMessageContent = (text: string, style: any) => {
+  const renderMessageContent = useCallback((text: string, style: any) => {
     if (!text) return null;
     // Mise en forme ([c=4], [b]…) rendue segment par segment, ou retirée si l'option est désactivée
     let parts: React.ReactNode;
@@ -4098,7 +4163,7 @@ const App: React.FC = () => {
         {parts}
       </div>
     );
-  };
+  }, [emoticonizeMessage, appPrefs.messages.showFormatting]);
 
   /**
    * CHAMP DE SAISIE RICHE (contentEditable)
@@ -4438,36 +4503,38 @@ const App: React.FC = () => {
 
                 {/* Menu déroulant de Statut et Options */}
                 {showStatusMenu && (
-                  <div className="wlm-status-dropdown">
+                  <div ref={statusMenuRef} role="menu" className="wlm-status-dropdown" onKeyDown={menuKeyNav}>
                     {STATUS_OPTIONS.map(opt => (
-                      <div key={opt.id} className="dropdown-item" onClick={() => { setMyStatus(opt.id); savePreferredStatus(user?.id, opt.id); setShowStatusMenu(false); syncProfile({ status: opt.id }); }}>
+                      <div key={opt.id} className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { setMyStatus(opt.id); savePreferredStatus(user?.id, opt.id); setShowStatusMenu(false); syncProfile({ status: opt.id }); }}>
                         <div className={`status-icon-box ${opt.id}`}></div>{getStatusLabel(opt.id)}
                       </div>
                     ))}
-                    <div className="dropdown-item separator"></div>
-                    <div className="dropdown-item" onClick={() => { toggleGlobalPrivateMode(); setShowStatusMenu(false); }}>
+                    <div className="dropdown-item separator" role="separator"></div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { toggleGlobalPrivateMode(); setShowStatusMenu(false); }}>
                       {globalPrivateMode ? t.roster.globalPrivateOn : t.roster.globalPrivateOff}
                     </div>
-                    <div className="dropdown-item" onClick={() => { setShowOptionsModal(true); setShowStatusMenu(false); }}>{t.roster.optionsMenu}</div>
-                    <div className="dropdown-item" onClick={() => { setShowHelp(true); setShowStatusMenu(false); }}>{t.extras.helpMenu}</div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { setShowOptionsModal(true); setShowStatusMenu(false); }}>{t.roster.optionsMenu}</div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { setShowHelp(true); setShowStatusMenu(false); }}>{t.extras.helpMenu}</div>
                     {/* La langue se choisit dans Options → Personnel */}
-                    <div className="dropdown-item" onClick={() => handleLogout()}>{t.auth.logout}</div>
-                    <div className="dropdown-item" onClick={() => { setShowStatusMenu(false); setConfirmSignOutOthers(true); }}>{t.roster.signOutOtherDevices}</div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => handleLogout()}>{t.auth.logout}</div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { setShowStatusMenu(false); setConfirmSignOutOthers(true); }}>{t.roster.signOutOtherDevices}</div>
                     {isDeviceRemembered && (
                       <div 
                         className="dropdown-item" 
+                        role="menuitem"
+                        tabIndex={0}
                         onClick={() => { handleForgetDevice(); setShowStatusMenu(false); }}
                         style={{ color: '#b33927' }}
                       >
                         🔓 {t.auth.forgetDevice}
                       </div>
                     )}
-                    <div className="dropdown-item separator"></div>
-                    <div className="dropdown-item" onClick={() => { setShowAvatarModal(true); setShowStatusMenu(false); }}>{t.roster.changeAvatar}</div>
-                    <div className="dropdown-item" onClick={() => { setShowSceneModal(true); setShowStatusMenu(false); }}>{t.roster.changeScene}</div>
-                    <div className="dropdown-item" onClick={() => { setIsEditingNickname(true); setShowStatusMenu(false); }}>{t.roster.changeNickname}</div>
-                    <div className="dropdown-item" onClick={() => { setShowPasswordModal(true); setShowStatusMenu(false); }}>{t.roster.changePasswordMenu}</div>
-                    <div className="dropdown-item" onClick={handleResetE2EKeys} style={{color:'red'}}>{t.roster.resetE2EKeys}</div>
+                    <div className="dropdown-item separator" role="separator"></div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { setShowAvatarModal(true); setShowStatusMenu(false); }}>{t.roster.changeAvatar}</div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { setShowSceneModal(true); setShowStatusMenu(false); }}>{t.roster.changeScene}</div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { setIsEditingNickname(true); setShowStatusMenu(false); }}>{t.roster.changeNickname}</div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={() => { setShowPasswordModal(true); setShowStatusMenu(false); }}>{t.roster.changePasswordMenu}</div>
+                    <div className="dropdown-item" role="menuitem" tabIndex={0} onClick={handleResetE2EKeys} style={{color:'red'}}>{t.roster.resetE2EKeys}</div>
                   </div>
                 )}
               </div>
@@ -4755,10 +4822,10 @@ const App: React.FC = () => {
                  selfDisplayName={myNickname || user?.nickname || user?.username || 'Moi'}
                  myPrivateKeyJwk={myKeys?.privateKeyJwk}
                  chatEndRef={chatEndRef}
-                 onResend={handleResendMessage}
-                 onAssistantAction={handleAssistantAction}
+                 onResend={onResendStable}
+                 onAssistantAction={onAssistantActionStable}
                  renderMessageContent={renderMessageContent}
-                 onPlayWink={(winkId) => { setActiveWink(winkId); setWinkCounter(c => c + 1); }}
+                 onPlayWink={onPlayWinkStable}
                />
 
                {/* Pied de page (Saisie du message) */}
@@ -4984,7 +5051,7 @@ const App: React.FC = () => {
         const isVerified = !!verifiedContacts[safetyModalContactId]?.verified;
         return (
           <div className="modal-bg" onClick={() => setShowSafetyModal(false)}>
-            <div className="modal-box wlm-safety-modal" onClick={e => e.stopPropagation()} style={{ width: '510px' }}>
+            <div ref={safetyModalRef} role="dialog" aria-modal="true" aria-label={t.chat.safetyNumberTitle} className="modal-box wlm-safety-modal" onClick={e => e.stopPropagation()} style={{ width: '510px' }}>
               <div className="win-modal-header">
                 <span>🛡️ {t.chat.safetyNumberTitle} — {formatNickname(contactName)}</span>
                 <button type="button" className="win-close-btn" onClick={() => setShowSafetyModal(false)}>✕</button>
@@ -5232,7 +5299,7 @@ const App: React.FC = () => {
       {/* Modale: Réinitialisation des clés de chiffrement E2E */}
       {showResetE2EModal && (
         <div className="modal-bg" onClick={() => !isResettingE2E && setShowResetE2EModal(false)}>
-          <div className="modal-box wlm-reset-modal" onClick={e => e.stopPropagation()}>
+          <div ref={resetModalRef} role="dialog" aria-modal="true" aria-label={t.modals.resetE2ETitle} className="modal-box wlm-reset-modal" onClick={e => e.stopPropagation()}>
             <div className="win-modal-header">
               <span>🛡️ {t.modals.resetE2ETitle}</span>
               <button 

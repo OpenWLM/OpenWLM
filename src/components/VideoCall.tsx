@@ -416,12 +416,23 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
         stream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (err) {
         const name = err instanceof DOMException ? err.name : '';
-        if (name === 'NotAllowedError') notify(t.videoCall.permissionDenied, { icon: '⚠️' });
-        else if (name === 'NotFoundError') notify(t.videoCall.noDevice, { icon: '⚠️' });
-        else if (name === 'NotReadableError') notify(t.videoCall.deviceBusy, { icon: '⚠️' });
-        else notify(t.videoCall.mediaError, { icon: '⚠️' });
-        finish();
-        return;
+        // Appel vidéo sans caméra (PC sans webcam, caméra refusée ou occupée) : on continue
+        // en audio, caméra « coupée », au lieu de raccrocher des deux côtés
+        let fallback: MediaStream | null = null;
+        if (!audioOnly) {
+          try { fallback = await navigator.mediaDevices.getUserMedia({ audio: constraints.audio }); } catch { fallback = null; }
+        }
+        if (fallback) {
+          stream = fallback;
+          notify(t.videoCall.noCameraAudioOnly, { icon: 'ℹ️' });
+        } else {
+          if (name === 'NotAllowedError') notify(t.videoCall.permissionDenied, { icon: '⚠️' });
+          else if (name === 'NotFoundError') notify(t.videoCall.noDevice, { icon: '⚠️' });
+          else if (name === 'NotReadableError') notify(t.videoCall.deviceBusy, { icon: '⚠️' });
+          else notify(t.videoCall.mediaError, { icon: '⚠️' });
+          finish();
+          return;
+        }
       }
 
       // Appel vidéo pris depuis l'écran d'appel natif alors que l'app est verrouillée : caméra
@@ -432,8 +443,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
       setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       setMicOn(stream.getAudioTracks()[0]?.enabled ?? true);
-      setCamOn(audioOnly ? false : (stream.getVideoTracks()[0]?.enabled ?? true));
-      camOnRef.current = audioOnly ? false : (stream.getVideoTracks()[0]?.enabled ?? true);
+      const camTrack = stream.getVideoTracks()[0];
+      setCamOn(!audioOnly && !!camTrack && camTrack.enabled);
+      camOnRef.current = !audioOnly && !!camTrack && camTrack.enabled;
       cameraTrackRef.current = stream.getVideoTracks()[0] || null;
 
       const pc = new RTCPeerConnection(rtcConfig);
@@ -696,7 +708,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ socket, activeChatId, myId, conta
 
   const toggleCam = async () => {
     const track = localStreamRef.current?.getVideoTracks()[0];
-    if (audioOnly) {
+    // Appel audio, ou appel vidéo démarré sans caméra : la caméra est ouverte à la demande
+    if (audioOnly || !track || track.readyState !== 'live') {
       // Appel démarré en audio : la caméra est ouverte à la demande et vraiment libérée à l'arrêt
       if (track && track.readyState === 'live') {
         track.stop();

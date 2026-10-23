@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **Security review, batch 4**: `server/middleware/auth.js`, `server/routes/{auth,users}.js`, `server/sockets/messages.js`, `server/db.js` (new `messages(sender_id)` index, created at startup) changed: restart the service. **New route `POST /api/user/migrate-auth-key`**: WAF rule regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`.
 - **Security review, batch 2 (interface + server)**: `server/db.js` (new `custom_emoticons.encrypted_key` column, created automatically at startup), `server/routes/emoticons.js` (`encryptedKey` upload field, **new route `POST /api/emoticons/custom/key`**: WAF rule regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`): restart the service.
 - **October 2026 security review, batch 1 (server)**: `server/index.js`, `server/db.js`, `server/clientIdentity.js`, `server/routes/{auth,users,files,emoticons}.js`, `server/sockets/{messages,games,webrtc}.js` changed: restart the service. **Behind a local cloudflared tunnel, add `CLOUDFLARE_IP_RANGES=127.0.0.1/32,::1/128` to `.env`** (see docs/DEPLOYMENT.md): without it, every per-IP limit was global. **WAF rule changed**: `DELETE /api/emoticons/custom/:assetId` now expects an `emo_<uuid>` id (previously a number, which would have blocked emoticon deletion in Block mode) — update the Cloudflare rule from `docs/cloudflare-waf.generated.json`.
 - **Node.js 22.23.4 required** (security release of 2026-10-21, including CVE-2026-111497: Brotli decoder, possible code execution, reachable because Express decompresses `Content-Encoding: br` request bodies). With NodeSource: `sudo apt update && sudo apt install --only-upgrade nodejs`, then restart the service. Vite 8.3.5 (build tool, dev-server flaw fixed): `npm ci`.
@@ -33,6 +34,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- `tests/test_lot4_hardening.js` (per-IP lockout, key migration, quota), timestamp test in `tests/test_message_envelope.js`, `e2e/auth-key-scope.spec.ts` (legacy-key account migrated; window and menu keyboard); all fail on the previous version.
 - JVM tests `BridgeTrustTest.cheminsLocauxCapacitorRefuses` and `FileNamesTest.typeMimeControle`.
 - `e2e/session-robustness.spec.ts` (offline start, expired session, message received while loading, read receipt in background), `e2e/account-scoped-data.spec.ts` (emoticon key after sign-out, per-account verified contacts), `tests/test_emoticon_key_backup.js`; all fail on the previous version.
 - `tests/test_lot1_hardening.js` (isolated server, 11 tests: multipart, presence, invitations, message bounds and budget, receipt, games, calls) and 3 tunnel tests in `tests/test_client_ip_resolution.js`; all fail on the previous version. `test_call_delivery.js` and `test_route_authorization.js` adapted (cooldown after rejection, "Play again" at game end).
@@ -51,6 +53,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Security review, batch 4**:
+  - **Authentication key bound to the server**: it is now derived with the server's address (host and port). Before, the same key worked on any OpenWLM instance where the same username and password were used: a third-party instance operator could replay it elsewhere. Existing accounts sign in as before with their password and are migrated silently (same password, same vault, other devices stay signed in); password change and E2E reset accept the old key until the migration has happened.
+  - **Sign-in lockout**: 10 failures per username **and** IP address (plus a large per-username cap); a third party can no longer lock your account by typing ten wrong passwords from their own connection.
+  - **Messages replayed by a server**: the sender-signed timestamp is compared with the server's receipt date (15 min tolerance); an old message re-presented as new is rejected.
+  - **Storage quota**: 512 MB of persisted messages per account; beyond that, sending is refused with an explicit message (clearing old conversations frees space).
+  - **Video call without a camera** (PC without webcam, camera refused or busy): the call continues in audio, camera off, instead of hanging up on both sides.
+  - **Conversation log**: no more auto-scroll while you read back the history (only when you were at the bottom, or for your own messages); the log is no longer recomputed on every typed character (smoother typing on phones).
+  - **Keyboard**: Escape closes the safety-number and E2E-reset windows, Tab stays inside; the status menu is navigated with the arrow keys and confirmed with Enter.
 - **Android app (APK v9, review batch 3)**:
   - The page can no longer read the phone's files through Capacitor's local server (`/_capacitor_file_/…`, `/_capacitor_content_/…`): 404 reply. A compromised page or a malicious custom server could have read the WebView's session cookies and E2EE keys there.
   - Under the app's lock screen, the conversation is no longer readable by accessibility services nor reachable from a physical keyboard (focus removed).

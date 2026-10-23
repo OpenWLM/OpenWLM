@@ -17,6 +17,7 @@
 | **Appels — signalisation (SDP/ICE)** | **chiffrée E2EE** + **empreinte DTLS signée RSA‑PSS**, vérification **obligatoire** : une offre/réponse non signée ou invérifiable est refusée (anti‑MITM) | `src/components/VideoCall.tsx` |
 
 **Primitives utilisées** : AES‑GCM 256, RSA‑OAEP 2048 (SHA‑256), RSA‑PSS (SHA‑256, salt 32), PBKDF2‑HMAC‑SHA256 **600 000** itérations, HKDF‑SHA256, DTLS‑SRTP.
+- **Portée serveur de la clé d'authentification** : `authKeyHex` est dérivée avec l'hôte du serveur (`openwlm-auth-key-v2:<hôte>`) : elle ne peut pas être rejouée sur une autre instance OpenWLM. L'ancienne dérivation (`openwlm-auth-key-v1`) sert uniquement à se connecter puis migrer les comptes existants (`POST /api/user/migrate-auth-key`, preuve de l'ancienne clé, sessions et coffre inchangés).
 
 **Dérivation des clés (zero‑knowledge)** : le **mot de passe ne quitte jamais le navigateur**.
 `PBKDF2(600k)` → *MasterKey* → `HKDF` → `authKey` (transport) + `vaultKey` (AES‑GCM) qui
@@ -77,6 +78,11 @@ l'historique revérifie le message.
 - Les **métadonnées** (cf. §2) restent visibles du serveur.
 
 ---
+
+- **Horodatage signé** (`ts`) : à la réception, il est comparé à la date de réception annoncée
+  par le serveur (tolérance 15 min, `OpenContext.serverTimestamp`). Un serveur qui re-présente
+  un ancien message comme nouveau (rejeu après rechargement, re-datation) est refusé.
+
 
 ## 2. Ce qui N'EST PAS chiffré de bout en bout (visible par le serveur)
 

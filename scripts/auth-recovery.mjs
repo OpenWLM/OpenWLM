@@ -3,7 +3,8 @@
  * scripts/auth-recovery.mjs — OpenWLM
  *
  * Ouvre une fenêtre de récupération de la clé d'authentification d'un ou de tous les comptes,
- * avec un CODE DE RÉCUPÉRATION à usage unique par compte.
+ * avec un CODE DE RÉCUPÉRATION par compte, valable pour UNE récupération réussie (il peut
+ * redemander le coffre plusieurs fois d'ici là : c'est son porteur qui est autorisé).
  *
  * Quand en a-t-on besoin ? La clé de connexion est dérivée du mot de passe ET de la portée du
  * serveur (AUTH_KEY_SCOPE, sinon le nom d'hôte de la page). Si cette portée change (nouveau nom

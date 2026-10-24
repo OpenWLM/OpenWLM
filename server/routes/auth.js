@@ -83,7 +83,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
 
   /**
    * Récupération de compte ouverte par l'administrateur (scripts/auth-recovery.mjs) :
-   * 1. challenge : identifiant + CODE de récupération (remis par l'administrateur, usage unique,
+   * 1. challenge : identifiant + CODE de récupération (remis par l'administrateur, effacé à la récupération réussie,
    *    codes erronés limités à 5 / 15 min par IP, sans refermer la fenêtre) → coffre de clés chiffré + défi chiffré pour la clé publique du compte ;
    * 2. complete : le client a ouvert le coffre avec le mot de passe (preuve) et déchiffré le défi
    *    → nouvelle clé d'authentification, TOUTES les sessions révoquées, cibles Push supprimées

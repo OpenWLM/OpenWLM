@@ -170,7 +170,7 @@ AUTH_KEY_SCOPE=messenger.example.org
 
 Avec elle, changer de nom de domaine, de port ou passer derrière un autre proxy ne change pas
 la clé. Sans elle (ou si vous la modifiez), plus aucun compte déjà connecté une fois ne peut se
-connecter : il faut alors ouvrir une **récupération**, avec un code à usage unique par compte :
+connecter : il faut alors ouvrir une **récupération**, avec un code par compte, valable pour une seule récupération réussie :
 
 ```bash
 node scripts/auth-recovery.mjs alice@example.org          # 24 h ; affiche le code d'Alice
@@ -189,14 +189,18 @@ plus de notifications (utile aussi après la perte d'un appareil).
 
 Garanties et limites :
 - Sans le code, le serveur ne remet jamais le coffre (pas d'attaque hors ligne sur le mot de
-  passe à partir du seul identifiant). Le code n'est stocké que sous forme d'empreinte, sert une
-  seule fois. Les codes erronés sont limités à 5 par 15 minutes **par compte et par adresse
+  passe à partir du seul identifiant). Le code n'est stocké que sous forme d'empreinte et ne
+  permet **qu'un seul changement de clé** : la récupération réussie l'efface. Jusque-là, il
+  peut redemander le coffre plusieurs fois (mot de passe mal tapé, nouvel essai) : c'est le
+  porteur du code qui est autorisé, d'où l'importance de le garder confidentiel. Les codes erronés sont limités à 5 par 15 minutes **par compte et par adresse
   IP**, sans refermer la fenêtre : un tiers qui connaît l'identifiant ne peut pas bloquer la
   récupération légitime (seule son adresse est bloquée). Chaque échec et chaque blocage sont
   journalisés (`--log`, et un avertissement dans le journal du service).
 - Avec le code, le coffre chiffré est remis : quiconque obtient le code peut tenter une attaque
   hors ligne sur le mot de passe (PBKDF2 600 000 itérations). Gardez les fenêtres courtes et les
-  codes confidentiels ; refermez-les (`--close`) dès que possible.
+  codes confidentiels ; refermez-les (`--close`) dès que possible. Le fichier produit par
+  `--all` (mode 600) contient les codes de tous les comptes : supprimez-le dès qu'ils sont
+  distribués (le script le rappelle).
 - Chaque étape est journalisée (table `auth_recovery_log` et journal du service), avec
   l'utilisateur système qui a ouvert la fenêtre.
 

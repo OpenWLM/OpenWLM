@@ -18,7 +18,7 @@ import {
   accountLimiters, 
   ipRateLimiters 
 } from './middleware/auth.js';
-import { createAuthRouter, captchas, signupIpCounter, recoveryChallenges } from './routes/auth.js';
+import { createAuthRouter, captchas, signupIpCounter, recoveryChallenges, recoveryFailures, RECOVERY_FAILURE_WINDOW_MS } from './routes/auth.js';
 import { createUsersRouter } from './routes/users.js';
 import { createMessagesRouter } from './routes/messages.js';
 import { createFilesRouter, cleanupExpiredFiles, cleanupOrphanUploads } from './routes/files.js';
@@ -234,6 +234,9 @@ const cleanupMemoryMaps = () => {
   
   for (const [id, data] of recoveryChallenges.entries()) {
     if (!data || now > data.expires) recoveryChallenges.delete(id);
+  }
+  for (const [key, timestamps] of recoveryFailures.entries()) {
+    if (!timestamps.some((ts) => now - ts < RECOVERY_FAILURE_WINDOW_MS)) recoveryFailures.delete(key);
   }
 
   for (const [id, data] of captchas.entries()) {

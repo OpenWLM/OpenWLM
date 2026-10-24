@@ -160,8 +160,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
           if (showRecovery && recoveryCode.trim()) {
             // Récupération : le code de l'administrateur + le coffre ouvert par le mot de passe
             const recovered = await recoverWithVault(username, recoveryCode.trim(), vaultKey, authKeyHex, rememberMe);
-            if (!recovered) {
-              setError(t.auth.recoveryFailed);
+            if (!recovered || recovered === 'limited') {
+              setError(recovered === 'limited' ? t.auth.recoveryLimited : t.auth.recoveryFailed);
               return;
             }
             res = recovered;
@@ -428,14 +428,16 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
  * Récupération de compte ouverte par l'administrateur (scripts/auth-recovery.mjs), après un
  * changement de portée de la clé d'authentification. Le serveur remet le coffre de clés et un
  * défi chiffré pour la clé publique du compte : l'ouvrir prouve le mot de passe ; la nouvelle
- * clé d'authentification est alors enregistrée. Renvoie la réponse de connexion, ou null.
+ * clé d'authentification est alors enregistrée. Renvoie la réponse de connexion, null, ou
+ * 'limited' (trop de codes erronés depuis cette adresse : réessayer plus tard).
  */
 const recoverWithVault = async (username: string, code: string, vaultKey: CryptoKey, newAuthKeyHex: string, remember: boolean) => {
+  const isLimited = (err: unknown) => (err as { response?: { status?: number } }).response?.status === 429;
   let challenge: { vault: unknown; encryptedNonce: string };
   try {
     challenge = (await axios.post('/api/auth/recovery/challenge', { username, code })).data;
-  } catch {
-    return null; // code invalide, ou pas de récupération en cours pour ce compte
+  } catch (err) {
+    return isLimited(err) ? 'limited' as const : null; // sinon : code invalide, ou pas de récupération en cours
   }
   try {
     const vault = typeof challenge.vault === 'string' ? JSON.parse(challenge.vault) : challenge.vault;
@@ -445,8 +447,8 @@ const recoverWithVault = async (username: string, code: string, vaultKey: Crypto
     const nonceBytes = await window.crypto.subtle.decrypt({ name: 'RSA-OAEP' }, priv, base64ToArrayBuffer(challenge.encryptedNonce));
     const nonce = new TextDecoder().decode(nonceBytes);
     return await axios.post('/api/auth/recovery/complete', { username, code, nonce, newAuthKeyHex, remember });
-  } catch {
-    return null;
+  } catch (err) {
+    return isLimited(err) ? 'limited' as const : null;
   }
 };
 

@@ -1591,8 +1591,7 @@ const App: React.FC = () => {
     if (!user) return;
     try {
       await CustomEmoticonsDB.init();
-      const localRecords = await CustomEmoticonsDB.getMyEmoticons();
-      
+
       let serverRecords: any[] | null = null;
       // Le cookie HttpOnly suffit : user.token est souvent absent
       const token = user.token;
@@ -1605,6 +1604,10 @@ const App: React.FC = () => {
       } catch (err) {
         console.warn("Erreur chargement serveur émoticônes custom:", err);
       }
+
+      // Enregistrements d'avant le rattachement au compte : attribués s'ils sont à nous
+      if (serverRecords !== null) await CustomEmoticonsDB.adoptLegacy(new Set(serverRecords.map(s => s.id)));
+      const localRecords = await CustomEmoticonsDB.getMyEmoticons();
 
       // Si la synchronisation serveur a réussi, purger localement les clés supprimées
       if (serverRecords !== null) {

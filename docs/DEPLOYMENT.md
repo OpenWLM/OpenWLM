@@ -190,7 +190,10 @@ plus de notifications (utile aussi après la perte d'un appareil).
 Garanties et limites :
 - Sans le code, le serveur ne remet jamais le coffre (pas d'attaque hors ligne sur le mot de
   passe à partir du seul identifiant). Le code n'est stocké que sous forme d'empreinte, sert une
-  seule fois, et 5 codes erronés referment la fenêtre du compte.
+  seule fois. Les codes erronés sont limités à 5 par 15 minutes **par compte et par adresse
+  IP**, sans refermer la fenêtre : un tiers qui connaît l'identifiant ne peut pas bloquer la
+  récupération légitime (seule son adresse est bloquée). Chaque échec et chaque blocage sont
+  journalisés (`--log`, et un avertissement dans le journal du service).
 - Avec le code, le coffre chiffré est remis : quiconque obtient le code peut tenter une attaque
   hors ligne sur le mot de passe (PBKDF2 600 000 itérations). Gardez les fenêtres courtes et les
   codes confidentiels ; refermez-les (`--close`) dès que possible.

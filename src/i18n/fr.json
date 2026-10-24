@@ -80,7 +80,8 @@
     "recoveryCodeLink": "J'ai un code de récupération",
     "recoveryCodeLabel": "Code de récupération",
     "recoveryCodeHint": "Remis par l'administrateur du serveur. Saisissez aussi votre identifiant et votre mot de passe habituels : vos autres appareils seront déconnectés.",
-    "recoveryFailed": "Récupération impossible : code, identifiant ou mot de passe incorrect, ou récupération expirée."
+    "recoveryFailed": "Récupération impossible : code, identifiant ou mot de passe incorrect, ou récupération expirée.",
+    "recoveryLimited": "Trop de codes erronés depuis cette adresse. Réessayez dans 15 minutes."
   },
   "status": {
     "online": "Disponible",

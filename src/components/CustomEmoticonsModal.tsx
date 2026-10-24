@@ -45,19 +45,20 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
   const loadEmoticons = async () => {
     setIsLoading(true);
     try {
-      // 1. Récupérer les clés locales sauvegardées
-      const localRecords = await CustomEmoticonsDB.getMyEmoticons();
-      
-      // 2. Récupérer les métadonnées serveur pour synchroniser
+      // 1. Récupérer les métadonnées serveur pour synchroniser
       const res = await axios.get('/api/emoticons/custom/my', {
         headers: userToken ? { Authorization: `Bearer ${userToken}` } : undefined
       });
 
       if (res.data.success && Array.isArray(res.data.emoticons)) {
         const serverEmos = res.data.emoticons;
+        const serverIds = new Set<string>(serverEmos.map((s: any) => s.id));
+
+        // 2. Clés locales (celles d'avant le rattachement au compte : attribuées si elles sont à nous)
+        await CustomEmoticonsDB.adoptLegacy(serverIds);
+        const localRecords = await CustomEmoticonsDB.getMyEmoticons();
 
         // Nettoyer localement les clés orphelines en IndexedDB si supprimées du serveur
-        const serverIds = new Set(serverEmos.map((s: any) => s.id));
         for (const local of localRecords) {
           if (!serverIds.has(local.id)) {
             await CustomEmoticonsDB.deleteMyEmoticon(local.id);

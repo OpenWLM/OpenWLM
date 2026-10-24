@@ -44,8 +44,37 @@ class CustomEmoticonsDB {
   }
 
   private isMine(record: MyEmoticonRecord): boolean {
-    // Enregistrement d'avant le rattachement au compte : rattaché au premier qui le lit
-    return record.ownerId === undefined || record.ownerId === this.ownerId;
+    // Strict : un enregistrement d'avant le rattachement (sans ownerId) n'est à personne tant
+    // que adoptLegacy() ne l'a pas attribué à son vrai propriétaire
+    return this.ownerId !== null && record.ownerId === this.ownerId;
+  }
+
+  /**
+   * Migration des enregistrements d'avant le rattachement au compte : chacun est attribué (et
+   * persisté) au compte courant seulement si le serveur le lui reconnaît (`serverIds`, la liste
+   * /api/emoticons/custom/my de CE compte ; les assetId sont uniques). Les autres restent
+   * masqués, intacts, jusqu'à la connexion de leur propriétaire.
+   */
+  public async adoptLegacy(serverIds: Set<string>): Promise<void> {
+    if (this.ownerId === null) return;
+    if (!this.db) await this.init();
+    const ownerId = this.ownerId;
+    return new Promise((resolve) => {
+      try {
+        const tx = this.db!.transaction([STORE_MY_KEYS], 'readwrite');
+        const store = tx.objectStore(STORE_MY_KEYS);
+        const req = store.getAll();
+        req.onsuccess = () => {
+          for (const r of (req.result || []) as MyEmoticonRecord[]) {
+            if (r.ownerId === undefined && serverIds.has(r.id)) store.put({ ...r, ownerId });
+          }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
   }
 
   public async init(): Promise<void> {
@@ -120,7 +149,7 @@ class CustomEmoticonsDB {
       const req = index.get(shortcut);
       req.onsuccess = () => {
         const record = req.result as MyEmoticonRecord | undefined;
-        if (record) {
+        if (record && this.isMine(record)) {
           if (this.memoryUrls.has(record.id)) {
             URL.revokeObjectURL(this.memoryUrls.get(record.id)!);
             this.memoryUrls.delete(record.id);

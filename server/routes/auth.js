@@ -41,6 +41,10 @@ const AUTH_KEY_SCOPE = typeof process.env.AUTH_KEY_SCOPE === 'string' && /^[\w.:
 
 /** Défis de récupération en cours (userId → nonce, 5 min), cf. /auth/recovery/*. */
 export const recoveryChallenges = new Map();
+/** Codes de récupération erronés récents par couple « userId|ip » (horodatages). */
+export const recoveryFailures = new Map();
+export const RECOVERY_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+const RECOVERY_MAX_FAILURES_PER_IP = 5;
 
 export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   const router = Router();
@@ -80,7 +84,7 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   /**
    * Récupération de compte ouverte par l'administrateur (scripts/auth-recovery.mjs) :
    * 1. challenge : identifiant + CODE de récupération (remis par l'administrateur, usage unique,
-   *    5 essais) → coffre de clés chiffré + défi chiffré pour la clé publique du compte ;
+   *    codes erronés limités à 5 / 15 min par IP, sans refermer la fenêtre) → coffre de clés chiffré + défi chiffré pour la clé publique du compte ;
    * 2. complete : le client a ouvert le coffre avec le mot de passe (preuve) et déchiffré le défi
    *    → nouvelle clé d'authentification, TOUTES les sessions révoquées, cibles Push supprimées
    *    (un appareil perdu ne garde ni accès ni notifications), puis session pour cet appareil.
@@ -91,28 +95,39 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     const normalized = String(username || '').trim().toLowerCase();
     return normalized ? db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(normalized) : null;
   };
-  const RECOVERY_MAX_ATTEMPTS = 5;
-  /** Code de récupération valide pour ce compte (fenêtre ouverte) ; un échec est compté. */
+  /**
+   * Codes erronés : limités par couple (compte, IP) — 5 par 15 min — sans jamais refermer la
+   * fenêtre. Fermer sur échecs laisserait n'importe qui, connaissant l'identifiant, bloquer une
+   * récupération légitime ; avec un code de 100 bits, la force brute est de toute façon hors de
+   * portée. Chaque échec est journalisé, et le blocage d'une IP signalé à l'administrateur.
+   */
   const checkRecoveryCode = (user, code, ip) => {
-    if (!user || !(Number(user.auth_recovery_until) > Date.now()) || !user.auth_recovery_code_hash) return false;
+    if (!user || !(Number(user.auth_recovery_until) > Date.now()) || !user.auth_recovery_code_hash) return 'invalid';
+    const key = `${user.id}|${ip}`;
+    const now = Date.now();
+    const failures = (recoveryFailures.get(key) || []).filter((ts) => now - ts < RECOVERY_FAILURE_WINDOW_MS);
+    if (failures.length >= RECOVERY_MAX_FAILURES_PER_IP) return 'limited';
     const given = crypto.createHash('sha256').update(String(code || '').trim().toUpperCase()).digest('hex');
-    if (safeTokenEqual(given, user.auth_recovery_code_hash)) return true;
+    if (safeTokenEqual(given, user.auth_recovery_code_hash)) return 'ok';
+    failures.push(now);
+    recoveryFailures.set(key, failures);
     const attempts = (Number(user.auth_recovery_attempts) || 0) + 1;
-    if (attempts >= RECOVERY_MAX_ATTEMPTS) {
-      db.prepare('UPDATE users SET auth_recovery_until = 0, auth_recovery_code_hash = NULL, auth_recovery_attempts = 0 WHERE id = ?').run(user.id);
-      recoveryChallenges.delete(user.id);
-      logRecoveryEvent(user.id, 'fermée', { detail: `${attempts} codes erronés`, ip });
-    } else {
-      db.prepare('UPDATE users SET auth_recovery_attempts = ? WHERE id = ?').run(attempts, user.id);
-      logRecoveryEvent(user.id, 'code erroné', { detail: `essai ${attempts}/${RECOVERY_MAX_ATTEMPTS}`, ip });
+    db.prepare('UPDATE users SET auth_recovery_attempts = ? WHERE id = ?').run(attempts, user.id);
+    logRecoveryEvent(user.id, 'code erroné', { detail: `${attempts} au total, ${failures.length}/${RECOVERY_MAX_FAILURES_PER_IP} depuis cette IP`, ip });
+    if (failures.length >= RECOVERY_MAX_FAILURES_PER_IP) {
+      logRecoveryEvent(user.id, 'ip bloquée', { detail: '15 min, la fenêtre reste ouverte', ip });
+      console.warn(`[Auth] Récupération du compte ${user.id} : ${failures.length} codes erronés depuis ${ip}, IP bloquée 15 min (scripts/auth-recovery.mjs --log).`);
     }
-    return false;
+    return 'invalid';
   };
+  const recoveryLimited = (res) => res.status(429).json({ error: 'Trop de codes erronés depuis cette adresse. Réessayez plus tard.', code: 'recovery_rate_limited' });
 
   router.post('/auth/recovery/challenge', authRateLimiter, (req, res) => {
     const ip = getClientIp(req);
     const user = recoveryUser(req.body?.username);
-    if (!checkRecoveryCode(user, req.body?.code, ip) || !user.public_key || !user.encrypted_private_key) {
+    const check = checkRecoveryCode(user, req.body?.code, ip);
+    if (check === 'limited') return recoveryLimited(res);
+    if (check !== 'ok' || !user.public_key || !user.encrypted_private_key) {
       return res.status(404).json({ error: 'Code de récupération invalide ou aucune récupération en cours.', code: 'no_recovery' });
     }
     // Un défi en cours n'est pas remplacé (une seconde demande ne peut pas gêner la première)
@@ -139,7 +154,9 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
     const { username, code, nonce, newAuthKeyHex, remember } = req.body || {};
     const user = recoveryUser(username);
     const challenge = user ? recoveryChallenges.get(user.id) : null;
-    const codeOk = checkRecoveryCode(user, code, ip);
+    const check = checkRecoveryCode(user, code, ip);
+    if (check === 'limited') return recoveryLimited(res);
+    const codeOk = check === 'ok';
     if (!codeOk || !challenge || challenge.expires < Date.now()
       || typeof nonce !== 'string' || !safeTokenEqual(nonce, challenge.nonce) || !/^[a-fA-F0-9]{64}$/.test(String(newAuthKeyHex))) {
       if (codeOk) logRecoveryEvent(user.id, 'preuve refusée', { ip });

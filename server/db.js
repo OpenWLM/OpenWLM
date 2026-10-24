@@ -142,7 +142,7 @@ try {
 // Récupération de la clé d'authentification ouverte par l'administrateur (scripts/auth-recovery.mjs) :
 // jusqu'à `auth_recovery_until` (ms), le compte peut prouver son mot de passe par son coffre de
 // clés, à condition de donner le CODE de récupération remis par l'administrateur (empreinte
-// SHA-256 seulement, usage unique, 5 essais)
+// SHA-256 seulement, usage unique ; codes erronés limités par compte et IP)
 for (const column of ['auth_recovery_until INTEGER DEFAULT 0', 'auth_recovery_code_hash TEXT', 'auth_recovery_attempts INTEGER DEFAULT 0']) {
   try {
     db.exec(`ALTER TABLE users ADD COLUMN ${column};`);

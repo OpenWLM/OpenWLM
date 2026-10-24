@@ -16,7 +16,7 @@ import jwt from 'jsonwebtoken';
  * récupération ouverte par l'administrateur (scripts/auth-recovery.mjs, /api/auth/recovery/*) :
  *  - le coffre n'est remis que pour un compte en récupération ;
  *  - seule la réponse au défi chiffré pour la clé publique du compte enregistre la nouvelle clé ;
- *  - la fenêtre se referme après usage ;
+ *  - la fenêtre se referme après usage, mais pas sur des codes erronés (limités par compte et IP) ;
  *  - /api/logout-device exige une session.
  * Serveur isolé (dossier temporaire, port libre).
  */
@@ -50,14 +50,14 @@ const waitForPort = async (p, timeoutMs = 15000) => {
   }
   throw new Error(`Serveur non démarré sur le port ${p}`);
 };
-const request = (apiPath, method, token, body) => new Promise((resolve) => {
+const request = (apiPath, method, token, body, ip) => new Promise((resolve) => {
   const payload = body === undefined ? '' : JSON.stringify(body);
   const headers = {};
   if (body !== undefined) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = Buffer.byteLength(payload); }
   if (token) headers.Authorization = `Bearer ${token}`;
   // Une IP par requête (serveur de confiance pour CF-Connecting-IP) : la limite d'authentification
   // (10 / min / IP) ne doit pas se déclencher dans le test
-  headers['CF-Connecting-IP'] = `198.51.100.${1 + Math.floor(Math.random() * 250)}`;
+  headers['CF-Connecting-IP'] = ip || `198.51.100.${1 + Math.floor(Math.random() * 250)}`;
   const req = http.request({ hostname: '127.0.0.1', port, path: apiPath, method, headers }, (res) => {
     let raw = '';
     res.on('data', (c) => { raw += c; });
@@ -165,13 +165,23 @@ test('récupération réussie : nouvelle clé, anciennes sessions révoquées, c
   assert.match(log.stdout, /réussie/);
 });
 
-test('récupération : 5 codes erronés referment la fenêtre', async () => {
+test('récupération : 5 codes erronés bloquent cette IP pour ce compte, sans refermer la fenêtre', async () => {
   const code = codeFrom(recoveryScript('rec_alice', '--hours', '1').stdout);
+  const attacker = '203.0.113.7';
   for (let i = 0; i < 5; i++) {
-    assert.equal((await request('/api/auth/recovery/challenge', 'POST', null, { username: 'rec_alice', code: `ZZZZZ-ZZZZZ-ZZZZZ-ZZZZ${i}` })).status, 404);
+    assert.equal((await request('/api/auth/recovery/challenge', 'POST', null, { username: 'rec_alice', code: `ZZZZZ-ZZZZZ-ZZZZZ-ZZZZ${i}` }, attacker)).status, 404);
   }
-  assert.equal((await request('/api/auth/recovery/challenge', 'POST', null, { username: 'rec_alice', code })).status, 404, 'même le bon code est refusé après 5 échecs');
-  assert.equal(db.prepare("SELECT auth_recovery_until FROM users WHERE username = 'rec_alice'").get().auth_recovery_until, 0);
+  const blocked = await request('/api/auth/recovery/challenge', 'POST', null, { username: 'rec_alice', code }, attacker);
+  assert.equal(blocked.status, 429, 'cette IP est bloquée, même avec le bon code');
+  assert.equal(blocked.data.code, 'recovery_rate_limited');
+  // La récupération légitime, depuis une autre adresse, n'est pas gênée
+  assert.ok(db.prepare("SELECT auth_recovery_until FROM users WHERE username = 'rec_alice'").get().auth_recovery_until > Date.now(), 'fenêtre toujours ouverte');
+  const legit = await request('/api/auth/recovery/challenge', 'POST', null, { username: 'rec_alice', code }, '203.0.113.8');
+  assert.equal(legit.status, 200, JSON.stringify(legit.data));
+  const user = db.prepare("SELECT id FROM users WHERE username = 'rec_alice'").get();
+  const events = db.prepare('SELECT event FROM auth_recovery_log WHERE user_id = ? ORDER BY id').all(user.id).map((r) => r.event);
+  assert.ok(events.includes('ip bloquée'), events.join(', '));
+  assert.equal(recoveryScript('--close', 'rec_alice').status, 0);
 });
 
 test('script de récupération : identifiant inconnu → code 2, --close referme, --all écrit un fichier 600', async () => {

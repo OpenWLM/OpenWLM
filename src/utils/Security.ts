@@ -267,12 +267,25 @@ export const hostAuthScope = (): string => {
 };
 
 let scopePromise: Promise<string> | null = null;
+/**
+ * Lecture bornée à 8 s : un serveur qui ne répond pas ne bloque pas la connexion indéfiniment.
+ * Pas de repli silencieux sur l'hôte en cas d'échec (une portée erronée produirait une clé
+ * fausse) : l'erreur remonte, l'écran de connexion l'affiche, on peut réessayer.
+ */
 export const fetchAuthKeyScope = (): Promise<string> => {
   if (!scopePromise) {
-    scopePromise = fetch('/api/auth/scope', { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.json() : null))
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = setTimeout(() => controller?.abort(), 8000);
+    scopePromise = fetch('/api/auth/scope', { credentials: 'same-origin', signal: controller?.signal })
+      .then((r) => {
+        // Serveur sans cette route (ancienne version) : portée = hôte, comme avant
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error(`auth_scope_${r.status}`);
+        return r.json();
+      })
       .then((d: { scope?: unknown } | null) => (typeof d?.scope === 'string' && d.scope ? d.scope.toLowerCase() : hostAuthScope()))
-      .catch(() => { scopePromise = null; return hostAuthScope(); });
+      .catch((err) => { scopePromise = null; throw err; })
+      .finally(() => clearTimeout(timer));
   }
   return scopePromise;
 };

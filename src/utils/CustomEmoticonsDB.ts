@@ -14,6 +14,8 @@ export interface MyEmoticonRecord {
   height: number;
   isAnimated: number;
   createdAt: number;
+  /** Compte propriétaire (navigateur partagé) ; absent sur les enregistrements d'avant. */
+  ownerId?: number;
 }
 
 export interface CachedEmoticonAsset {
@@ -34,6 +36,17 @@ const PURGE_BATCH_SIZE = 50;
 class CustomEmoticonsDB {
   private db: IDBDatabase | null = null;
   private memoryUrls = new Map<string, string>(); // assetId -> ObjectUrl
+  /** Compte courant : le trousseau est lu, écrit et purgé pour lui seul (cf. VerifiedContactsStorage). */
+  private ownerId: number | null = null;
+
+  public setOwner(userId: number | null): void {
+    this.ownerId = userId;
+  }
+
+  private isMine(record: MyEmoticonRecord): boolean {
+    // Enregistrement d'avant le rattachement au compte : rattaché au premier qui le lit
+    return record.ownerId === undefined || record.ownerId === this.ownerId;
+  }
 
   public async init(): Promise<void> {
     if (this.db) return;
@@ -65,7 +78,7 @@ class CustomEmoticonsDB {
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction([STORE_MY_KEYS], 'readwrite');
       const store = tx.objectStore(STORE_MY_KEYS);
-      store.put(record);
+      store.put(this.ownerId !== null ? { ...record, ownerId: this.ownerId } : record);
       tx.oncomplete = () => resolve();
       tx.onerror = (e) => reject(e);
     });
@@ -77,7 +90,7 @@ class CustomEmoticonsDB {
       const tx = this.db!.transaction([STORE_MY_KEYS], 'readonly');
       const store = tx.objectStore(STORE_MY_KEYS);
       const req = store.getAll();
-      req.onsuccess = () => resolve(req.result || []);
+      req.onsuccess = () => resolve(((req.result || []) as MyEmoticonRecord[]).filter((r) => this.isMine(r)));
       req.onerror = (e) => reject(e);
     });
   }
@@ -223,8 +236,9 @@ class CustomEmoticonsDB {
   }
 
   /**
-   * Purge complète de toutes les données au logout
-   * Supprime les clés, le cache et les URLs mémoire pour éviter toute fuite entre sessions.
+   * Purge au logout / à la réinitialisation E2E : les clés du compte COURANT (celles des autres
+   * comptes de ce navigateur restent ; toutes sont aussi sauvegardées chiffrées sur le serveur),
+   * tout le cache d'images déchiffrées (un cache, retéléchargeable) et les URLs mémoire.
    */
   public async clearAll(): Promise<void> {
     // 1. Révoquer toutes les URLs blob en mémoire
@@ -239,7 +253,13 @@ class CustomEmoticonsDB {
     return new Promise((resolve) => {
       try {
         const tx = this.db!.transaction([STORE_MY_KEYS, STORE_ASSET_CACHE], 'readwrite');
-        tx.objectStore(STORE_MY_KEYS).clear();
+        const keys = tx.objectStore(STORE_MY_KEYS);
+        const req = keys.getAll();
+        req.onsuccess = () => {
+          for (const r of (req.result || []) as MyEmoticonRecord[]) {
+            if (this.isMine(r)) keys.delete(r.id);
+          }
+        };
         tx.objectStore(STORE_ASSET_CACHE).clear();
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();

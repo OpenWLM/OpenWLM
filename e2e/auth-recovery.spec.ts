@@ -8,8 +8,8 @@ import { spawnSync } from 'node:child_process';
 /**
  * E2E — récupération après un changement de portée de la clé d'authentification (nouveau nom
  * de domaine, autre port…) : le compte ne peut plus se connecter ; l'administrateur ouvre une
- * fenêtre de récupération (scripts/auth-recovery.mjs) ; l'utilisateur se reconnecte avec son
- * mot de passe, sans rien faire de plus, et retrouve ses clés de chiffrement.
+ * fenêtre de récupération (scripts/auth-recovery.mjs) et remet un code à usage unique ;
+ * l'utilisateur se reconnecte avec son mot de passe et ce code, et retrouve ses clés.
  * Serveur + base temporaires (jamais la prod).
  */
 
@@ -70,19 +70,27 @@ test('changement de portée : connexion impossible, puis récupération ouverte 
   await submitLogin(page, name);
   await expect(page.locator('.auth-error')).toContainText(/invalid|incorrect|Identifiants/i, { timeout: 30000 });
 
-  // L'administrateur ouvre la récupération pour ce compte
+  // L'administrateur ouvre la récupération pour ce compte et lui remet le code
   const dir = fs.readFileSync(path.join(os.tmpdir(), `openwlm-e2e-dir-${PORT}`), 'utf8').trim();
   const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'auth-recovery.mjs'), name, '--hours', '1'], {
     env: { ...process.env, OPENWLM_DB: path.join(dir, 'messenger.db') }, encoding: 'utf8'
   });
   expect(run.status, run.stderr).toBe(0);
+  const code = (run.stdout.match(/[A-Z2-9]{5}(?:-[A-Z2-9]{5}){3}/) || [])[0];
+  expect(code).toBeTruthy();
 
-  // Même geste qu'avant : mot de passe, et l'app s'ouvre avec les clés du compte
+  // Sans le code, toujours impossible
   await page.reload();
   await submitLogin(page, name);
+  await expect(page.locator('.auth-error')).toBeVisible({ timeout: 30000 });
+
+  // Identifiant + mot de passe + code : l'app s'ouvre avec les clés du compte
+  await page.getByRole('button', { name: /recovery code|code de récupération/i }).click();
+  await page.locator('#auth-recovery-code').fill(code!);
+  await page.locator('button.wlm-btn-auth').click();
   await expect(page.locator('.wlm-auth-container')).toHaveCount(0, { timeout: 45000 });
   await expect(page.locator('.status-trigger')).toBeVisible();
   // La nouvelle clé (portée actuelle) est enregistrée, la fenêtre est refermée
   expect((await page.request.post('/api/user/migrate-auth-key', { data: { oldAuthKeyHex: current, newAuthKeyHex: current } })).status()).toBe(200);
-  expect((await page.request.post('/api/auth/recovery/challenge', { data: { username: name } })).status()).toBe(404);
+  expect((await page.request.post('/api/auth/recovery/challenge', { data: { username: name, code } })).status()).toBe(404);
 });

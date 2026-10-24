@@ -170,20 +170,32 @@ AUTH_KEY_SCOPE=messenger.example.org
 
 Avec elle, changer de nom de domaine, de port ou passer derrière un autre proxy ne change pas
 la clé. Sans elle (ou si vous la modifiez), plus aucun compte déjà connecté une fois ne peut se
-connecter : il faut alors ouvrir une **fenêtre de récupération** :
+connecter : il faut alors ouvrir une **récupération**, avec un code à usage unique par compte :
 
 ```bash
-node scripts/auth-recovery.mjs --all --hours 72     # tous les comptes
-node scripts/auth-recovery.mjs alice@example.org    # un compte (24 h par défaut)
-node scripts/auth-recovery.mjs --close --all        # refermer avant l'échéance
+node scripts/auth-recovery.mjs alice@example.org          # 24 h ; affiche le code d'Alice
+node scripts/auth-recovery.mjs --all --hours 72           # codes dans recovery-codes-<date>.txt (600)
+node scripts/auth-recovery.mjs --close <identifiant|--all> # refermer avant l'échéance
+node scripts/auth-recovery.mjs --log [identifiant]         # journal : ouvertures, essais, réussites
 ```
 
-Pendant la fenêtre, chacun se connecte normalement avec son mot de passe : l'app prouve le
-mot de passe en ouvrant le coffre de clés du compte (qui ne dépend pas de la portée) et
-enregistre la nouvelle clé ; mot de passe, clés de chiffrement et historique sont conservés.
-La fenêtre de chaque compte se referme dès qu'il est récupéré. Pendant qu'elle est ouverte,
-le coffre chiffré d'un compte est remis à qui donne son identifiant (une attaque hors ligne sur
-le mot de passe reste nécessaire) : gardez-la courte.
+Remettez chaque code à son titulaire par un canal sûr (en personne, messagerie déjà de
+confiance), puis supprimez le fichier de codes. L'utilisateur saisit sur l'écran de connexion
+son identifiant, son mot de passe et le code (« J'ai un code de récupération ») : l'app prouve
+le mot de passe en ouvrant le coffre de clés du compte (qui ne dépend pas de la portée) et
+enregistre la nouvelle clé. Mot de passe, clés de chiffrement et historique sont conservés ;
+**toutes les autres sessions du compte sont révoquées** et ses anciens appareils ne reçoivent
+plus de notifications (utile aussi après la perte d'un appareil).
+
+Garanties et limites :
+- Sans le code, le serveur ne remet jamais le coffre (pas d'attaque hors ligne sur le mot de
+  passe à partir du seul identifiant). Le code n'est stocké que sous forme d'empreinte, sert une
+  seule fois, et 5 codes erronés referment la fenêtre du compte.
+- Avec le code, le coffre chiffré est remis : quiconque obtient le code peut tenter une attaque
+  hors ligne sur le mot de passe (PBKDF2 600 000 itérations). Gardez les fenêtres courtes et les
+  codes confidentiels ; refermez-les (`--close`) dès que possible.
+- Chaque étape est journalisée (table `auth_recovery_log` et journal du service), avec
+  l'utilisateur système qui a ouvert la fenêtre.
 
 La liaison au serveur protège contre une fuite **passive** (journaux d'un proxy, d'un WAF,
 d'un opérateur) : la clé lue ne sert sur aucune autre instance. Elle ne protège pas contre un

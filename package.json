@@ -40,7 +40,7 @@
     "express": "^5.2.1",
     "firebase-admin": "^14.5.0",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.4.0",
+    "multer": "^2.5.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "socket.io": "^4.8.3",

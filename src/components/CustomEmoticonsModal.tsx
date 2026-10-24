@@ -190,7 +190,9 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
         if (!shortcutInput) {
           const baseName = file.name.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
-          if (baseName) setShortcutInput(`(${baseName})`);
+          // Suggestion seulement si le champ est (toujours) vide : le traitement du fichier est
+          // asynchrone, ce qui a été tapé entre-temps ne doit pas être écrasé
+          if (baseName) setShortcutInput(prev => prev || `(${baseName})`);
         }
         return;
       }
@@ -265,7 +267,9 @@ export const CustomEmoticonsModal: React.FC<CustomEmoticonsModalProps> = ({
 
       if (!shortcutInput) {
         const baseName = file.name.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
-        if (baseName) setShortcutInput(`(${baseName})`);
+        // Suggestion seulement si le champ est (toujours) vide : le traitement du fichier est
+          // asynchrone, ce qui a été tapé entre-temps ne doit pas être écrasé
+          if (baseName) setShortcutInput(prev => prev || `(${baseName})`);
       }
     } catch (err: unknown) {
       console.error("Erreur traitement image:", err);

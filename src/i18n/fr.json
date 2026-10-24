@@ -76,7 +76,11 @@
     "logoutFailed": "La déconnexion n'a pas pu être enregistrée par le serveur (connexion perdue ou erreur du serveur) : vos sessions restent ouvertes. Réessayer ?",
     "logoutRetry": "Réessayer",
     "sessionExpiredNotice": "Votre session a expiré : reconnectez-vous.",
-    "sessionOfflineNotice": "Serveur injoignable pour le moment : vérifiez votre connexion, puis réessayez. Cet appareil reste mémorisé."
+    "sessionOfflineNotice": "Serveur injoignable pour le moment : vérifiez votre connexion, puis réessayez. Cet appareil reste mémorisé.",
+    "recoveryCodeLink": "J'ai un code de récupération",
+    "recoveryCodeLabel": "Code de récupération",
+    "recoveryCodeHint": "Remis par l'administrateur du serveur. Saisissez aussi votre identifiant et votre mot de passe habituels : vos autres appareils seront déconnectés.",
+    "recoveryFailed": "Récupération impossible : code, identifiant ou mot de passe incorrect, ou récupération expirée."
   },
   "status": {
     "online": "Disponible",

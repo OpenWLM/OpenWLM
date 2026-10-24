@@ -76,7 +76,11 @@
     "logoutFailed": "Sign-out could not be recorded by the server (connection lost or server error): your sessions are still open. Try again?",
     "logoutRetry": "Try again",
     "sessionExpiredNotice": "Your session has expired: please sign in again.",
-    "sessionOfflineNotice": "The server cannot be reached right now: check your connection, then try again. This device stays remembered."
+    "sessionOfflineNotice": "The server cannot be reached right now: check your connection, then try again. This device stays remembered.",
+    "recoveryCodeLink": "I have a recovery code",
+    "recoveryCodeLabel": "Recovery code",
+    "recoveryCodeHint": "Given by the server administrator. Also enter your usual username and password: your other devices will be signed out.",
+    "recoveryFailed": "Recovery failed: wrong code, username or password, or the recovery has expired."
   },
   "status": {
     "online": "Available",

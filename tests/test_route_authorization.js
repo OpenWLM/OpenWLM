@@ -1,8 +1,12 @@
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import net from 'net';
+import crypto from 'crypto';
+import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import jwt from 'jsonwebtoken';
@@ -14,27 +18,49 @@ import { io as ClientIO } from 'socket.io-client';
  *  2. GET /api/user/:userId/public-key : soi-même ou contact mutuel uniquement.
  *  3. GET /api/emoticons/custom/asset/:assetId : propriétaire ou contact du propriétaire.
  *
- * Nécessite le serveur démarré sur http://localhost:3001 (skip sinon).
+ * Serveur ISOLÉ (dossier temporaire, port libre, secret JWT du test) : ne parle jamais au serveur
+ * présent sur :3001 (la prod, éventuellement) et n'écrit pas dans le messenger.db du dépôt.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.join(__dirname, '..');
+const SERVER_ENTRY = path.join(PROJECT_ROOT, 'server/index.js');
+const JWT_SECRET = crypto.randomBytes(32).toString('hex');
 
-const jwtSecretPath = path.join(PROJECT_ROOT, '.jwt_secret');
-const JWT_SECRET = fs.existsSync(jwtSecretPath) ? fs.readFileSync(jwtSecretPath, 'utf8').trim() : null;
-const db = new Database(path.join(PROJECT_ROOT, 'messenger.db'));
+let serverProc;
+let tmpDir;
+let port;
+let db;
 
 const IDS = { owner: 9301, contact: 9302, stranger: 9303 };
 const EMOTE_ID = 'emo_auth_test';
-const EMOTE_FILE = 'auth_test_asset.bin';
+const EMOTE_FILE = `auth_test_asset_${process.pid}.bin`;
+// Dossier des émoticônes du serveur (relatif au code, pas au dossier de travail)
 const EMOTICONS_DIR = path.join(PROJECT_ROOT, 'uploads', 'emoticons');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const getFreePort = () => new Promise((resolve, reject) => {
+  const srv = net.createServer();
+  srv.listen(0, () => { const { port: p } = srv.address(); srv.close(() => resolve(p)); });
+  srv.on('error', reject);
+});
+const waitForPort = async (p, timeoutMs = 15000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const ok = await new Promise((resolve) => {
+      const sock = net.connect(p, '127.0.0.1', () => { sock.end(); resolve(true); });
+      sock.on('error', () => resolve(false));
+    });
+    if (ok) return;
+    await wait(150);
+  }
+  throw new Error(`Serveur de test non démarré sur le port ${p}`);
+};
 
 const makeHttp = (apiPath, method, token) => new Promise((resolve) => {
   const req = http.request({
-    hostname: 'localhost',
-    port: 3001,
+    hostname: '127.0.0.1',
+    port,
     path: apiPath,
     method,
     headers: token ? { Authorization: `Bearer ${token}` } : {}
@@ -50,16 +76,28 @@ const makeHttp = (apiPath, method, token) => new Promise((resolve) => {
   req.end();
 });
 
-const probeServer = async () => {
-  if (!JWT_SECRET) return false;
-  const res = await makeHttp('/api/push/status', 'GET');
-  return res.status === 200;
-};
-const serverUp = await probeServer();
+before(async () => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openwlm-routeauth-'));
+  port = await getFreePort();
+  serverProc = spawn(process.execPath, [SERVER_ENTRY], {
+    cwd: tmpDir,
+    env: { ...process.env, PORT: String(port), JWT_SECRET, NODE_ENV: 'test' },
+    stdio: ['ignore', 'ignore', 'inherit']
+  });
+  await waitForPort(port);
+  db = new Database(path.join(tmpDir, 'messenger.db'));
+});
+
+after(async () => {
+  try { db?.close(); } catch { /* ignore */ }
+  if (serverProc && !serverProc.killed) serverProc.kill('SIGTERM');
+  await wait(200);
+  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+});
 
 const tok = (id, username) => jwt.sign({ id, username, tv: 0 }, JWT_SECRET);
 const connect = (token) => new Promise((resolve, reject) => {
-  const s = ClientIO('http://localhost:3001', { auth: { token }, transports: ['websocket'] });
+  const s = ClientIO(`http://127.0.0.1:${port}`, { auth: { token }, transports: ['websocket'], forceNew: true, reconnection: false });
   s.once('connect', () => resolve(s));
   s.once('connect_error', reject);
   setTimeout(() => reject(new Error('Timeout connexion socket')), 3000);
@@ -98,7 +136,7 @@ function seed() {
   fs.writeFileSync(path.join(EMOTICONS_DIR, EMOTE_FILE), Buffer.from('0123456789abcdef'));
 }
 
-test('public-key : self + contact autorisés, étranger refusé (403)', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
+test('public-key : self + contact autorisés, étranger refusé (403)', async () => {
   seed();
   try {
     const self = await makeHttp(`/api/user/${IDS.owner}/public-key`, 'GET', tok(IDS.owner, 'auth_owner'));
@@ -110,7 +148,7 @@ test('public-key : self + contact autorisés, étranger refusé (403)', { skip: 
   } finally { cleanup(); }
 });
 
-test('emoticon asset : propriétaire + contact autorisés, étranger refusé (403)', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
+test('emoticon asset : propriétaire + contact autorisés, étranger refusé (403)', async () => {
   seed();
   try {
     const owner = await makeHttp(`/api/emoticons/custom/asset/${EMOTE_ID}`, 'GET', tok(IDS.owner, 'auth_owner'));
@@ -122,7 +160,7 @@ test('emoticon asset : propriétaire + contact autorisés, étranger refusé (40
   } finally { cleanup(); }
 });
 
-test('jeux : un étranger ne peut pas injecter game_restart / game_quit', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
+test('jeux : un étranger ne peut pas injecter game_restart / game_quit', async () => {
   seed();
   const s1 = await connect(tok(IDS.owner, 'auth_owner'));
   const s3 = await connect(tok(IDS.stranger, 'auth_stranger'));
@@ -143,7 +181,7 @@ test('jeux : un étranger ne peut pas injecter game_restart / game_quit', { skip
   }
 });
 
-test('jeux : un restart légitime (partie active) est bien livré', { skip: serverUp ? false : 'Serveur non démarré' }, async () => {
+test('jeux : un restart légitime (partie active) est bien livré', async () => {
   seed();
   const s1 = await connect(tok(IDS.owner, 'auth_owner'));
   const s2 = await connect(tok(IDS.contact, 'auth_contact'));

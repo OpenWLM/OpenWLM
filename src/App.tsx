@@ -496,6 +496,7 @@ const App: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
     VerifiedContactsStorage.setUser(verifiedUserId);
+    CustomEmoticonsDB.setOwner(verifiedUserId);
     // Déconnexion : la page est rechargée (purgeLocalSession), l'état repart vide
     if (verifiedUserId === null) return;
     const initVerifiedContacts = async () => {
@@ -4298,6 +4299,13 @@ const App: React.FC = () => {
     }
     setInputText(text);
   };
+  // Table des émoticônes chargée APRÈS la saisie (émoticône personnelle tout juste créée,
+  // émoticône d'un contact arrivée) : le texte déjà tapé est reconverti, sinon « (chat) »
+  // restait du texte et le message partait sans l'émoticône
+  const syncRichInputRef = useRef(syncRichInput);
+  useEffect(() => { syncRichInputRef.current = syncRichInput; });
+  useEffect(() => { syncRichInputRef.current(); }, [emoticonShortcuts]);
+
 
   // Insère du texte au niveau du curseur (sélecteur d'émoticônes, etc.). Ouvrir le menu fait
   // perdre au champ son focus ; sur Android, sa sélection aussi (et son contenu peut être

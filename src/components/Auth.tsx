@@ -53,6 +53,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
   const [chosenStatus, setChosenStatus] = useState<string | null>(null);
   const status = chosenStatus ?? (initialStatus && username.trim() === initialUsername ? initialStatus : 'online');
   const [rememberMe, setRememberMe] = useState(false);
+  // Code de récupération remis par l'administrateur (changement de portée de la clé)
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState('');
   // Session révoquée depuis un autre appareil : message affiché sur l'écran de connexion jusqu'à
   // la prochaine tentative (pas effacé au montage : la page se recharge juste après la déconnexion)
   const [error, setError] = useState(() => {
@@ -154,26 +157,30 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
         // Clé qui prouve le mot de passe pour la suite de la session (création des clés E2EE…)
         let effectiveAuthKeyHex = authKeyHex;
         try {
-          res = await axios.post('/api/login', { username, password: authKeyHex, remember: rememberMe });
+          if (showRecovery && recoveryCode.trim()) {
+            // Récupération : le code de l'administrateur + le coffre ouvert par le mot de passe
+            const recovered = await recoverWithVault(username, recoveryCode.trim(), vaultKey, authKeyHex, rememberMe);
+            if (!recovered) {
+              setError(t.auth.recoveryFailed);
+              return;
+            }
+            res = recovered;
+          } else {
+            res = await axios.post('/api/login', { username, password: authKeyHex, remember: rememberMe });
+          }
         } catch (firstErr) {
           // Compte créé avant la clé liée au serveur : ancienne dérivation, puis migration
           // silencieuse (même mot de passe, même coffre, autres sessions conservées)
           const status = (firstErr as { response?: { status?: number } }).response?.status;
           if (status !== 401) throw firstErr;
+          // Si l'ancienne clé échoue aussi : mot de passe erroné, ou portée du serveur changée
+          // (nouveau domaine) → l'administrateur peut remettre un code de récupération
+          res = await axios.post('/api/login', { username, password: legacyAuthKeyHex, remember: rememberMe });
+          effectiveAuthKeyHex = legacyAuthKeyHex;
           try {
-            res = await axios.post('/api/login', { username, password: legacyAuthKeyHex, remember: rememberMe });
-            effectiveAuthKeyHex = legacyAuthKeyHex;
-            try {
-              await axios.post('/api/user/migrate-auth-key', { oldAuthKeyHex: legacyAuthKeyHex, newAuthKeyHex: authKeyHex });
-              effectiveAuthKeyHex = authKeyHex;
-            } catch { /* retentée à la prochaine connexion ; l'ancienne clé reste valable */ }
-          } catch (legacyErr) {
-            // Portée du serveur changée (nouveau domaine…) et récupération ouverte par
-            // l'administrateur : preuve du mot de passe par le coffre, nouvelle clé enregistrée
-            const recovered = await recoverWithVault(username, vaultKey, authKeyHex, rememberMe);
-            if (!recovered) throw legacyErr;
-            res = recovered;
-          }
+            await axios.post('/api/user/migrate-auth-key', { oldAuthKeyHex: legacyAuthKeyHex, newAuthKeyHex: authKeyHex });
+            effectiveAuthKeyHex = authKeyHex;
+          } catch { /* retentée à la prochaine connexion ; l'ancienne clé reste valable */ }
         }
 
         // M2 : le JWT n'est plus renvoyé dans le corps (auth par cookie HttpOnly uniquement).
@@ -335,6 +342,27 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
                   </div>
                 )}
               </div>
+
+              {showRecovery ? (
+                <div className="auth-field">
+                  <label htmlFor="auth-recovery-code">{t.auth.recoveryCodeLabel}</label>
+                  <input
+                    id="auth-recovery-code"
+                    type="text"
+                    autoComplete="one-time-code"
+                    spellCheck={false}
+                    value={recoveryCode}
+                    onChange={e => setRecoveryCode(e.target.value.toUpperCase())}
+                    placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+                    maxLength={40}
+                  />
+                  <div style={{ color: '#555', fontSize: '10px', marginTop: '4px', lineHeight: '1.3' }}>{t.auth.recoveryCodeHint}</div>
+                </div>
+              ) : (
+                <button type="button" className="auth-link-btn" onClick={() => setShowRecovery(true)} style={{ background: 'none', border: 'none', color: '#0066cc', fontSize: '10px', cursor: 'pointer', padding: '6px 0 0', textDecoration: 'underline' }}>
+                  {t.auth.recoveryCodeLink}
+                </button>
+              )}
             </>
           )}
 
@@ -402,12 +430,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
  * défi chiffré pour la clé publique du compte : l'ouvrir prouve le mot de passe ; la nouvelle
  * clé d'authentification est alors enregistrée. Renvoie la réponse de connexion, ou null.
  */
-const recoverWithVault = async (username: string, vaultKey: CryptoKey, newAuthKeyHex: string, remember: boolean) => {
+const recoverWithVault = async (username: string, code: string, vaultKey: CryptoKey, newAuthKeyHex: string, remember: boolean) => {
   let challenge: { vault: unknown; encryptedNonce: string };
   try {
-    challenge = (await axios.post('/api/auth/recovery/challenge', { username })).data;
+    challenge = (await axios.post('/api/auth/recovery/challenge', { username, code })).data;
   } catch {
-    return null; // pas de récupération en cours pour ce compte
+    return null; // code invalide, ou pas de récupération en cours pour ce compte
   }
   try {
     const vault = typeof challenge.vault === 'string' ? JSON.parse(challenge.vault) : challenge.vault;
@@ -416,7 +444,7 @@ const recoverWithVault = async (username: string, vaultKey: CryptoKey, newAuthKe
     const priv = await importPrivateCryptoKey(privJwk, false);
     const nonceBytes = await window.crypto.subtle.decrypt({ name: 'RSA-OAEP' }, priv, base64ToArrayBuffer(challenge.encryptedNonce));
     const nonce = new TextDecoder().decode(nonceBytes);
-    return await axios.post('/api/auth/recovery/complete', { username, nonce, newAuthKeyHex, remember });
+    return await axios.post('/api/auth/recovery/complete', { username, code, nonce, newAuthKeyHex, remember });
   } catch {
     return null;
   }

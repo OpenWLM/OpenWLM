@@ -1,3 +1,7 @@
+// Garde-fou des tests « live » chargé ici aussi, pas seulement par `npm test` (--import) :
+// lancé à la main, ce fichier s'arrête si le serveur sur :3001 n'est pas le serveur de test
+// de ce checkout (la prod, par exemple)
+import '../scripts/live_server_guard.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'http';

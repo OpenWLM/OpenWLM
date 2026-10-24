@@ -140,10 +140,36 @@ try {
 } catch(e) {}
 
 // Récupération de la clé d'authentification ouverte par l'administrateur (scripts/auth-recovery.mjs) :
-// jusqu'à cette date (ms), le compte peut prouver son mot de passe par son coffre de clés
-try {
-  db.exec("ALTER TABLE users ADD COLUMN auth_recovery_until INTEGER DEFAULT 0;");
-} catch { /* colonne déjà présente */ }
+// jusqu'à `auth_recovery_until` (ms), le compte peut prouver son mot de passe par son coffre de
+// clés, à condition de donner le CODE de récupération remis par l'administrateur (empreinte
+// SHA-256 seulement, usage unique, 5 essais)
+for (const column of ['auth_recovery_until INTEGER DEFAULT 0', 'auth_recovery_code_hash TEXT', 'auth_recovery_attempts INTEGER DEFAULT 0']) {
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN ${column};`);
+  } catch { /* colonne déjà présente */ }
+}
+
+// Journal des récupérations : ouverture (par qui), essais, réussite, fermeture
+db.exec(`
+  CREATE TABLE IF NOT EXISTS auth_recovery_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    event TEXT NOT NULL,
+    detail TEXT,
+    ip TEXT,
+    at INTEGER NOT NULL
+  );
+`);
+
+/** Trace d'audit d'une récupération (aussi écrite dans le journal du service). */
+export const logRecoveryEvent = (userId, event, { detail = null, ip = null } = {}) => {
+  try {
+    db.prepare('INSERT INTO auth_recovery_log (user_id, event, detail, ip, at) VALUES (?, ?, ?, ?, ?)').run(userId ?? null, event, detail, ip, Date.now());
+  } catch (err) {
+    console.error('[Récupération] Journal indisponible :', err);
+  }
+  console.log(`[Récupération] ${event} — compte ${userId ?? '?'}${detail ? ` — ${detail}` : ''}${ip ? ` — IP ${ip}` : ''}`);
+};
 
 // STATUTS DE MESSAGES (envoyé / remis / lu)
 try {

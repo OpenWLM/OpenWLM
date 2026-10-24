@@ -151,9 +151,14 @@ test('émoticônes reçues : propres à leur expéditeur, jamais un mot courant'
   await a.locator('.wlm-custom-emo-add-section button.win-btn-primary').click();
   await expect(a.locator('.wlm-custom-emo-item', { hasText: '(chat)' })).toBeVisible({ timeout: 20000 });
   await a.getByRole('button', { name: /^Close$|^Fermer$/ }).last().click();
+  // L'émoticône doit être prête chez A (table chargée, image déchiffrée) avant l'envoi : sinon le
+  // message part sans elle et B ne peut pas l'afficher (cause de l'échec intermittent)
   await a.locator('.chat-input-rich').click();
-  await a.keyboard.type(`mon (chat) ${stamp}`);
+  await a.keyboard.type('mon (chat) ');
+  await expect(a.locator('.chat-input-rich img[alt="(chat)"]')).toBeVisible({ timeout: 20000 });
+  await a.keyboard.type(String(stamp));
   await a.keyboard.press('Enter');
+  await expect(a.locator('.msg-line', { hasText: String(stamp) }).locator('img.custom-emoticon[alt="(chat)"]')).toBeVisible({ timeout: 20000 });
 
   // Chez B : l'émoticône de A s'affiche dans le message de A…
   await b.locator('.contact-row', { hasText: nameA }).click();

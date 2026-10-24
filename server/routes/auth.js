@@ -2,7 +2,7 @@ import { isValidFormattedField } from '../utils/plusText.js';
 import { removePushTargets } from '../utils/pushTargets.js';
 import { Router } from 'express';
 import crypto from 'crypto';
-import { db, toPrivateUserDTO } from '../db.js';
+import { db, toPrivateUserDTO, logRecoveryEvent } from '../db.js';
 import { getUserRoom } from '../sessionStore.js';
 import { 
   authRateLimiter, 
@@ -78,51 +78,94 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   });
 
   /**
-   * Récupération de compte ouverte par l'administrateur (scripts/auth-recovery.mjs) : le client
-   * prouve son mot de passe en ouvrant son coffre de clés (la clé du coffre ne dépend pas de la
-   * portée), puis enregistre une nouvelle clé d'authentification. Le coffre n'est remis que
-   * pour un compte en récupération, pendant la fenêtre fixée par l'administrateur.
+   * Récupération de compte ouverte par l'administrateur (scripts/auth-recovery.mjs) :
+   * 1. challenge : identifiant + CODE de récupération (remis par l'administrateur, usage unique,
+   *    5 essais) → coffre de clés chiffré + défi chiffré pour la clé publique du compte ;
+   * 2. complete : le client a ouvert le coffre avec le mot de passe (preuve) et déchiffré le défi
+   *    → nouvelle clé d'authentification, TOUTES les sessions révoquées, cibles Push supprimées
+   *    (un appareil perdu ne garde ni accès ni notifications), puis session pour cet appareil.
+   * Sans code valide, le coffre n'est jamais remis (pas d'attaque hors ligne sur le mot de passe
+   * à partir du seul identifiant). Chaque étape est journalisée (auth_recovery_log).
    */
+  const recoveryUser = (username) => {
+    const normalized = String(username || '').trim().toLowerCase();
+    return normalized ? db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(normalized) : null;
+  };
+  const RECOVERY_MAX_ATTEMPTS = 5;
+  /** Code de récupération valide pour ce compte (fenêtre ouverte) ; un échec est compté. */
+  const checkRecoveryCode = (user, code, ip) => {
+    if (!user || !(Number(user.auth_recovery_until) > Date.now()) || !user.auth_recovery_code_hash) return false;
+    const given = crypto.createHash('sha256').update(String(code || '').trim().toUpperCase()).digest('hex');
+    if (safeTokenEqual(given, user.auth_recovery_code_hash)) return true;
+    const attempts = (Number(user.auth_recovery_attempts) || 0) + 1;
+    if (attempts >= RECOVERY_MAX_ATTEMPTS) {
+      db.prepare('UPDATE users SET auth_recovery_until = 0, auth_recovery_code_hash = NULL, auth_recovery_attempts = 0 WHERE id = ?').run(user.id);
+      recoveryChallenges.delete(user.id);
+      logRecoveryEvent(user.id, 'fermée', { detail: `${attempts} codes erronés`, ip });
+    } else {
+      db.prepare('UPDATE users SET auth_recovery_attempts = ? WHERE id = ?').run(attempts, user.id);
+      logRecoveryEvent(user.id, 'code erroné', { detail: `essai ${attempts}/${RECOVERY_MAX_ATTEMPTS}`, ip });
+    }
+    return false;
+  };
+
   router.post('/auth/recovery/challenge', authRateLimiter, (req, res) => {
-    const normalized = String(req.body?.username || '').trim().toLowerCase();
-    const user = normalized ? db.prepare('SELECT id, public_key, encrypted_private_key, auth_recovery_until FROM users WHERE LOWER(username) = ?').get(normalized) : null;
-    if (!user || !(Number(user.auth_recovery_until) > Date.now()) || !user.public_key || !user.encrypted_private_key) {
-      return res.status(404).json({ error: 'Aucune récupération en cours pour ce compte.', code: 'no_recovery' });
+    const ip = getClientIp(req);
+    const user = recoveryUser(req.body?.username);
+    if (!checkRecoveryCode(user, req.body?.code, ip) || !user.public_key || !user.encrypted_private_key) {
+      return res.status(404).json({ error: 'Code de récupération invalide ou aucune récupération en cours.', code: 'no_recovery' });
+    }
+    // Un défi en cours n'est pas remplacé (une seconde demande ne peut pas gêner la première)
+    let challenge = recoveryChallenges.get(user.id);
+    if (!challenge || challenge.expires < Date.now()) {
+      challenge = { nonce: crypto.randomBytes(32).toString('hex'), expires: Date.now() + 5 * 60 * 1000 };
+      recoveryChallenges.set(user.id, challenge);
     }
     let encryptedNonce;
-    const nonce = crypto.randomBytes(32).toString('hex');
     try {
       const jwk = typeof user.public_key === 'string' ? JSON.parse(user.public_key) : user.public_key;
       const key = crypto.createPublicKey({ key: jwk, format: 'jwk' });
-      encryptedNonce = crypto.publicEncrypt({ key, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, Buffer.from(nonce)).toString('base64');
+      encryptedNonce = crypto.publicEncrypt({ key, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, Buffer.from(challenge.nonce)).toString('base64');
     } catch (err) {
       console.error('[Auth] Récupération : clé publique inutilisable :', err);
       return res.status(500).json({ error: 'Erreur serveur.' });
     }
-    recoveryChallenges.set(user.id, { nonce, expires: Date.now() + 5 * 60 * 1000 });
+    logRecoveryEvent(user.id, 'coffre remis', { ip });
     res.json({ success: true, vault: user.encrypted_private_key, encryptedNonce });
   });
 
   router.post('/auth/recovery/complete', authRateLimiter, async (req, res) => {
-    const { username, nonce, newAuthKeyHex, remember } = req.body || {};
-    const normalized = String(username || '').trim().toLowerCase();
-    const user = normalized ? db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(normalized) : null;
+    const ip = getClientIp(req);
+    const { username, code, nonce, newAuthKeyHex, remember } = req.body || {};
+    const user = recoveryUser(username);
     const challenge = user ? recoveryChallenges.get(user.id) : null;
-    if (!user || !challenge || challenge.expires < Date.now() || !(Number(user.auth_recovery_until) > Date.now())
+    const codeOk = checkRecoveryCode(user, code, ip);
+    if (!codeOk || !challenge || challenge.expires < Date.now()
       || typeof nonce !== 'string' || !safeTokenEqual(nonce, challenge.nonce) || !/^[a-fA-F0-9]{64}$/.test(String(newAuthKeyHex))) {
+      if (codeOk) logRecoveryEvent(user.id, 'preuve refusée', { ip });
       return res.status(401).json({ error: 'Récupération refusée.', code: 'recovery_failed' });
     }
     recoveryChallenges.delete(user.id);
     const salt = crypto.randomBytes(16).toString('hex');
+    let tokenVersion;
     try {
       const hash = await hashPassword(newAuthKeyHex, salt);
-      db.prepare('UPDATE users SET password_hash = ?, salt = ?, auth_recovery_until = 0 WHERE id = ?').run(hash, salt, user.id);
+      db.transaction(() => {
+        db.prepare(`UPDATE users SET password_hash = ?, salt = ?, token_version = COALESCE(token_version, 0) + 1, status = 'offline',
+          auth_recovery_until = 0, auth_recovery_code_hash = NULL, auth_recovery_attempts = 0 WHERE id = ?`).run(hash, salt, user.id);
+        removePushTargets(user.id);
+      })();
+      tokenVersion = db.prepare('SELECT token_version FROM users WHERE id = ?').get(user.id).token_version;
     } catch (err) {
       console.error('[Auth] Récupération : enregistrement impossible :', err);
       return res.status(500).json({ error: 'Erreur serveur.' });
     }
-    issueSessionCookie(req, res, { id: user.id, username: user.username, tv: user.token_version || 0, remember: remember === true }, isProd);
-    res.json({ success: true, user: toPrivateUserDTO(user) });
+    // Les anciennes sessions (appareil perdu…) sont coupées tout de suite
+    io.in(getUserRoom(user.id)).disconnectSockets(true);
+    broadcastStatusToContacts(user.id, { id: user.id, userId: user.id, status: 'offline' });
+    logRecoveryEvent(user.id, 'réussie', { detail: 'nouvelle clé, sessions révoquées, cibles Push supprimées', ip });
+    issueSessionCookie(req, res, { id: user.id, username: user.username, tv: tokenVersion, remember: remember === true }, isProd);
+    res.json({ success: true, user: toPrivateUserDTO({ ...user, token_version: tokenVersion, status: 'offline' }) });
   });
 
   /**

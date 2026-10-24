@@ -52,12 +52,11 @@ test('mobile : panneau 🎨 visible, menu de l\'aide repliable', async ({ browse
   await expect(page.locator('.chat-input-rich')).toHaveText('[c=4][/c]');
   await expect(panel).toHaveCount(0);
 
-  // --- Aide (écran de connexion) : menu repliable, repli automatique après un choix
-  const anonCtx = await browser.newContext({ ...PHONE, extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
-  const anon = await anonCtx.newPage();
-  await anon.goto('/');
-  await anon.getByRole('button', { name: 'Help' }).click();
-  const help = anon.getByTestId('help-modal');
+  // --- Aide (menu principal) : menu repliable, repli automatique après un choix
+  await page.locator('.mobile-back-btn').click();
+  await page.locator('.status-trigger').click();
+  await page.locator('.dropdown-item', { hasText: 'Help' }).first().click();
+  const help = page.getByTestId('help-modal');
   const tabs = help.getByRole('tab');
   await expect(tabs.first()).toBeVisible();
   await help.getByRole('tab', { name: 'Formatting' }).click();
@@ -65,10 +64,9 @@ test('mobile : panneau 🎨 visible, menu de l\'aide repliable', async ({ browse
   await expect(help.locator('.fmt-gradient-text')).toBeVisible();
   const content = (await help.locator('.options-content').boundingBox())!;
   expect(content.width).toBeGreaterThan(280);
-  await anon.getByTestId('help-nav-toggle').click();
+  await page.getByTestId('help-nav-toggle').click();
   await expect(tabs.first()).toBeVisible();
-  await anon.getByTestId('help-nav-toggle').click();
+  await page.getByTestId('help-nav-toggle').click();
   await expect(tabs.first()).toBeHidden();
-  await anonCtx.close();
   await ctx.close();
 });

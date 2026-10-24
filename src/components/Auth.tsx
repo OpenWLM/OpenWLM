@@ -5,7 +5,6 @@ import { useI18n } from '../i18n';
 import { PASSWORD_MIN_LENGTH } from '../utils/PasswordStrength';
 import { serverErrorText } from '../utils/serverError';
 import { PasswordStrengthMeter } from './PasswordStrengthMeter';
-import HelpModal from './HelpModal';
 import { solveProofOfWork, type PowChallenge } from '../utils/ProofOfWork';
 
 /**
@@ -68,7 +67,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
     return '';
   });
   const [info, setInfo] = useState('');
-  const [showHelp, setShowHelp] = useState(false);
   const [isDeriving, setIsDeriving] = useState(false);
   const [captchaData, setCaptchaData] = useState<{ id: string; text: string; num1?: number; num2?: number; pow?: PowChallenge } | null>(null);
   const [isSolvingPow, setIsSolvingPow] = useState(false);
@@ -238,7 +236,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
 
   return (
     <div className="wlm-auth-container">
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       <div className="wlm-auth-box">
         {/* Sélecteur de langue discret style WLM */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '4px', fontSize: '11px', gap: '5px' }}>
@@ -416,8 +413,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
         </form>
         <div className="auth-footer">
           OpenWLM v{__APP_VERSION__} ·{' '}
-          <a href="https://github.com/OpenWLM/OpenWLM" target="_blank" rel="noopener noreferrer">GitHub</a>{' '}·{' '}
-          <button type="button" className="auth-help-link" onClick={() => setShowHelp(true)}>{t.extras.helpMenu}</button>
+          <a href="https://github.com/OpenWLM/OpenWLM" target="_blank" rel="noopener noreferrer">GitHub</a>
         </div>
       </div>
     </div>

@@ -206,7 +206,7 @@ test('mise en forme, commandes, rappel, textes rapides, recherche et aide', asyn
   await a.keyboard.press('Escape');
   await expect(botRow).toBeVisible();
 
-  // --- Aide : depuis le menu, puis depuis l'écran de connexion
+  // --- Aide : depuis le menu (pas sur l'écran de connexion)
   await a.locator('.status-trigger').click();
   await a.locator('.dropdown-item', { hasText: 'Help' }).first().click();
   const help = a.getByTestId('help-modal');
@@ -221,7 +221,7 @@ test('mise en forme, commandes, rappel, textes rapides, recherche et aide', asyn
   const ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
   const anon = await ctx.newPage();
   await anon.goto('/');
-  await anon.getByRole('button', { name: 'Help' }).click();
-  await expect(anon.getByTestId('help-modal')).toBeVisible();
+  await expect(anon.locator('.wlm-auth-form')).toBeVisible();
+  await expect(anon.getByRole('button', { name: 'Help' })).toHaveCount(0);
   await ctx.close();
 });

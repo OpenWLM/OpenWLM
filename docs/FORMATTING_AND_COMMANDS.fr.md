@@ -5,8 +5,7 @@
 # Mise en forme, commandes, textes rapides et recherche
 
 Cette page décrit les outils de conversation d'OpenWLM. Les mêmes informations sont dans
-l'application : **menu principal → Aide**, le lien **Aide** de l'écran de connexion, ou la
-commande `/help`.
+l'application : **menu principal → Aide**, ou la commande `/help`.
 
 - [Mise en forme](#mise-en-forme)
 - [Commandes](#commandes)

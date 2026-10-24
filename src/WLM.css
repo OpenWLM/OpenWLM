@@ -5161,7 +5161,6 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   .help-nav-collapsed .help-nav-toggle { align-self: center; }
 }
 
-.auth-help-link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
 
 /* Historique paginé : bouton « Messages précédents » en haut du journal */
 .msg-load-older {

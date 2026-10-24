@@ -60,6 +60,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Sign-in screen**: the **Help** link is removed (help stays in the main menu and via `/help` once signed in).
 - **Following a third external review**:
   - **Emoticons from before per-account storage**: a key saved before the update (with no owner account) counted as belonging to every account on the browser, which could see it, reuse it, or wipe it when signing out or syncing. It now belongs to no one until the server recognises it: on load, each key that appears in the signed-in account's list is attached to that account and saved; the others stay hidden and untouched until their owner signs in.
   - **Recovery: no more blocking by a third party.** Five wrong codes closed the account's window, so anyone who knew the username could prevent a legitimate recovery. The window now stays open; wrong codes are limited to 5 per 15 minutes **per account and per IP address** (with a 100-bit code, brute force stays out of reach). Every failure is logged, and so is the blocking of an address (`--log`, plus a warning in the service log). The sign-in screen says so ("Try again in 15 minutes").

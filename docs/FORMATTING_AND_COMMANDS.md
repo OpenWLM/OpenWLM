@@ -5,7 +5,7 @@
 # Formatting, commands, quick texts and search
 
 This page describes the conversation tools of OpenWLM. The same information is available in
-the app: **main menu → Help**, the **Help** link on the sign-in screen, or the `/help` command.
+the app: **main menu → Help**, or the `/help` command.
 
 - [Formatting](#formatting)
 - [Commands](#commands)

@@ -60,6 +60,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections
+- **Écran de connexion** : le lien **Aide** est retiré (l'aide reste dans le menu principal et avec `/help`, une fois connecté).
 - **Suite à une troisième relecture externe** :
   - **Émoticônes d'avant le rattachement au compte** : une clé enregistrée avant la mise à jour (sans compte propriétaire) était considérée comme celle de tout compte du navigateur, qui pouvait la voir, la réutiliser, ou l'effacer à sa déconnexion ou à sa synchronisation. Elle n'est plus à personne tant que le serveur ne la reconnaît pas : au chargement, chaque clé figurant dans la liste du compte connecté lui est rattachée et enregistrée ; les autres restent masquées et intactes jusqu'à la connexion de leur propriétaire.
   - **Récupération : plus de blocage par un tiers.** Cinq codes erronés refermaient la fenêtre du compte : quiconque connaissait l'identifiant pouvait empêcher une récupération légitime. Désormais la fenêtre reste ouverte ; les codes erronés sont limités à 5 par 15 minutes **par compte et par adresse IP** (avec un code de 100 bits, la force brute reste hors de portée). Chaque échec est journalisé, le blocage d'une adresse aussi (`--log`, et un avertissement dans le journal du service). L'écran de connexion l'indique (« Réessayez dans 15 minutes »).

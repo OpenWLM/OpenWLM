@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * PRÉFÉRENCES D'AFFICHAGE, DE MESSAGES ET DE SONS (Options → Disposition, Messages, Sons)
+ * PRÉFÉRENCES D'AFFICHAGE, DE MESSAGES, DE SONS ET DE SÉCURITÉ (Options → Disposition, Messages, Sons, Sécurité)
  *
  * Stockées sur l'appareil (localStorage, clé `wlm_prefs`), jamais sur le serveur : ce sont des
  * réglages de confort propres à chaque appareil. Lisibles depuis React (`useAppPrefs`) et
@@ -75,6 +75,16 @@ export interface AppPrefs {
     /** Largeur de la liste de contacts sur ordinateur (px), réglée en faisant glisser son bord. */
     rosterWidth: number;
   };
+  security: {
+    /**
+     * Clés mémorisées scellées par l'appareil (Windows Hello, Touch ID, empreinte / code
+     * Android, cf. DeviceLock.ts) : réglé dans Options → Sécurité, appliqué aussi à la
+     * prochaine connexion avec « Mémoriser mes clés ».
+     */
+    deviceLock: boolean;
+    /** Minutes sans activité avant de redemander l'appareil (0 : seulement à l'ouverture). */
+    relockMinutes: number;
+  };
 }
 
 /** Liste de contacts : largeur d'origine et bornes du redimensionnement (ordinateur). */
@@ -87,7 +97,8 @@ export const clampRosterWidth = (w: number) =>
 export const DEFAULT_PREFS: AppPrefs = {
   sounds: { enabled: true, volume: 1, message: true, contactOnline: true, nudge: true, call: true, games: true, winks: true, muteWhenBusy: false },
   messages: { emoticonImages: true, showTimestamps: true, receiveNudges: true, autoPlayWinks: true, keepLocalHistory: true, showFormatting: true, quickTexts: [] },
-  layout: { showOffline: true, showPsm: true, sortBy: 'status', showBot: true, rosterWidth: ROSTER_WIDTH_DEFAULT }
+  layout: { showOffline: true, showPsm: true, sortBy: 'status', showBot: true, rosterWidth: ROSTER_WIDTH_DEFAULT },
+  security: { deviceLock: false, relockMinutes: 5 }
 };
 
 const STORAGE_KEY = 'wlm_prefs';
@@ -108,11 +119,13 @@ const normalize = (raw: unknown): AppPrefs => {
   const prefs: AppPrefs = {
     sounds: mergeSection(DEFAULT_PREFS.sounds, r.sounds),
     messages: mergeSection(DEFAULT_PREFS.messages, r.messages),
-    layout: mergeSection(DEFAULT_PREFS.layout, r.layout)
+    layout: mergeSection(DEFAULT_PREFS.layout, r.layout),
+    security: mergeSection(DEFAULT_PREFS.security, r.security)
   };
   prefs.sounds.volume = Math.min(1, Math.max(0, Number.isFinite(prefs.sounds.volume) ? prefs.sounds.volume : 1));
   if (prefs.layout.sortBy !== 'status' && prefs.layout.sortBy !== 'name') prefs.layout.sortBy = 'status';
   prefs.layout.rosterWidth = clampRosterWidth(prefs.layout.rosterWidth);
+  prefs.security.relockMinutes = [1, 5, 15, 30, 0].includes(prefs.security.relockMinutes) ? prefs.security.relockMinutes : 5;
   prefs.messages.quickTexts = normalizeQuickTexts((r.messages as Record<string, unknown> | undefined)?.quickTexts);
   return prefs;
 };

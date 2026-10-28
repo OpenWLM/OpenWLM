@@ -216,7 +216,8 @@ Réserves honnêtes :
 
 - `src/utils/Security.ts` — primitives E2EE (AES‑GCM, RSA‑OAEP, RSA‑PSS, PBKDF2/HKDF).
 - `src/utils/MessageEnvelope.ts` — enveloppe de message signée v2 (scellement, vérification, verdicts) ; tests : `tests/test_message_envelope.js`, `tests/test_signed_messages_server.js`.
-- `src/utils/E2EEKeyStorage.ts` — stockage local des clés (non extractibles).
+- `src/utils/E2EEKeyStorage.ts` — stockage local des clés (non extractibles, ou scellées par l'appareil).
+- `src/utils/DeviceLock.ts`, `src/utils/deviceLockCrypto.ts` — verrouillage des clés par l'appareil (WebAuthn PRF / Keystore Android) ; tests : `tests/test_device_lock.js`, `e2e/device-lock.spec.ts`.
 - `src/components/VideoCall.tsx` — signalisation E2EE + signature/vérif de l'empreinte DTLS.
 - `src/components/CustomEmoticonsModal.tsx` — chiffrement des émoticônes avant upload.
 - `server/routes/rtc.js` — config STUN/TURN (`/api/rtc-config`).
@@ -291,3 +292,49 @@ l'authentification et l'abus côté serveur :
 - **Notifications Push** : elles ne contiennent jamais le contenu des messages ni l'offre
   d'appel, seulement le nom de l'expéditeur ou de l'appelant et un texte générique, traduit par
   le service worker.
+
+---
+
+## 11. Verrouillage des clés (Windows Hello, Touch ID, Android)
+
+**Problème.** « Mémoriser mes clés E2EE sur cet appareil » gardait la clé privée en IndexedDB
+sous forme de `CryptoKey` non exportable : impossible à copier, mais **utilisable par
+quiconque ouvre la session de l'ordinateur** (ou copie le profil du navigateur vers une
+machine où il saura l'ouvrir). Sur Android, le verrouillage de l'app (empreinte / code) n'était
+qu'un écran devant l'interface : les clés elles-mêmes n'en dépendaient pas.
+
+**Principe** (`src/utils/DeviceLock.ts`). Option « Verrouillage des clés » dans Options →
+Sécurité (mot de passe demandé : il ouvre le coffre de clés, localement). La clé privée (JWK)
+est alors **chiffrée au repos** (AES‑GCM 256, clé dérivée par HKDF‑SHA256) avec un secret de
+32 octets que seul l'appareil rend après authentification de son propriétaire :
+
+| Plateforme | Secret | Ce qui le protège |
+|---|---|---|
+| Ordinateur (Chrome, Edge, Firefox récents, HTTPS) | **Passkey WebAuthn** de l'authentificateur de la plateforme, extension **PRF** (`prf.eval`, sel aléatoire par scellé) | Windows Hello / Touch ID : TPM ou enclave, liaison au site (`rpId`) ; `userVerification: required` |
+| App Android (APK v11+) | Secret aléatoire chiffré par une **clé AES‑256‑GCM du Keystore** (`DeviceSecret.java`) exigeant une authentification récente (30 s, empreinte / visage / code) | Keystore matériel ; clé invalidée si le verrouillage d'écran est retiré |
+
+L'enregistrement d'appareil (`E2EEKeyStorage`) ne contient plus de `CryptoKey`, seulement
+`{ method, handle, salt, iv, ciphertext }`. Au démarrage, l'écran « Déverrouiller OpenWLM »
+demande l'appareil ; la clé est réimportée **non extractible** en mémoire, comme avant. Le
+re‑verrouillage (ordinateur) recharge la page après le délai d'inactivité choisi (1 à 30 min,
+ou seulement à l'ouverture ; onglet caché compris ; jamais pendant un appel) : la clé quitte la
+mémoire et l'utilisateur apparaît hors ligne jusqu'au déverrouillage. Sur Android, le verrou
+natif de l'app (1 min en arrière‑plan) reste le re‑verrouillage ; l'empreinte ou le code donnés
+pour l'écran de verrouillage valent aussi pour le Keystore (clé liée au délai) : une seule
+demande à l'ouverture. Le réglage s'applique aussi aux connexions suivantes avec « Mémoriser » :
+si l'appareil refuse (annulation, non pris en charge), les clés **ne sont pas mémorisées**
+plutôt que mémorisées en clair.
+
+**Ce que cela protège.** Vol ou copie du profil du navigateur / des données de l'app, session
+d'ordinateur laissée ouverte (après le délai), appareil perdu avec un verrouillage d'écran. La
+passkey et la clé Keystore ne quittent pas l'appareil ; une réinstallation, un autre appareil
+ou un verrouillage d'écran retiré rendent le scellé illisible : « Se connecter avec le mot de
+passe » (les clés scellées sont retirées de l'appareil ; le coffre chiffré par le mot de passe
+reste sur le serveur, rien n'est perdu).
+
+**Ce que cela ne protège pas.** Un logiciel malveillant actif pendant que l'app est
+déverrouillée (la clé est en mémoire, non exportable comme avant) ; un serveur malveillant, qui
+sert le code de l'interface (cf. §3). Le mot de passe reste l'autre voie d'accès : sa robustesse
+compte toujours. Rien ne passe par le serveur : aucune route nouvelle, la passkey ne lui est
+jamais présentée (`attestation: none`).
+

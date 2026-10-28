@@ -12,6 +12,7 @@
     <string name="lock_unlock">Déverrouiller</string>
     <string name="lock_prompt_title">Déverrouiller OpenWLM</string>
     <string name="lock_prompt_subtitle">Utilisez votre empreinte, votre visage ou le verrouillage de l\'écran</string>
+    <string name="key_lock_prompt_title">Déverrouiller vos clés OpenWLM</string>
 
     <string name="channel_messages">Messages</string>
     <string name="channel_messages_desc">Nouveaux messages et fichiers (son de message d\'OpenWLM)</string>

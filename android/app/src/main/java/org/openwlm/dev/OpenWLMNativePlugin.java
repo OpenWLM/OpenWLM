@@ -104,6 +104,122 @@ public class OpenWLMNativePlugin extends Plugin {
         if (plugin != null) plugin.notifyListeners("hangUp", new JSObject());
     }
 
+    // --- Verrouillage des clés (étape 4, APK v11+) : secret rendu par le Keystore après
+    // empreinte / code (DeviceSecret). La clé privée E2EE elle-même ne passe jamais par ici.
+
+    /** Nouveau secret (base64) et sa copie chiffrée par le Keystore (`blob`), à garder côté page. */
+    @PluginMethod
+    public void deviceSecretCreate(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
+        if (!DeviceSecret.isAvailable(getContext())) {
+            call.reject("unavailable");
+            return;
+        }
+        byte[] secret = DeviceSecret.newSecret();
+        withDeviceAuth(call, () -> {
+            byte[] blob = DeviceSecret.seal(secret);
+            JSObject ret = new JSObject();
+            ret.put("secret", Base64.encodeToString(secret, Base64.NO_WRAP));
+            ret.put("blob", Base64.encodeToString(blob, Base64.NO_WRAP));
+            call.resolve(ret);
+        });
+    }
+
+    /** Rend le secret d'un `blob` produit par deviceSecretCreate (base64). */
+    @PluginMethod
+    public void deviceSecretUnlock(PluginCall call) {
+        if (!fromTrustedPage(call)) return;
+        byte[] blob;
+        try {
+            blob = Base64.decode(call.getString("blob", ""), Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            call.reject("invalid_blob");
+            return;
+        }
+        if (!DeviceSecret.isAvailable(getContext())) {
+            call.reject("unavailable");
+            return;
+        }
+        withDeviceAuth(call, () -> {
+            JSObject ret = new JSObject();
+            ret.put("secret", Base64.encodeToString(DeviceSecret.open(blob), Base64.NO_WRAP));
+            call.resolve(ret);
+        });
+    }
+
+    private interface KeystoreAction {
+        void run() throws java.security.GeneralSecurityException, java.io.IOException;
+    }
+
+    /**
+     * Exécute une opération du Keystore qui exige une authentification récente. Sans elle :
+     * app verrouillée → attendre son déverrouillage (l'empreinte ou le code donnés alors
+     * valent pour le Keystore) ; sinon demander l'empreinte ou le code ici, puis réessayer.
+     * Rejets : « cancelled », « invalidated » (clé perdue : verrouillage d'écran retiré,
+     * réinstallation), « failed ».
+     */
+    private void withDeviceAuth(PluginCall call, KeystoreAction action) {
+        try {
+            action.run();
+            return;
+        } catch (Exception e) {
+            if (DeviceSecret.isInvalidated(e)) {
+                DeviceSecret.deleteKey();
+                call.reject("invalidated");
+                return;
+            }
+            if (!DeviceSecret.needsAuthentication(e)) {
+                call.reject("failed");
+                return;
+            }
+        }
+        Runnable retry = () -> {
+            try {
+                action.run();
+            } catch (Exception e) {
+                if (DeviceSecret.isInvalidated(e)) {
+                    DeviceSecret.deleteKey();
+                    call.reject("invalidated");
+                } else {
+                    call.reject(DeviceSecret.needsAuthentication(e) ? "cancelled" : "failed");
+                }
+            }
+        };
+        if (MainActivity.isAppLocked()) {
+            MainActivity.runWhenUnlocked(retry);
+            return;
+        }
+        Activity activity = getActivity();
+        if (!(activity instanceof androidx.fragment.app.FragmentActivity)) {
+            call.reject("failed");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            int authenticators = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                ? androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG | androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                : androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK | androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL;
+            androidx.biometric.BiometricPrompt prompt = new androidx.biometric.BiometricPrompt(
+                (androidx.fragment.app.FragmentActivity) activity,
+                ContextCompat.getMainExecutor(activity),
+                new androidx.biometric.BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationSucceeded(@androidx.annotation.NonNull androidx.biometric.BiometricPrompt.AuthenticationResult result) {
+                        retry.run();
+                    }
+
+                    @Override
+                    public void onAuthenticationError(int errorCode, @androidx.annotation.NonNull CharSequence errString) {
+                        call.reject("cancelled");
+                    }
+                });
+            prompt.authenticate(new androidx.biometric.BiometricPrompt.PromptInfo.Builder()
+                .setTitle(getContext().getString(R.string.key_lock_prompt_title))
+                .setSubtitle(getContext().getString(R.string.lock_prompt_subtitle))
+                .setAllowedAuthenticators(authenticators)
+                .build());
+        });
+    }
+
     /** L'app affiche son écran de verrouillage (l'interface est derrière). */
     @PluginMethod
     public void isAppLocked(PluginCall call) {

@@ -36,7 +36,7 @@ et pour Firebase).
 
 | Fonction | Détail |
 |---|---|
-| Verrouillage | Empreinte, visage ou code du téléphone à l'ouverture et après 1 min en arrière-plan. Sans verrouillage d'écran configuré sur le téléphone, l'app ne peut pas être protégée (indiqué dans les Options). Contenu masqué (captures, aperçu des applications récentes) quand l'app est verrouillée, et en arrière-plan (Android 13+ : aperçu désactivé ; avant : `FLAG_SECURE` en arrière-plan). Sous le verrou, la page reste chargée (connexion, appels) mais est retirée de l'accessibilité et du focus : ni TalkBack ni un clavier physique n'y accèdent (APK v9+). App ouverte et déverrouillée : captures possibles (partage d'écran en appel). |
+| Verrouillage | Empreinte, visage ou code du téléphone à l'ouverture et après 1 min en arrière-plan. Sans verrouillage d'écran configuré sur le téléphone, l'app ne peut pas être protégée (indiqué dans les Options). Contenu masqué (captures, aperçu des applications récentes) quand l'app est verrouillée, et en arrière-plan (Android 13+ : aperçu désactivé ; avant : `FLAG_SECURE` en arrière-plan). Sous le verrou, la page reste chargée (connexion, appels) mais est retirée de l'accessibilité et du focus : ni TalkBack ni un clavier physique n'y accèdent (APK v9+). App ouverte et déverrouillée : captures possibles (partage d'écran en appel). **Verrouillage des clés** (APK v11+, Options → Sécurité) : la clé privée E2EE mémorisée est chiffrée par une clé du **Keystore** qui exige l'empreinte, le visage ou le code (`DeviceSecret.java`, `deviceSecretCreate` / `deviceSecretUnlock`) ; l'authentification donnée pour l'écran de verrouillage vaut aussi pour le Keystore (clé liée à un délai de 30 s), une seule demande à l'ouverture. Verrouillage d'écran retiré ou app réinstallée : « Se connecter avec le mot de passe ». Cf. docs/SECURITY_E2E.md §11. |
 | Session | « Se souvenir de cet appareil » garde la session 30 jours glissants (cf. ci-dessous). |
 | Appels | Écran d'appel Android, même téléphone verrouillé ; service d'appel pendant la conversation (cf. « Appels natifs »). |
 | Messages vocaux | Permission micro demandée par Android au premier usage. |
@@ -341,6 +341,10 @@ Empreinte du certificat (pour vérifier un APK) :
   téléphone → toujours connecté, messages lisibles (clés E2EE en IndexedDB conservées).
 - Verrouillage : empreinte / code à l'ouverture ; rien après moins d'une minute en
   arrière-plan ; de nouveau après plus d'une minute.
+- Verrouillage des clés (APK v11+) : Options → Sécurité → cocher, mot de passe → « Activé ».
+  Fermer l'app (balayer), la rouvrir : une seule demande d'empreinte / code, puis les messages
+  sont lisibles. Retirer le verrouillage d'écran du téléphone, rouvrir l'app : écran « Se
+  connecter avec le mot de passe ».
 - Messages, fichiers (envoi, réception → Téléchargements), clins d'œil, jeux, Options.
 - Appel audio puis vidéo, app ouverte : son et image dans les deux sens ; écran éteint
   (bouton marche) → l'appel continue ; appel audio contre l'oreille → écran éteint.

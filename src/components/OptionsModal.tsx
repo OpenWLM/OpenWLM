@@ -20,6 +20,7 @@ import {
   type NativeAppInfo, type NativeNotificationPermission, type NativeCallPermissions
 } from '../utils/platform';
 import { hasPlusFormatting, visibleLength } from '../utils/plusFormat';
+import { RELOCK_CHOICES, methodName, type DeviceLockFailure, type DeviceLockMethod } from '../utils/DeviceLock';
 
 /**
  * Modale d'options (Paramètres) : Personnel, Disposition, Messages, Alertes, Sons, Sécurité, Connexion.
@@ -28,6 +29,8 @@ import { hasPlusFormatting, visibleLength } from '../utils/plusFormat';
  * (auto-absence, toasts) et l'état/les actions de notifications viennent de `App` / des
  * hooks. L'onglet actif est un état local à la modale ; l'i18n est lue directement.
  */
+
+export type DeviceLockOutcome = 'ok' | 'wrongPassword' | DeviceLockFailure;
 
 interface OptionsModalProps {
   myNickname: string;
@@ -76,6 +79,16 @@ interface OptionsModalProps {
     onResetKeys: () => void;
     /** Coupe les autres appareils (cet appareil reste connecté). */
     onRevokeOtherSessions: () => Promise<{ ok: boolean; disconnected?: number }>;
+    /** Clés mémorisées scellées par l'appareil (Windows Hello, Touch ID, empreinte / code), cf. DeviceLock.ts. */
+    deviceLock: {
+      /** Null : pas de verrouillage possible sur cet appareil / navigateur. */
+      method: DeviceLockMethod | null;
+      active: boolean;
+      /** Le mot de passe ouvre le coffre (clé privée) : activer scelle, désactiver mémorise sans sceller. */
+      onEnable: (password: string) => Promise<DeviceLockOutcome>;
+      onDisable: (password: string) => Promise<DeviceLockOutcome>;
+      onLockNow: () => void;
+    };
   };
   onClose: () => void;
 }
@@ -157,6 +170,29 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
     setRevokeStep(r.ok ? 'done' : 'error');
   };
   const blockedContacts = security.contacts.filter(c => !c.isBot && (c.blocked === true || Number(c.blocked) === 1));
+  // Verrouillage des clés : la case ouvre la demande de mot de passe (rien ne change avant)
+  const [lockStep, setLockStep] = useState<'idle' | 'enable' | 'disable' | 'busy'>('idle');
+  const [lockPassword, setLockPassword] = useState('');
+  const [lockOutcome, setLockOutcome] = useState<DeviceLockOutcome | null>(null);
+  const [lockOutcomeFor, setLockOutcomeFor] = useState<'enable' | 'disable'>('enable');
+  const submitDeviceLock = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (lockStep !== 'enable' && lockStep !== 'disable') return;
+    const action = lockStep;
+    setLockStep('busy');
+    const outcome = await (action === 'enable' ? security.deviceLock.onEnable(lockPassword) : security.deviceLock.onDisable(lockPassword));
+    setLockPassword('');
+    setLockOutcome(outcome);
+    setLockOutcomeFor(action);
+    setLockStep(outcome === 'wrongPassword' ? action : 'idle');
+  };
+  const lockMethod = security.deviceLock.method;
+  const lockMethodName = lockMethod ? methodName(t, lockMethod) : '';
+  const lockOutcomeText = lockOutcome === 'ok' ? (lockOutcomeFor === 'enable' ? t.deviceLock.enabled : t.deviceLock.disabled)
+    : lockOutcome === 'wrongPassword' ? t.deviceLock.wrongPassword
+    : lockOutcome === 'cancelled' ? t.deviceLock.cancelled
+    : lockOutcome === 'unsupported' ? t.deviceLock.unsupportedNow
+    : lockOutcome ? t.deviceLock.failed : null;
 
   // Tous les réglages s'enregistrent dès qu'ils changent (plus de OK / Annuler / Appliquer).
   // Pseudo et message perso : enregistrés en quittant le champ (ou Entrée) et à la fermeture.
@@ -451,6 +487,75 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                   <div className="options-hint">{security.isDeviceRemembered ? t.settings.securityDeviceRemembered : t.settings.securityDeviceNotRemembered}</div>
                   {security.isDeviceRemembered && (
                     <button type="button" className="win-btn" style={{ marginTop: '5px', color: '#b33927' }} onClick={security.onForgetDevice}>🔓 {t.auth.forgetDevice}</button>
+                  )}
+                </div>
+
+                <div className="options-subsection" data-testid="device-lock">
+                  <label className="options-label">{t.deviceLock.title}</label>
+                  {!lockMethod ? (
+                    <div className="options-hint">{t.deviceLock.unsupported}</div>
+                  ) : (
+                    <>
+                      <PrefCheckbox
+                        id="pref-device-lock"
+                        checked={security.deviceLock.active}
+                        disabled={lockStep === 'busy'}
+                        onChange={v => { setLockOutcome(null); setLockPassword(''); setLockStep(v ? 'enable' : 'disable'); }}
+                        label={lockMethod === 'android' ? t.deviceLock.enableAndroid : t.deviceLock.enableWebauthn}
+                      />
+                      <div className="options-hint">
+                        {security.deviceLock.active
+                          ? (lockMethod === 'android' ? t.deviceLock.activeHintAndroid : t.deviceLock.activeHint)
+                          : t.deviceLock.inactiveHint.replace('{method}', lockMethodName)}
+                      </div>
+                      {(lockStep === 'enable' || lockStep === 'disable' || lockStep === 'busy') && (
+                        <form className="options-confirm-box" onSubmit={submitDeviceLock} aria-label={t.deviceLock.title}>
+                          <label className="options-hint" htmlFor="device-lock-password">{t.deviceLock.passwordPrompt}</label>
+                          <input
+                            id="device-lock-password"
+                            type="password"
+                            autoComplete="current-password"
+                            value={lockPassword}
+                            disabled={lockStep === 'busy'}
+                            onChange={e => setLockPassword(e.target.value)}
+                            style={{ width: '100%', marginTop: '4px' }}
+                            autoFocus
+                          />
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                            <button type="submit" className="win-btn win-btn-primary" disabled={lockStep === 'busy' || !lockPassword}>
+                              {lockStep === 'disable' ? t.deviceLock.confirmDisable : t.deviceLock.confirmEnable}
+                            </button>
+                            <button type="button" className="win-btn" disabled={lockStep === 'busy'} onClick={() => { setLockStep('idle'); setLockPassword(''); }}>{t.common.cancel}</button>
+                          </div>
+                        </form>
+                      )}
+                      {lockOutcomeText && (
+                        <div className="options-hint" role="status" data-testid="device-lock-outcome" style={{ color: lockOutcome === 'ok' ? '#1b7d23' : '#c02717' }}>{lockOutcomeText}</div>
+                      )}
+                      {security.deviceLock.active && (
+                        <div style={{ marginTop: '6px' }}>
+                          {lockMethod !== 'android' && (
+                            <>
+                              <label className="options-hint" htmlFor="pref-relock">
+                                {t.deviceLock.relockLabel}
+                                <select
+                                  id="pref-relock"
+                                  className="options-device-lock-select"
+                                  value={prefs.security.relockMinutes}
+                                  onChange={e => updateAppPrefs('security', { relockMinutes: Number(e.target.value) })}
+                                >
+                                  {RELOCK_CHOICES.map(m => (
+                                    <option key={m} value={m}>{t.deviceLock[`relock${m}` as 'relock0' | 'relock1' | 'relock5' | 'relock15' | 'relock30']}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div className="options-hint">{t.deviceLock.relockHint}</div>
+                            </>
+                          )}
+                          <button type="button" className="win-btn" style={{ marginTop: '5px' }} onClick={security.deviceLock.onLockNow}>🔒 {t.deviceLock.lockNow}</button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 

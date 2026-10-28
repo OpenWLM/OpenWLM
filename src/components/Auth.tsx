@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { deriveZeroKnowledgeKeys, decryptPrivateKeyVault, importPrivateCryptoKey, base64ToArrayBuffer } from '../utils/Security';
+import { getAppPrefs } from '../utils/appPrefs';
+import { detectDeviceLock, methodName, type DeviceLockMethod } from '../utils/DeviceLock';
 import { useI18n } from '../i18n';
 import { PASSWORD_MIN_LENGTH } from '../utils/PasswordStrength';
 import { serverErrorText } from '../utils/serverError';
@@ -52,6 +54,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
   const [chosenStatus, setChosenStatus] = useState<string | null>(null);
   const status = chosenStatus ?? (initialStatus && username.trim() === initialUsername ? initialStatus : 'online');
   const [rememberMe, setRememberMe] = useState(false);
+  // Verrouillage des clés réglé sur cet appareil (Options → Sécurité) : annoncé sous la case
+  const [deviceLockMethod, setDeviceLockMethod] = useState<DeviceLockMethod | null>(null);
+  useEffect(() => {
+    if (!getAppPrefs().security.deviceLock) return;
+    let cancelled = false;
+    detectDeviceLock().then((m) => { if (!cancelled) setDeviceLockMethod(m); });
+    return () => { cancelled = true; };
+  }, []);
   // Code de récupération remis par l'administrateur (changement de portée de la clé)
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('');
@@ -336,6 +346,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialUsername = '', initialStatu
                 {rememberMe && (
                   <div style={{ color: '#005a9e', fontSize: '10px', marginTop: '4px', lineHeight: '1.3' }}>
                     {t.auth.rememberWarning}
+                    {deviceLockMethod && <div data-testid="remember-device-lock">{t.deviceLock.rememberHint.replace('{method}', methodName(t, deviceLockMethod))}</div>}
                   </div>
                 )}
               </div>

@@ -10,19 +10,36 @@
  *    ce qui réduit significativement le risque d'exfiltration directe par rapport à un stockage classique.
  * 5. Tolérance aux pannes : Toutes les méthodes gèrent les exceptions (quota, navigation privée, indisponibilité IDB)
  *    sans interrompre le flux d'authentification de l'utilisateur.
+ * 6. Verrouillage par l'appareil (DeviceLock.ts) : à la place de la CryptoKey, l'enregistrement
+ *    peut porter la clé privée SCELLÉE (`protectedKey`), chiffrée avec un secret que seul
+ *    l'appareil rend après Windows Hello / Touch ID / empreinte ou code Android. Au démarrage,
+ *    elle n'est utilisable qu'après ce déverrouillage.
  */
+
+import { isProtectedKeyBlob, type ProtectedKeyBlob } from './deviceLockCrypto';
 
 export interface DeviceKeyRecord {
   userId: number;
   username: string;
   publicKeyJwk: JsonWebKey;
-  privateCryptoKey: CryptoKey;
+  /** Absente quand la clé est scellée par l'appareil (`protectedKey`). */
+  privateCryptoKey?: CryptoKey;
   // Clé de signature (RSA-PSS) dérivée du MÊME matériel RSA, non extractible.
   // Optionnelle (anciens enregistrements) : sert à authentifier la signalisation d'appel.
   signingCryptoKey?: CryptoKey;
+  /** Clé privée scellée par l'appareil (cf. DeviceLock.ts). */
+  protectedKey?: ProtectedKeyBlob;
   createdAt: number;
   updatedAt: number;
   version: number;
+}
+
+export interface StoredKeys {
+  publicKeyJwk: JsonWebKey;
+  privateCryptoKey?: CryptoKey;
+  signingCryptoKey?: CryptoKey;
+  /** Présent : la clé privée est scellée, à déverrouiller avec l'appareil (unlockPrivateKey). */
+  protectedKey?: ProtectedKeyBlob;
 }
 
 export interface KeyStorageResult<T = void> {
@@ -166,11 +183,45 @@ class E2EEKeyStorage {
   }
 
   /**
-   * Récupère les clés persistées pour un utilisateur donné
+   * Persiste la clé publique et la clé privée SCELLÉE par l'appareil (jamais la CryptoKey :
+   * au prochain démarrage, la clé privée n'existe qu'après le déverrouillage).
+   */
+  public async saveProtectedKeys(
+    userId: number,
+    username: string,
+    publicKeyJwk: JsonWebKey,
+    protectedKey: ProtectedKeyBlob
+  ): Promise<KeyStorageResult> {
+    try {
+      if (!this.isSupported()) return { success: false, error: "Web Crypto / IndexedDB non disponible" };
+      if (!isProtectedKeyBlob(protectedKey)) return { success: false, error: "Clé scellée invalide" };
+      await this.init();
+      if (!this.db) return { success: false, error: "Base de données non initialisée" };
+      const record: DeviceKeyRecord = { userId, username, publicKeyJwk, protectedKey, createdAt: Date.now(), updatedAt: Date.now(), version: 2 };
+      return await new Promise<KeyStorageResult>((resolve) => {
+        try {
+          const tx = this.db!.transaction([STORE_NAME], 'readwrite');
+          tx.objectStore(STORE_NAME).put(record);
+          tx.oncomplete = () => resolve({ success: true });
+          tx.onerror = () => resolve({ success: false, error: tx.error?.message || "Erreur de stockage" });
+          tx.onabort = () => resolve({ success: false, error: tx.error?.message || "Transaction interrompue" });
+        } catch (txErr: unknown) {
+          resolve({ success: false, error: txErr instanceof Error ? txErr.message : "Exception transaction" });
+        }
+      });
+    } catch (err: unknown) {
+      console.warn("[E2EEKeyStorage] Échec saveProtectedKeys:", err);
+      return { success: false, error: err instanceof Error ? err.message : "Erreur inconnue" };
+    }
+  }
+
+  /**
+   * Récupère les clés persistées pour un utilisateur donné. Clé scellée par l'appareil :
+   * `data.protectedKey` est renvoyé sans `privateCryptoKey`.
    */
   public async getKeys(
     userId: number
-  ): Promise<KeyStorageResult<{ publicKeyJwk: JsonWebKey; privateCryptoKey: CryptoKey; signingCryptoKey?: CryptoKey }>> {
+  ): Promise<KeyStorageResult<StoredKeys>> {
     try {
       if (!this.isSupported()) {
         return { success: false, error: "Web Crypto / IndexedDB non disponible" };
@@ -190,6 +241,10 @@ class E2EEKeyStorage {
 
           req.onsuccess = () => {
             const result = req.result as DeviceKeyRecord | undefined;
+            if (result?.publicKeyJwk && !result.privateCryptoKey && isProtectedKeyBlob(result.protectedKey)) {
+              resolve({ success: true, data: { publicKeyJwk: result.publicKeyJwk, protectedKey: result.protectedKey } });
+              return;
+            }
             if (!result || !result.privateCryptoKey || !result.publicKeyJwk) {
               resolve({ success: false, error: "Aucune clé trouvée pour cet utilisateur" });
               return;

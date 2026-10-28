@@ -110,6 +110,9 @@ import { commandSuggestions, isTestContactCommand } from './utils/chatCommands';
 import { hasPlusFormatting, renderPlusText, stripPlusTags, visibleLength } from './utils/plusFormat';
 import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
 import { notify, askConfirm } from './utils/dialogs';
+import { detectDeviceLock, protectPrivateKey, unlockPrivateKey, deviceLockFailure, methodName, type DeviceLockMethod, type DeviceLockFailure, type ProtectedKeyBlob } from './utils/DeviceLock';
+import DeviceUnlock from './components/DeviceUnlock';
+import type { DeviceLockOutcome } from './components/OptionsModal';
 
 axios.defaults.withCredentials = true;
 
@@ -464,6 +467,17 @@ const App: React.FC = () => {
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(true);
   const [isDeviceRemembered, setIsDeviceRemembered] = useState<boolean>(false);
   const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null);
+  // Clés mémorisées scellées par l'appareil (Windows Hello, Touch ID, empreinte / code Android,
+  // cf. DeviceLock.ts) : session serveur confirmée, clé privée à déverrouiller avant d'entrer
+  const [lockedSession, setLockedSession] = useState<{ serverUser: any; token: string; protectedKey: ProtectedKeyBlob } | null>(null);
+  // Les clés de CETTE session viennent d'un enregistrement scellé (re-verrouillage possible)
+  const [deviceLockActive, setDeviceLockActive] = useState(false);
+  const [deviceLockMethod, setDeviceLockMethod] = useState<DeviceLockMethod | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    detectDeviceLock().then((m) => { if (!cancelled) setDeviceLockMethod(m); });
+    return () => { cancelled = true; };
+  }, []);
 
   // Appareil mémorisé : le serveur prolonge la session (30 jours glissants) à chaque appel de
   // /api/user/me sur un jeton de plus de 12 h. Un appel par heure suffit pour une app restée ouverte.
@@ -1183,7 +1197,7 @@ const App: React.FC = () => {
         // 2. Tenter de récupérer les clés E2EE persistées dans IndexedDB
         const keyRes = await E2EEKeyStorage.getKeys(savedUser.id);
         if (keyRes.success && keyRes.data) {
-          const { publicKeyJwk, privateCryptoKey } = keyRes.data;
+          const { publicKeyJwk, privateCryptoKey, protectedKey } = keyRes.data;
 
           // Vérification de concordance avec la clé publique du profil serveur
           let isKeyMatch = true;
@@ -1204,12 +1218,20 @@ const App: React.FC = () => {
           // Enregistrements d'appareil antérieurs à la signature des messages : pas de clé
           // RSA-PSS. Sans elle, impossible d'envoyer des messages signés → reconnexion
           // (le mot de passe permet de la recréer depuis le coffre).
-          if (isKeyMatch && !keyRes.data.signingCryptoKey) {
+          if (isKeyMatch && !protectedKey && !keyRes.data.signingCryptoKey) {
             console.warn("[E2EE Session] Clé de signature absente de cet appareil : reconnexion requise.");
             isKeyMatch = false;
           }
 
-          if (isKeyMatch) {
+          if (isKeyMatch && protectedKey) {
+            // Clé privée scellée par l'appareil : écran de déverrouillage (Hello, empreinte…)
+            console.log("[E2EE Session] Clés scellées sur cet appareil : déverrouillage demandé.");
+            if (!isCancelled) {
+              setLockedSession({ serverUser, token: sessionToken, protectedKey });
+              setIsDeviceRemembered(true);
+            }
+            localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...serverUser, rememberMe: true })));
+          } else if (isKeyMatch && privateCryptoKey) {
             console.log("[E2EE Session] Session et clés restaurées avec succès depuis cet appareil.");
             if (!isCancelled) {
               setMyKeys({
@@ -1255,6 +1277,123 @@ const App: React.FC = () => {
       isCancelled = true;
     };
   }, []);
+
+  /**
+   * VERROUILLAGE DES CLÉS PAR L'APPAREIL (cf. DeviceLock.ts)
+   * Déverrouillage au démarrage : l'appareil rend le secret après Windows Hello / empreinte,
+   * la clé privée est réimportée NON EXTRACTIBLE, la session entre comme après une restauration.
+   */
+  const unlockDeviceSession = async (): Promise<DeviceLockFailure | null> => {
+    const locked = lockedSession;
+    if (!locked) return null;
+    try {
+      const privJwk = await unlockPrivateKey(locked.protectedKey);
+      const privateCryptoKey = await importPrivateCryptoKey(privJwk, false);
+      const signingKey = await importPrivateKeyForSigning(privJwk);
+      const serverPub = typeof locked.serverUser.public_key === 'string' ? JSON.parse(locked.serverUser.public_key) : locked.serverUser.public_key;
+      setMyKeys({ publicKeyJwk: serverPub, privateKey: privateCryptoKey, privateKeyJwk: privateCryptoKey as any, signingKey });
+      setUser({ ...locked.serverUser, token: locked.token, rememberMe: true });
+      setDeviceLockActive(true);
+      setLockedSession(null);
+      return null;
+    } catch (err) {
+      const reason = deviceLockFailure(err);
+      console.warn('[DeviceLock] Déverrouillage refusé :', reason, err);
+      return reason;
+    }
+  };
+  /** « Se connecter avec le mot de passe » : les clés scellées quittent cet appareil. */
+  const abandonLockedSession = async () => {
+    const locked = lockedSession;
+    if (!locked) return;
+    try { await E2EEKeyStorage.removeKeys(locked.serverUser.id); } catch { /* stockage indisponible */ }
+    localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...locked.serverUser, rememberMe: false })));
+    setIsDeviceRemembered(false);
+    setLockedSession(null);
+  };
+  /** Clé privée (JWK) obtenue du coffre serveur avec le mot de passe ; null : mot de passe faux. */
+  const privateJwkFromPassword = async (password: string): Promise<JsonWebKey | null> => {
+    if (!user) return null;
+    const { vaultKey } = await deriveZeroKnowledgeKeys(user.username, password);
+    let vaultSource = user.encrypted_private_key;
+    if (!vaultSource) {
+      const me = await axios.get('/api/user/me');
+      vaultSource = me.data?.user?.encrypted_private_key;
+    }
+    if (!vaultSource) return null;
+    try {
+      const vault = typeof vaultSource === 'string' ? JSON.parse(vaultSource) : vaultSource;
+      const jwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
+      return jwk && typeof jwk === 'object' && jwk.d ? jwk : null;
+    } catch {
+      return null;
+    }
+  };
+  /** Options → Sécurité : sceller les clés mémorisées avec l'appareil (et mémoriser si besoin). */
+  const enableDeviceLock = async (password: string): Promise<DeviceLockOutcome> => {
+    if (!user) return 'failed';
+    const privJwk = await privateJwkFromPassword(password).catch(() => null);
+    if (!privJwk) return 'wrongPassword';
+    let blob: ProtectedKeyBlob;
+    try {
+      blob = await protectPrivateKey(user.id, user.username, privJwk);
+    } catch (err) {
+      console.warn('[DeviceLock] Scellement refusé :', deviceLockFailure(err), err);
+      return deviceLockFailure(err);
+    }
+    const saved = await E2EEKeyStorage.saveProtectedKeys(user.id, user.username, myKeysRef.current?.publicKeyJwk ?? JSON.parse(user.public_key || 'null'), blob);
+    if (!saved.success) return 'failed';
+    localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...user, rememberMe: true })));
+    setIsDeviceRemembered(true);
+    setUser(prev => (prev ? { ...prev, rememberMe: true } : prev));
+    updateAppPrefs('security', { deviceLock: true });
+    setDeviceLockActive(true);
+    return 'ok';
+  };
+  /** Options → Sécurité : clés mémorisées de nouveau sans scellé (CryptoKey non extractible). */
+  const disableDeviceLock = async (password: string): Promise<DeviceLockOutcome> => {
+    if (!user) return 'failed';
+    const privJwk = await privateJwkFromPassword(password).catch(() => null);
+    if (!privJwk) return 'wrongPassword';
+    const privateCryptoKey = await importPrivateCryptoKey(privJwk, false);
+    const signingKey = await importPrivateKeyForSigning(privJwk);
+    const saved = await E2EEKeyStorage.saveKeys(user.id, user.username, myKeysRef.current?.publicKeyJwk ?? JSON.parse(user.public_key || 'null'), privateCryptoKey, signingKey ?? undefined);
+    if (!saved.success) return 'failed';
+    updateAppPrefs('security', { deviceLock: false });
+    setDeviceLockActive(false);
+    return 'ok';
+  };
+  /**
+   * Re-verrouillage : la page se recharge, la clé quitte la mémoire et l'écran de
+   * déverrouillage revient (jamais pendant un appel). Après le délai d'inactivité choisi
+   * (Options → Sécurité), onglet caché compris ; l'app Android a son propre verrou natif.
+   */
+  const lockDeviceNow = () => {
+    if (!deviceLockActive || activeCallIdRef.current) return;
+    window.location.reload();
+  };
+  const relockMinutes = appPrefs.security.relockMinutes;
+  const relockUserId = user?.id ?? null;
+  useEffect(() => {
+    if (!deviceLockActive || !relockUserId || isNativeApp() || !relockMinutes) return;
+    let lastActivity = Date.now();
+    const resetActivity = () => { lastActivity = Date.now(); };
+    const check = () => {
+      if (Date.now() - lastActivity >= relockMinutes * 60 * 1000 && !activeCallIdRef.current) window.location.reload();
+    };
+    const onVisibility = () => { if (document.visibilityState === 'visible') check(); };
+    const events: (keyof WindowEventMap)[] = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'pointerdown'];
+    events.forEach(ev => window.addEventListener(ev, resetActivity, { passive: true }));
+    window.addEventListener('scroll', resetActivity, { passive: true, capture: true });
+    document.addEventListener('visibilitychange', onVisibility);
+    const interval = window.setInterval(check, 15000);
+    return () => {
+      events.forEach(ev => window.removeEventListener(ev, resetActivity));
+      window.removeEventListener('scroll', resetActivity, { capture: true });
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(interval);
+    };
+  }, [deviceLockActive, relockUserId, relockMinutes]);
 
   // Auto-effacement du message de notification de persistance après 8s
   useEffect(() => {
@@ -1349,18 +1488,39 @@ const App: React.FC = () => {
       // 2. Gestion de la persistance locale sur cet appareil
       if (loggedInUser.rememberMe) {
         try {
-          const saveRes = await E2EEKeyStorage.saveKeys(
-            loggedInUser.id,
-            loggedInUser.username,
-            pubJwk,
-            privateCryptoKey,
-            signingKey ?? undefined
-          );
+          // Verrouillage des clés réglé sur cet appareil : scellées (Hello, empreinte…) plutôt
+          // que CryptoKey ; refus ou échec → clés non mémorisées (jamais mémorisées en clair)
+          let saveRes: { success: boolean; error?: string };
+          let sealedWith: DeviceLockMethod | null = null;
+          const lockMethod = getAppPrefs().security.deviceLock ? await detectDeviceLock() : null;
+          if (lockMethod) {
+            try {
+              const blob = await protectPrivateKey(loggedInUser.id, loggedInUser.username, privJwk);
+              saveRes = await E2EEKeyStorage.saveProtectedKeys(loggedInUser.id, loggedInUser.username, pubJwk, blob);
+              sealedWith = lockMethod;
+            } catch (err) {
+              console.warn('[DeviceLock] Scellement refusé à la connexion :', deviceLockFailure(err));
+              saveRes = { success: false, error: 'device_lock_' + deviceLockFailure(err) };
+            }
+          } else {
+            saveRes = await E2EEKeyStorage.saveKeys(
+              loggedInUser.id,
+              loggedInUser.username,
+              pubJwk,
+              privateCryptoKey,
+              signingKey ?? undefined
+            );
+          }
 
           if (saveRes.success) {
             localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...loggedInUser, rememberMe: true })));
             setIsDeviceRemembered(true);
-            setPersistenceNotice(t.auth.deviceRememberedSuccess);
+            setDeviceLockActive(!!sealedWith);
+            setPersistenceNotice(sealedWith ? t.deviceLock.loginEnabled.replace('{method}', methodName(t, sealedWith)) : t.auth.deviceRememberedSuccess);
+          } else if (lockMethod) {
+            localStorage.removeItem('wlm_user');
+            setIsDeviceRemembered(false);
+            setPersistenceNotice(t.deviceLock.loginFailed.replace('{method}', methodName(t, lockMethod)));
           } else {
             console.warn("[E2EE Storage] Échec persistance locale:", saveRes.error);
             // EXIGENCE UX ABSOLUE : La connexion n'est JAMAIS bloquée par l'échec de persistance
@@ -4468,6 +4628,18 @@ const App: React.FC = () => {
     );
   }
 
+  // Clés scellées par l'appareil : déverrouillage (Hello, empreinte…) avant d'entrer
+  if (lockedSession && !user) {
+    return (
+      <DeviceUnlock
+        username={lockedSession.serverUser.nickname || lockedSession.serverUser.username}
+        method={lockedSession.protectedKey.method}
+        onUnlock={unlockDeviceSession}
+        onUsePassword={abandonLockedSession}
+      />
+    );
+  }
+
   // Redirection vers l'authentification si aucun utilisateur n'est connecté ou si les clés ne sont pas en mémoire
   if (!user || !myKeys) {
     let fallbackUsername = '';
@@ -4612,7 +4784,7 @@ const App: React.FC = () => {
                         className="dropdown-item" 
                         role="menuitem"
                         tabIndex={0}
-                        onClick={() => { handleForgetDevice(); setShowStatusMenu(false); }}
+                        onClick={() => { handleForgetDevice(); setDeviceLockActive(false); setShowStatusMenu(false); }}
                         style={{ color: '#b33927' }}
                       >
                         🔓 {t.auth.forgetDevice}
@@ -5518,13 +5690,14 @@ const App: React.FC = () => {
             contacts,
             onUnblock: (contactId) => handleBlockContact(contactId, false),
             isDeviceRemembered,
-            onForgetDevice: () => { handleForgetDevice(); },
+            onForgetDevice: () => { handleForgetDevice(); setDeviceLockActive(false); },
             globalPrivateMode,
             onToggleGlobalPrivate: toggleGlobalPrivateMode,
             safetyNumber: myFingerprint ? formatSafetyNumber(myFingerprint) : '',
             onChangePassword: () => { setShowOptionsModal(false); setShowPasswordModal(true); },
             onResetKeys: () => { setShowOptionsModal(false); handleResetE2EKeys(); },
-            onRevokeOtherSessions: revokeOtherSessions
+            onRevokeOtherSessions: revokeOtherSessions,
+            deviceLock: { method: deviceLockMethod, active: deviceLockActive, onEnable: enableDeviceLock, onDisable: disableDeviceLock, onLockNow: lockDeviceNow }
           }}
           onClose={() => setShowOptionsModal(false)}
         />

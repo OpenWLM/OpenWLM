@@ -150,6 +150,32 @@ public class MainActivity extends BridgeActivity {
         return appLocked;
     }
 
+    /**
+     * Actions en attente du déverrouillage de l'app (cf. OpenWLMNativePlugin.deviceSecret*) :
+     * l'empreinte ou le code donnés pour l'écran de verrouillage valent aussi pour le Keystore
+     * (clé liée au délai, DeviceSecret.AUTH_VALID_S), une seule demande à l'ouverture.
+     */
+    private static final java.util.List<Runnable> unlockWaiters = new java.util.ArrayList<>();
+
+    static void runWhenUnlocked(Runnable action) {
+        synchronized (unlockWaiters) {
+            if (appLocked) {
+                unlockWaiters.add(action);
+                return;
+            }
+        }
+        action.run();
+    }
+
+    private static void runUnlockWaiters() {
+        java.util.List<Runnable> pending;
+        synchronized (unlockWaiters) {
+            pending = new java.util.ArrayList<>(unlockWaiters);
+            unlockWaiters.clear();
+        }
+        for (Runnable r : pending) r.run();
+    }
+
     private void updateVisibility() {
         userVisible = started && !locked;
         appLocked = locked;
@@ -274,6 +300,7 @@ public class MainActivity extends BridgeActivity {
             wv.setFocusableInTouchMode(true);
         }
         updateVisibility();
+        runUnlockWaiters();
     }
 
     private void authenticate() {

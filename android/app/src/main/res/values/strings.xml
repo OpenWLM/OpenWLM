@@ -18,6 +18,7 @@
     <string name="lock_unlock">Unlock</string>
     <string name="lock_prompt_title">Unlock OpenWLM</string>
     <string name="lock_prompt_subtitle">Use your fingerprint, face or screen lock</string>
+    <string name="key_lock_prompt_title">Unlock your OpenWLM keys</string>
 
     <string name="channel_messages">Messages</string>
     <string name="channel_messages_desc">New messages and files (OpenWLM message sound)</string>

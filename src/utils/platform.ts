@@ -56,6 +56,9 @@ interface OpenWLMNativePlugin {
   getCallPermissions(): Promise<NativeCallPermissions>;
   isAppLocked(): Promise<{ locked: boolean }>;
   requestCallPermission(options: { kind: 'microphone' | 'camera' | 'fullScreen' }): Promise<void>;
+  /** APK v11+ : secret de verrouillage des clés, rendu par le Keystore après empreinte / code (cf. DeviceLock.ts). */
+  deviceSecretCreate(): Promise<{ secret: string; blob: string }>;
+  deviceSecretUnlock(options: { blob: string }): Promise<{ secret: string }>;
 }
 
 const OpenWLMNative = registerPlugin<OpenWLMNativePlugin>('OpenWLMNative');
@@ -235,3 +238,15 @@ export const getNativeCallPermissions = (): Promise<NativeCallPermissions | null
 
 export const requestNativeCallPermission = (kind: 'microphone' | 'camera' | 'fullScreen'): Promise<void> =>
   isNativeApp() ? OpenWLMNative.requestCallPermission({ kind }).catch(() => { /* refusé */ }) : Promise.resolve();
+
+// --- Verrouillage des clés (étape 4 : Keystore + empreinte / code, APK v11+) -----------------
+
+/**
+ * Nouveau secret aléatoire (base64, 32 octets) et sa copie chiffrée par la clé du Keystore
+ * (`blob`, à garder avec la clé scellée). Demande l'empreinte ou le code si besoin. Erreurs :
+ * « cancelled », « invalidated », « unavailable », « failed ».
+ */
+export const nativeDeviceSecretCreate = (): Promise<{ secret: string; blob: string }> => OpenWLMNative.deviceSecretCreate();
+
+/** Rend le secret correspondant à `blob` (demande l'empreinte ou le code si besoin). */
+export const nativeDeviceSecretUnlock = (blob: string): Promise<{ secret: string }> => OpenWLMNative.deviceSecretUnlock({ blob });

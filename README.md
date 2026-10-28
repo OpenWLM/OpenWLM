@@ -34,6 +34,7 @@ OpenWLM is an independent educational, open-source project and a tribute to 2000
 - **Presence**: Available, Busy, Away and Appear offline; the status you pick is restored when the app restarts; automatic "Away" after a configurable inactivity delay, optionally based on the inactivity of the whole computer (see [Automatic "Away" status](#automatic-away-status)).
 - **1v1 mini-games**: real-time Tic-Tac-Toe (Morpion), Checkers (Jeu de dames), Connect Four (Puissance 4, 7x6 board) and Minesweeper Flags (find the mines: 16x16, 51 mines, first to 26, one 5x5 bomb per round), with server-side move validation against cheating — the mine positions never leave the server — and collapsible game panels.
 - **Encrypted file transfer**: temporary file sharing between contacts (4-hour TTL), decrypted in the browser, with image previews in a zoomable full-screen viewer (mouse wheel, pinch, double-click).
+- **Key lock** (Options → Security): the keys remembered on a device can be sealed with **Windows Hello / Touch ID** (a WebAuthn passkey with the PRF extension) or, in the Android app, with the phone's **fingerprint, face or PIN** (hardware Keystore). The private key is then encrypted at rest and only released after you authenticate, when opening and after a chosen inactivity delay; without the device and its owner, a copy of the browser profile is useless. See [docs/SECURITY_E2E.md](docs/SECURITY_E2E.md#11-key-lock-windows-hello-touch-id-android).
 - **Android app**: native client (Capacitor) with fingerprint or PIN lock, Firebase notifications (app sounds for messages and nudges), native call screen and file saving to Downloads. Build, signing and install: [docs/ANDROID.md](docs/ANDROID.md).
 - **English / French interface**: the language can be switched without reloading and is detected from the browser; both languages fit the Aero layout without overflow.
 
@@ -234,7 +235,7 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ## Version & References
 
-- **Current Version**: `v1.7.0` (Android app: versionCode 10)
+- **Current Version**: `v1.7.0` (Android app: versionCode 11)
 - **Git Reference Tag**: `v1.7.0`
 - **Changelog**: See [CHANGELOG.md](CHANGELOG.md) (or [French version](CHANGELOG.fr.md)).
 

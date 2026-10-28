@@ -1935,6 +1935,7 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .wlm-uploads {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
   padding: 8px 25px;
   background: #fcfdfe;
@@ -1958,7 +1959,13 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
   min-width: 0;
 }
 
-.wlm-uploads .wlm-transfer { margin-top: 0; }
+/* Même largeur que la carte d'un fichier reçu (.wlm-file-card) */
+.wlm-uploads .wlm-transfer {
+  margin-top: 0;
+  width: 100%;
+  max-width: 360px;
+  box-sizing: border-box;
+}
 
 .wlm-transfer-head {
   display: flex;

@@ -1303,11 +1303,17 @@ const App: React.FC = () => {
       return reason;
     }
   };
-  /** « Se connecter avec le mot de passe » : les clés scellées quittent cet appareil. */
+  /**
+   * « Se connecter avec le mot de passe » : les clés scellées quittent cet appareil, et la
+   * session de CE navigateur aussi (cookie retiré par le serveur ; les autres appareils restent
+   * connectés). Sans cela, le cookie de 30 jours restait valable derrière l'écran de connexion.
+   */
   const abandonLockedSession = async () => {
     const locked = lockedSession;
     if (!locked) return;
     try { await E2EEKeyStorage.removeKeys(locked.serverUser.id); } catch { /* stockage indisponible */ }
+    try { await axios.post('/api/logout-device'); } catch { /* hors ligne : le cookie expirera */ }
+    delete axios.defaults.headers.common['Authorization'];
     localStorage.setItem('wlm_user', JSON.stringify(sanitizeUserForStorage({ ...locked.serverUser, rememberMe: false })));
     setIsDeviceRemembered(false);
     setLockedSession(null);

@@ -142,9 +142,18 @@ test('ordinateur : clés scellées par Windows Hello (PRF), déverrouillage, ref
   await expect(unlockScreen.getByRole('alert')).toContainText('cancelled', { timeout: 20000 });
   await expect(unlockScreen.getByRole('button', { name: 'Unlock' })).toBeVisible();
   await expect(page.locator('.status-trigger')).toHaveCount(0);
+  // Verrou des CLÉS, pas de la session : derrière l'écran de déverrouillage, l'API répond
+  // (profil), mais sans le coffre de clés, remis seulement avec le mot de passe
+  const meLocked = await page.request.get('/api/user/me');
+  expect(meLocked.status()).toBe(200);
+  expect((await meLocked.json()).user.encrypted_private_key).toBeUndefined();
+  expect((await page.request.post('/api/user/vault', { data: { authKeyHex: 'a'.repeat(64) } })).status()).toBe(401);
   await unlockScreen.getByRole('button', { name: /Sign in with the password/ }).click();
   await expect(page.locator('.wlm-auth-form')).toBeVisible();
   expect(await deviceRecord(page, id)).toEqual({ exists: false, hasPrivateKey: false, method: null });
+  // La session de ce navigateur est fermée aussi : plus de cookie valable derrière l'écran de connexion
+  await expect.poll(async () => (await page.request.get('/api/user/me')).status(), { timeout: 10000 }).toBe(401);
+  expect((await ctx.cookies()).some((c) => c.name === 'token')).toBe(false);
 
   // Reconnexion avec « Mémoriser » : le réglage de l'appareil scelle de nouveau (Hello demandé,
   // ici un authentificateur neuf : une passkey neuve est créée)

@@ -342,7 +342,7 @@ ligne, 10 fois par 15 minutes.
 d'ordinateur laissée ouverte (après le délai), appareil perdu avec un verrouillage d'écran. La
 passkey et la clé Keystore ne quittent pas l'appareil ; une réinstallation, un autre appareil
 ou un verrouillage d'écran retiré rendent le scellé illisible : « Se connecter avec le mot de
-passe » (les clés scellées sont retirées de l'appareil ; le coffre chiffré par le mot de passe
+passe » (les clés scellées et le cookie de session de ce navigateur sont retirés de l'appareil ; le coffre chiffré par le mot de passe
 reste sur le serveur, rien n'est perdu).
 
 **Ce que cela ne protège pas.** Un logiciel malveillant actif pendant que l'app est

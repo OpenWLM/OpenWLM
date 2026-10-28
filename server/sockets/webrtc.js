@@ -311,7 +311,15 @@ export const registerWebRtcHandlers = (io, socket) => {
   socket.on('end_call', (data) => {
     const targetId = asId(data?.target);
     if (!targetId) return;
-    if (!canInteract(self, targetId).allowed) return;
+    if (!canInteract(self, targetId).allowed) {
+      // Contact bloqué (ou supprimé) pendant l'appel : raccrocher libère quand même l'état
+      // d'appel des deux, sans rien relayer. Sinon ils restaient « occupés » pour tous leurs
+      // contacts jusqu'à leur déconnexion.
+      if (activeCalls.get(self) === targetId) clearActive(self);
+      pendingCalls.delete(pendingKey(self, targetId));
+      pendingCalls.delete(pendingKey(targetId, self));
+      return;
+    }
     // Compteur partagé avec la signalisation : large, raccrocher ne doit jamais être refusé
     if (!rtcRateAllowed(self, 100)) return;
 

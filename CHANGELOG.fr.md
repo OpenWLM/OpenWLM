@@ -12,6 +12,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 ## [Non publié]
 
 ### Mise à jour du serveur
+- **Appels et jeux après un blocage** : `server/sockets/{webrtc,games}.js` modifiés, sans nouvelle route : redémarrer le service.
 - **Coffre de clés derrière le mot de passe** : `server/routes/{auth,users}.js` et `server/middleware/auth.js` modifiés. **Nouvelle route `POST /api/user/vault`** : règles WAF régénérées, à recopier dans Cloudflare depuis `docs/cloudflare-waf.generated.json`. Redémarrer le service. Un onglet resté ouvert pendant la mise à jour affiche « mot de passe incorrect » à l'activation du verrouillage ou au changement de mot de passe, jusqu'au rechargement de la page.
 - **Relecture de sécurité (octobre 2026, lot 6)** : `server/sockets/{messages,games}.js`, `server/routes/{users,emoticons}.js` et `server/index.js` modifiés, sans nouvelle route ni colonne (règles WAF inchangées) : redémarrer le service.
 - **Récupération (codes erronés)** : `server/routes/auth.js` et `server/index.js` modifiés, aucune route ni colonne nouvelle : redémarrer le service.
@@ -42,6 +43,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Visionneuse d'image agrandie et zoomable** : une image reçue ou envoyée s'ouvre presque en plein écran sur ordinateur, en plein écran sur téléphone (sans barre d'outils, avec une simple croix rouge Aero pour fermer), entière au départ. Zoom à la molette (centré sur le pointeur), au pincement à deux doigts, au double-clic ou double-tap (taille réelle sur le point visé, puis retour), aux boutons − / + / Ajuster / 100 % et au clavier (+, -, 0, 1) ; l'image zoomée se déplace à la souris ou au doigt sans sortir de l'écran. Le bouton Retour d'Android ferme la visionneuse au lieu de quitter la conversation. Une capture d'écran se lit sans l'enregistrer. Interface seulement : ni serveur ni APK à mettre à jour.
 
 ### Tests
+- `tests/test_lot6_hardening.js` : appel raccroché après un blocage, contact de nouveau joignable. `e2e/device-lock.spec.ts` : « Verrouiller maintenant » atteint les autres onglets, passkey réutilisée à la réactivation.
 - `e2e/device-lock.spec.ts` : API derrière l'écran de déverrouillage (profil sans coffre, coffre refusé sans le mot de passe), session fermée après « Se connecter avec le mot de passe ».
 - `tests/test_lot6_hardening.js` : coffre absent du profil, remis seulement contre la preuve du mot de passe (ancienne clé acceptée, 10 essais par 15 minutes). `e2e/device-lock.spec.ts` : désactivation du verrouillage dans une session restaurée (coffre demandé au serveur).
 - `tests/test_lot6_hardening.js` (4 tests, serveur isolé) : Wizz vers `"7e1"` sans notifier l'utilisateur 70, présence masquée après suppression ou blocage, origine du WebSocket, quota d'émoticônes en octets. `e2e/device-lock.spec.ts` : verrouillage réglé mais indisponible (clés non mémorisées, avertissement, réglage retirable).
@@ -67,6 +69,9 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections
+- **Blocage pendant un appel** : raccrocher un appel avec un contact bloqué entre-temps libère désormais l'état d'appel. Les deux restaient « occupés » pour tous leurs contacts jusqu'à leur déconnexion. De même pour l'abandon d'une partie après un blocage, qui restait en mémoire.
+- **« Verrouiller maintenant » verrouille tous les onglets** : les autres onglets du même compte dans le navigateur se verrouillent aussi (jamais pendant un appel). Ils gardaient la clé en mémoire.
+- **Plus de passkeys en double** : réactiver le verrouillage des clés réutilise la passkey déjà créée pour le compte dans ce navigateur, au lieu d'en ajouter une dans Windows à chaque fois. Une passkey supprimée est remplacée automatiquement.
 - **Verrouillage des clés, « Se connecter avec le mot de passe »** : ce recours de l'écran de déverrouillage ferme aussi la session de ce navigateur (cookie retiré par le serveur, les autres appareils restent connectés). Le cookie de 30 jours restait valable derrière l'écran de connexion. Annuler Windows Hello ne fait toujours que reproposer « Déverrouiller », sans forcer le mot de passe. Le README précise que le verrou protège les clés, pas la session.
 - **Coffre de clés derrière le mot de passe** : le profil renvoyé par le serveur à toute session valide ne contient plus le coffre de clés chiffré. Il n'est remis qu'avec une preuve du mot de passe : à la connexion, par la nouvelle route `POST /api/user/vault` (10 mauvais mots de passe par 15 minutes et par compte), ou lors d'une récupération. Un cookie de session volé ne permet plus d'emporter le coffre pour attaquer le mot de passe hors ligne. Rien ne change pour l'utilisateur : le coffre ne sert que là où le mot de passe est déjà demandé (activer ou désactiver le verrouillage des clés, changer de mot de passe).
 - **Relecture de sécurité, lot 6** :

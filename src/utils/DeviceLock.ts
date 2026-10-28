@@ -90,8 +90,41 @@ const webauthnAvailable = async (): Promise<boolean> => {
   }
 };
 
+/**
+ * Passkey déjà créée pour ce compte sur ce navigateur (identifiant seulement : il ne permet rien
+ * sans Windows Hello). Réactiver le verrouillage la réutilise au lieu d'en créer une de plus
+ * dans Windows à chaque fois.
+ */
+const passkeyStorageKey = (userId: number) => `wlm_passkey_${userId}`;
+const rememberedPasskey = (userId: number): Uint8Array | null => {
+  try {
+    const v = localStorage.getItem(passkeyStorageKey(userId));
+    return v ? base64ToBytes(v) : null;
+  } catch {
+    return null;
+  }
+};
+const rememberPasskey = (userId: number, rawId: Uint8Array | null) => {
+  try {
+    if (rawId) localStorage.setItem(passkeyStorageKey(userId), bytesToBase64(rawId));
+    else localStorage.removeItem(passkeyStorageKey(userId));
+  } catch { /* stockage indisponible : une passkey sera créée */ }
+};
+
 const webauthnProtect = async (userId: number, username: string, privateJwk: JsonWebKey): Promise<ProtectedKeyBlob> => {
   const salt = randomBytes(32);
+  const known = rememberedPasskey(userId);
+  if (known) {
+    try {
+      const secret = await webauthnSecret(known, salt);
+      const sealed = await sealPrivateJwk(privateJwk, secret, salt);
+      return { version: 1, method: 'webauthn', handle: bytesToBase64(known), ...sealed };
+    } catch {
+      // Passkey supprimée de Windows, autre authentificateur, ou demande annulée (le navigateur
+      // ne distingue pas ces cas) : une nouvelle passkey est créée
+      rememberPasskey(userId, null);
+    }
+  }
   let created: Credential | null;
   try {
     created = await navigator.credentials.create({
@@ -117,6 +150,7 @@ const webauthnProtect = async (userId: number, username: string, privateJwk: Jso
   const rawId = new Uint8Array(credential.rawId);
   // Certaines plateformes n'évaluent pas le PRF à la création : une assertion le fait
   const secret = ext.prf.results?.first ? new Uint8Array(ext.prf.results.first) : await webauthnSecret(rawId, salt);
+  rememberPasskey(userId, rawId);
   const sealed = await sealPrivateJwk(privateJwk, secret, salt);
   return { version: 1, method: 'webauthn', handle: bytesToBase64(rawId), ...sealed };
 };
@@ -184,3 +218,6 @@ export const methodName = (t: { deviceLock: { methodAndroid: string; methodWebau
 
 /** Délais de re-verrouillage proposés (minutes ; 0 = seulement à l'ouverture). */
 export const RELOCK_CHOICES = [1, 5, 15, 30, 0] as const;
+
+/** Canal entre onglets : « Verrouiller maintenant » verrouille tous les onglets du compte. */
+export const DEVICE_LOCK_CHANNEL = 'openwlm-device-lock';

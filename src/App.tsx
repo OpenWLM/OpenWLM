@@ -111,7 +111,7 @@ import { commandSuggestions, isTestContactCommand } from './utils/chatCommands';
 import { hasPlusFormatting, renderPlusText, stripPlusTags, visibleLength } from './utils/plusFormat';
 import { serverErrorText, serverErrorFromResponse } from './utils/serverError';
 import { notify, askConfirm } from './utils/dialogs';
-import { detectDeviceLock, protectPrivateKey, unlockPrivateKey, deviceLockFailure, methodName, type DeviceLockMethod, type DeviceLockFailure, type ProtectedKeyBlob } from './utils/DeviceLock';
+import { detectDeviceLock, protectPrivateKey, unlockPrivateKey, deviceLockFailure, methodName, DEVICE_LOCK_CHANNEL, type DeviceLockMethod, type DeviceLockFailure, type ProtectedKeyBlob } from './utils/DeviceLock';
 import DeviceUnlock from './components/DeviceUnlock';
 import type { DeviceLockOutcome } from './components/OptionsModal';
 
@@ -1379,10 +1379,25 @@ const App: React.FC = () => {
    */
   const lockDeviceNow = () => {
     if (!deviceLockActive || activeCallIdRef.current) return;
+    // Les autres onglets de ce navigateur gardaient la clé en mémoire : ils se verrouillent aussi
+    try {
+      const channel = new BroadcastChannel(DEVICE_LOCK_CHANNEL);
+      channel.postMessage({ type: 'lock', userId: user?.id });
+      channel.close();
+    } catch { /* BroadcastChannel indisponible */ }
     window.location.reload();
   };
   const relockMinutes = appPrefs.security.relockMinutes;
   const relockUserId = user?.id ?? null;
+  // « Verrouiller maintenant » depuis un autre onglet du même compte (jamais pendant un appel)
+  useEffect(() => {
+    if (!deviceLockActive || !relockUserId || typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel(DEVICE_LOCK_CHANNEL);
+    channel.onmessage = (ev: MessageEvent) => {
+      if (ev.data?.type === 'lock' && ev.data.userId === relockUserId && !activeCallIdRef.current) window.location.reload();
+    };
+    return () => channel.close();
+  }, [deviceLockActive, relockUserId]);
   useEffect(() => {
     if (!deviceLockActive || !relockUserId || isNativeApp() || !relockMinutes) return;
     let lastActivity = Date.now();

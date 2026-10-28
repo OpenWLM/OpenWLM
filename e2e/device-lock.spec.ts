@@ -126,10 +126,21 @@ test('ordinateur : clés scellées par Windows Hello (PRF), déverrouillage, ref
   await expect(unlockScreen).toHaveCount(0);
   expect(await deviceRecord(page, id)).toEqual({ exists: true, hasPrivateKey: false, method: 'webauthn' });
 
-  // « Verrouiller maintenant » : la page se recharge sur l'écran de déverrouillage
+  // « Verrouiller maintenant » : la page se recharge sur l'écran de déverrouillage, et les autres
+  // onglets du navigateur reçoivent l'ordre de se verrouiller aussi
+  const otherTab = await ctx.newPage();
+  await otherTab.goto('/');
+  await otherTab.evaluate(() => {
+    const w = window as unknown as { __lockMessages: unknown[] };
+    w.__lockMessages = [];
+    new BroadcastChannel('openwlm-device-lock').onmessage = (ev) => { w.__lockMessages.push(ev.data); };
+  });
   await openSecurityTab(page);
   await holdWebauthn(true);
   await page.getByTestId('device-lock').getByRole('button', { name: /Lock now/ }).click();
+  await expect.poll(() => otherTab.evaluate(() => (window as unknown as { __lockMessages: unknown[] }).__lockMessages), { timeout: 10000 })
+    .toEqual([{ type: 'lock', userId: id }]);
+  await otherTab.close();
   await expect(unlockScreen).toBeVisible({ timeout: 20000 });
   await holdWebauthn(false);
   await expect(page.locator('.status-trigger')).toBeVisible({ timeout: 30000 });
@@ -158,7 +169,7 @@ test('ordinateur : clés scellées par Windows Hello (PRF), déverrouillage, ref
   // Reconnexion avec « Mémoriser » : le réglage de l'appareil scelle de nouveau (Hello demandé,
   // ici un authentificateur neuf : une passkey neuve est créée)
   await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
-  await addAuthenticator(true);
+  const authenticatorId2 = await addAuthenticator(true);
   await page.locator('.auth-field-checkbox input[type="checkbox"]').check();
   await expect(page.getByTestId('remember-device-lock')).toBeVisible();
   await loginRemembered(page, name);
@@ -179,6 +190,13 @@ test('ordinateur : clés scellées par Windows Hello (PRF), déverrouillage, ref
   await expect(page.getByTestId('device-lock-outcome')).toContainText('Off', { timeout: 30000 });
   await expect(page.locator('#pref-device-lock')).not.toBeChecked();
   expect(await deviceRecord(page, id)).toEqual({ exists: true, hasPrivateKey: true, method: null });
+
+  // Réactivation : la passkey existante est réutilisée, aucune nouvelle dans « Windows »
+  const passkeys = async () => (await cdp.send('WebAuthn.getCredentials', { authenticatorId: authenticatorId2 })).credentials.length;
+  expect(await passkeys()).toBe(1);
+  expect(await toggleDeviceLock(page, PASSWORD)).toContain('On:');
+  expect(await deviceRecord(page, id)).toEqual({ exists: true, hasPrivateKey: false, method: 'webauthn' });
+  expect(await passkeys()).toBe(1);
 });
 
 /** Faux pont natif Android (cf. e2e/android-sounds.spec.ts) avec le secret du Keystore simulé. */

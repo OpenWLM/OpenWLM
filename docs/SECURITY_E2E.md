@@ -314,14 +314,14 @@ est alors **chiffrée au repos** (AES‑GCM 256, clé dérivée par HKDF‑SHA25
 
 | Plateforme | Secret | Ce qui le protège |
 |---|---|---|
-| Ordinateur (Chrome, Edge, Firefox récents, HTTPS) | **Passkey WebAuthn** de l'authentificateur de la plateforme, extension **PRF** (`prf.eval`, sel aléatoire par scellé) | Windows Hello / Touch ID : TPM ou enclave, liaison au site (`rpId`) ; `userVerification: required` |
+| Ordinateur (Chrome, Edge, Firefox récents, HTTPS) | **Passkey WebAuthn** de l'authentificateur de la plateforme, extension **PRF** (`prf.eval`, sel aléatoire par scellé), passkey réutilisée à chaque réactivation | Windows Hello / Touch ID : TPM ou enclave, liaison au site (`rpId`) ; `userVerification: required` |
 | App Android (APK v11+) | Secret aléatoire chiffré par une **clé AES‑256‑GCM du Keystore** (`DeviceSecret.java`) exigeant une authentification récente (30 s, empreinte / visage / code) | Keystore matériel ; clé invalidée si le verrouillage d'écran est retiré |
 
 L'enregistrement d'appareil (`E2EEKeyStorage`) ne contient plus de `CryptoKey`, seulement
 `{ method, handle, salt, iv, ciphertext }`. Au démarrage, l'écran « Déverrouiller OpenWLM »
 demande l'appareil ; la clé est réimportée **non extractible** en mémoire, comme avant. Le
 re‑verrouillage (ordinateur) recharge la page après le délai d'inactivité choisi (1 à 30 min,
-ou seulement à l'ouverture ; onglet caché compris ; jamais pendant un appel) : la clé quitte la
+ou seulement à l'ouverture ; onglet caché compris ; jamais pendant un appel ; « Verrouiller maintenant » verrouille tous les onglets du compte) : la clé quitte la
 mémoire et l'utilisateur apparaît hors ligne jusqu'au déverrouillage. Sur Android, le verrou
 natif de l'app (1 min en arrière‑plan) reste le re‑verrouillage ; l'empreinte ou le code donnés
 pour l'écran de verrouillage valent aussi pour le Keystore (clé liée au délai) : une seule

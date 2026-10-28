@@ -48,6 +48,9 @@ const ERIN = 502;
 const FRANK = 503;
 const GRACE = 504;
 const HENRI = 505;
+const IRIS = 506;
+const JULES = 507;
+const KARL = 508;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const getFreePort = () => new Promise((resolve, reject) => {
@@ -148,6 +151,10 @@ before(async () => {
   c.run(BOB, ALICE, 0); c.run(ALICE, BOB, 0);
   c.run(BOB, ERIN, 0);
   c.run(BOB, FRANK, 0); c.run(FRANK, BOB, 1);
+  // Iris ↔ Jules en appel, Karl ami de Jules
+  for (const [id, n] of [[IRIS, 'iris'], [JULES, 'jules'], [KARL, 'karl']]) insert.run(id, `l6_${n}`, n, '');
+  c.run(IRIS, JULES, 0); c.run(JULES, IRIS, 0);
+  c.run(KARL, JULES, 0); c.run(JULES, KARL, 0);
   // Cibles Push refusées à l'envoi (adresse locale) : leur rejet est journalisé, ce qui
   // montre vers qui une notification est partie
   const sub = db.prepare('INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?)');
@@ -245,4 +252,32 @@ test('coffre de clés : 10 mauvais mots de passe par 15 min, même le bon est en
   const blocked = await request('/api/user/vault', 'POST', tok(HENRI), { authKeyHex: LEGACY_HEX });
   assert.equal(blocked.status, 429);
   assert.ok(!blocked.data.vault);
+});
+
+test('appel : un blocage pendant l’appel ne laisse plus les deux « occupés »', async () => {
+  const iris = await connect(tok(IRIS));
+  const jules = await connect(tok(JULES));
+  const karl = await connect(tok(KARL));
+  try {
+    jules.on('incoming_call', (_d, ack) => ack?.({ ok: true }));
+    const accepted = new Promise((resolve) => iris.once('call_accepted', resolve));
+    iris.emit('call_request', { target: JULES, signal: 'offre-chiffree', audioOnly: true });
+    await new Promise((resolve) => jules.once('incoming_call', resolve));
+    jules.emit('call_accept', { target: IRIS });
+    await accepted;
+    // Jules bloque Iris pendant l'appel, puis raccroche
+    db.prepare('UPDATE contacts SET blocked = 1 WHERE user_id = ? AND contact_id = ?').run(JULES, IRIS);
+    jules.emit('end_call', { target: IRIS });
+    await sleep(300);
+    // Karl appelle Jules : l'appel sonne (Jules n'est plus « occupé »)
+    const outcome = new Promise((resolve) => {
+      karl.once('call_busy', () => resolve('busy'));
+      karl.once('call_ringing', () => resolve('ringing'));
+      setTimeout(() => resolve('timeout'), 3000);
+    });
+    karl.emit('call_request', { target: JULES, signal: 'offre-chiffree', audioOnly: true });
+    assert.equal(await outcome, 'ringing');
+  } finally {
+    iris.close(); jules.close(); karl.close();
+  }
 });

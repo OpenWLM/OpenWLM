@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **Calls and games after a block**: `server/sockets/{webrtc,games}.js` changed, no new route: restart the service.
 - **Key vault behind the password**: `server/routes/{auth,users}.js` and `server/middleware/auth.js` changed. **New route `POST /api/user/vault`**: WAF rules regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`. Restart the service. A tab left open during the update shows "wrong password" when enabling the key lock or changing the password, until the page is reloaded.
 - **Security review (October 2026, batch 6)**: `server/sockets/{messages,games}.js`, `server/routes/{users,emoticons}.js` and `server/index.js` changed, no new route or column (WAF rules unchanged): restart the service.
 - **Recovery (wrong codes)**: `server/routes/auth.js` and `server/index.js` changed, no new route or column: restart the service.
@@ -42,6 +43,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- `tests/test_lot6_hardening.js`: call hung up after a block, contact reachable again. `e2e/device-lock.spec.ts`: "Lock now" reaches the other tabs, passkey reused on re-enable.
 - `e2e/device-lock.spec.ts`: API behind the unlock screen (profile without vault, vault refused without the password), session closed after "Sign in with the password".
 - `tests/test_lot6_hardening.js`: vault absent from the profile, handed over only with proof of the password (legacy key accepted, 10 attempts per 15 minutes). `e2e/device-lock.spec.ts`: disabling the lock in a restored session (vault requested from the server).
 - `tests/test_lot6_hardening.js` (4 tests, isolated server): nudge to `"7e1"` without notifying user 70, presence hidden after removal or block, WebSocket origin, emoticon size quota. `e2e/device-lock.spec.ts`: lock set but unavailable (keys not remembered, warning, setting removable).
@@ -67,6 +69,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Blocking during a call**: hanging up a call with a contact blocked meanwhile now frees the call state. Both stayed "busy" for all their contacts until they disconnected. Same for a game quit after a block, which stayed in memory.
+- **"Lock now" locks every tab**: other tabs of the same account in the browser lock too (never during a call). They used to keep the key in memory.
+- **No more duplicate passkeys**: re-enabling the key lock reuses the passkey already created for the account in this browser, instead of adding a new one to Windows each time. A deleted passkey is replaced automatically.
 - **Key lock, "Sign in with the password"**: the unlock screen's fallback now also closes this browser's session (cookie removed by the server, other devices stay signed in). Previously the 30-day cookie stayed valid behind the sign-in screen. Cancelling Windows Hello still only offers "Unlock" again, without forcing the password. The README states that the lock protects the keys, not the session.
 - **Key vault behind the password**: the profile returned by the server for any valid session no longer contains the encrypted key vault. It is only handed over with proof of the password: at sign-in, through the new `POST /api/user/vault` route (10 wrong passwords per 15 minutes per account), or during recovery. A stolen session cookie no longer lets anyone take the vault away and attack the password offline. Nothing changes for the user: the vault is only needed where the password is already typed (enabling or disabling the key lock, changing the password).
 - **Security review, batch 6**:

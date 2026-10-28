@@ -616,10 +616,14 @@ export const registerGameHandlers = (io, socket) => {
     if (!target) return;
     const userId = socket.user.id;
 
-    const check = canInteract(userId, target);
-    if (!check.allowed) return;
-
     const gameKey = getGameKey(userId, target);
+    const check = canInteract(userId, target);
+    if (!check.allowed) {
+      // Contact bloqué ou supprimé en cours de partie : la partie est retirée sans rien relayer
+      activeGames.delete(gameKey);
+      return;
+    }
+
     const hadGame = activeGames.delete(gameKey);
     if (!hadGame) return;
 

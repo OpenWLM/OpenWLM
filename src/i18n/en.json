@@ -347,7 +347,15 @@
     "zoomOut": "Zoom out",
     "zoomFit": "Fit",
     "zoomActual": "Actual size (100%)",
-    "zoomHint": "Scroll or pinch to zoom · double-click to toggle · drag to pan"
+    "zoomHint": "Scroll or pinch to zoom · double-click to toggle · drag to pan",
+    "cancel": "Cancel",
+    "preparing": "Preparing...",
+    "measuring": "Measuring speed...",
+    "timeLeft": "{time} left",
+    "encrypting": "Encrypting file...",
+    "sending": "Sending \"{name}\"",
+    "finishing": "Finishing...",
+    "receiving": "Receiving \"{name}\""
   },
   "videoCall": {
     "conversationWith": "Conversation {type} with {name}",

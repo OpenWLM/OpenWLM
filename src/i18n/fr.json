@@ -347,7 +347,15 @@
     "zoomOut": "Zoom arrière",
     "zoomFit": "Ajuster",
     "zoomActual": "Taille réelle (100 %)",
-    "zoomHint": "Molette ou pincement pour zoomer · double-clic pour basculer · glisser pour déplacer"
+    "zoomHint": "Molette ou pincement pour zoomer · double-clic pour basculer · glisser pour déplacer",
+    "cancel": "Annuler",
+    "preparing": "Préparation...",
+    "measuring": "Mesure du débit...",
+    "timeLeft": "{time} restant",
+    "encrypting": "Chiffrement du fichier...",
+    "sending": "Envoi de « {name} »",
+    "finishing": "Finalisation...",
+    "receiving": "Réception de « {name} »"
   },
   "videoCall": {
     "conversationWith": "Conversation {type} avec {name}",

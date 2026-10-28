@@ -98,6 +98,73 @@ test('transfert de fichier : chiffré sur le serveur, identique une fois téléc
   for (const f of stored) fs.rmSync(f, { force: true });
 });
 
+/** Débit réseau limité (Chromium, CDP) : le transfert dure quelques secondes, la progression est visible. */
+const throttle = async (page: Page, bytesPerSecond: number) => {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Network.enable');
+  await cdp.send('Network.emulateNetworkConditions', {
+    offline: false, latency: 20, uploadThroughput: bytesPerSecond, downloadThroughput: bytesPerSecond
+  });
+  return () => cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, uploadThroughput: -1, downloadThroughput: -1 });
+};
+
+test('transfert de fichier : barre de progression (pourcentage, débit, temps restant), annulation et réception', async ({ browser }) => {
+  test.setTimeout(180000);
+  const { a, b, stamp } = await pair(browser, 'prog');
+  const startedAt = Date.now();
+  // ~1,5 Mo à ~250 Ko/s : environ 6 s d'envoi
+  const payload = Buffer.alloc(1536 * 1024, 7);
+  const input = a.locator('input[type="file"]').first();
+
+  // 1. Envoi annulé : la barre apparaît avec le bouton Annuler, puis disparaît sans message
+  const unthrottleA = await throttle(a, 250 * 1024);
+  const cancelledName = `annule_${stamp}.bin`;
+  await input.setInputFiles({ name: cancelledName, mimeType: 'application/octet-stream', buffer: payload });
+  const cancelled = a.locator('.wlm-uploads [data-testid="transfer-progress"]', { hasText: cancelledName });
+  await expect(cancelled).toBeVisible({ timeout: 10000 });
+  await expect(cancelled.locator('[role="progressbar"]')).toHaveAttribute('aria-valuenow', /^\d+$/, { timeout: 15000 });
+  await cancelled.getByRole('button', { name: 'Cancel' }).click();
+  await expect(cancelled).toHaveCount(0, { timeout: 10000 });
+  await expect(a.locator('.wlm-file-card', { hasText: cancelledName })).toHaveCount(0);
+
+  // 2. Envoi complet : pourcentage qui avance, débit et temps restant affichés, puis la carte
+  const fileName = `gros_${stamp}.bin`;
+  await input.setInputFiles({ name: fileName, mimeType: 'application/octet-stream', buffer: payload });
+  const bar = a.locator('.wlm-uploads [data-testid="transfer-progress"]', { hasText: fileName });
+  await expect(bar).toBeVisible({ timeout: 10000 });
+  await expect(bar.getByTestId('transfer-speed')).toHaveText(/\/s$/, { timeout: 15000 });
+  await expect(bar.getByTestId('transfer-eta')).toHaveText(/ left$/);
+  await expect(bar.getByTestId('transfer-amount')).toHaveText(/MB$/);
+  const firstPercent = Number(await bar.locator('[role="progressbar"]').getAttribute('aria-valuenow'));
+  await expect.poll(async () => Number(await bar.locator('[role="progressbar"]').getAttribute('aria-valuenow') || -1), { timeout: 15000 })
+    .toBeGreaterThan(firstPercent);
+  await expect(a.locator('.wlm-file-card', { hasText: fileName })).toBeVisible({ timeout: 60000 });
+  await expect(bar).toHaveCount(0);
+  await unthrottleA();
+
+  // 3. Réception lente : la carte du destinataire affiche la même barre pendant le téléchargement
+  const card = b.locator('.wlm-file-card', { hasText: fileName });
+  await expect(card).toBeVisible({ timeout: 30000 });
+  await throttle(b, 250 * 1024);
+  const [download] = await Promise.all([
+    b.waitForEvent('download', { timeout: 60000 }),
+    (async () => {
+      await card.locator('.wlm-file-download-btn').last().click();
+      const incoming = card.getByTestId('transfer-progress');
+      await expect(incoming).toBeVisible({ timeout: 10000 });
+      await expect(incoming.getByTestId('transfer-speed')).toHaveText(/\/s$/, { timeout: 15000 });
+    })()
+  ]);
+  expect(fs.readFileSync((await download.path())!).equals(payload)).toBe(true);
+  await expect(card.getByTestId('transfer-progress')).toHaveCount(0);
+
+  // Nettoyage des fichiers chiffrés créés par ce test
+  for (const f of fs.readdirSync(UPLOADS_DIR).filter((f) => f.startsWith('enc_'))) {
+    const full = path.join(UPLOADS_DIR, f);
+    if (fs.statSync(full).mtimeMs >= startedAt - 1000) fs.rmSync(full, { force: true });
+  }
+});
+
 test('message vocal : enregistré, chiffré, reçu et lu par le destinataire', async ({ browser }) => {
   test.setTimeout(150000);
   const { a, b } = await pair(browser, 'voice');

@@ -7,6 +7,8 @@ import { notify } from '../utils/dialogs';
 import { isNativeApp, saveBlob } from '../utils/platform';
 import { safeFileName } from '../utils/fileNames';
 import ImageViewer from './ImageViewer';
+import TransferProgress from './TransferProgress';
+import { createSpeedMeter, formatBytes, progressPercent, type TransferProgressState } from '../utils/transferProgress';
 
 export interface FileDataPayload {
   type: 'file';
@@ -27,16 +29,6 @@ interface FileTransferCardProps {
   myPrivateKey?: JsonWebKey | CryptoKey | null;
   isSender: boolean;
 }
-
-const formatBytes = (bytes: number, lang: 'fr' | 'en' = 'fr'): string => {
-  const byteUnit = lang === 'en' ? 'B' : 'o';
-  const kbUnit = lang === 'en' ? 'KB' : 'Ko';
-  const mbUnit = lang === 'en' ? 'MB' : 'Mo';
-  if (!bytes || bytes === 0) return `0 ${byteUnit}`;
-  if (bytes < 1024) return `${bytes} ${byteUnit}`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${kbUnit}`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} ${mbUnit}`;
-};
 
 const getExtension = (fileName: string): string => {
   if (!fileName || !fileName.includes('.')) return 'FIC';
@@ -67,7 +59,8 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
   const fileName = safeFileName(fileData.fileName);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<TransferProgressState | null>(null);
+  const [isDecrypting, setIsDecrypting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // États spécifiques à la prévisualisation d'image
@@ -192,22 +185,29 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
 
     setIsDownloading(true);
     setErrorMessage(null);
-    setDownloadProgress(0);
+    setDownloadProgress(null);
 
     try {
       // 1. Télécharger le blob binaire chiffré depuis le serveur
       if (!isSafeDownloadUrl(fileData.downloadUrl)) {
         throw new Error("URL de téléchargement invalide.");
       }
+      const speed = createSpeedMeter();
+      let lastPaint = 0;
       const response = await axios.get(fileData.downloadUrl, {
         responseType: 'arraybuffer',
         onDownloadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setDownloadProgress(percent);
-          }
+          const now = performance.now();
+          const rate = speed(progressEvent.loaded, now);
+          // Taille chiffrée inconnue (pas de Content-Length) : la taille d'origine en est proche
+          const total = progressEvent.total || fileData.fileSize;
+          if (progressEvent.loaded < total && now - lastPaint < 200) return;
+          lastPaint = now;
+          setDownloadProgress({ loaded: progressEvent.loaded, total, rate });
         }
       });
+      // Téléchargé : le déchiffrement local commence
+      setIsDecrypting(true);
 
       // 2. Déchiffrer en local dans le navigateur (AES-256-GCM + clé RSA privée)
       const decryptedBuffer = await decryptFileBinary(
@@ -245,6 +245,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
       }
     } finally {
       setIsDownloading(false);
+      setIsDecrypting(false);
       setDownloadProgress(null);
     }
   };
@@ -334,7 +335,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
               title={t.fileTransfer.saveToComputer}
             >
               {isDownloading ? (
-                <span>{downloadProgress !== null && downloadProgress > 0 ? `${downloadProgress}%...` : t.fileTransfer.decrypting}</span>
+                <span>{downloadProgress && !isDecrypting ? `${progressPercent(downloadProgress)} %` : t.fileTransfer.decrypting}</span>
               ) : isDownloaded ? (
                 <span>{t.fileTransfer.saved}</span>
               ) : (
@@ -343,6 +344,14 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
             </button>
           </div>
         </div>
+
+        {isDownloading && (
+          <TransferProgress
+            label={t.fileTransfer.receiving.replace('{name}', fileName)}
+            progress={downloadProgress}
+            busyText={isDecrypting ? t.fileTransfer.decrypting : undefined}
+          />
+        )}
 
         {errorMessage && (
           <div style={{ color: '#c5221f', fontSize: '9px', marginTop: '4px', padding: '0 4px' }}>
@@ -410,7 +419,7 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
         >
           {isDownloading ? (
             <span>
-              {downloadProgress !== null && downloadProgress > 0 ? `${downloadProgress}%...` : t.fileTransfer.decrypting}
+              {downloadProgress && !isDecrypting ? `${progressPercent(downloadProgress)} %` : t.fileTransfer.decrypting}
             </span>
           ) : isDownloaded ? (
             <span>{t.fileTransfer.downloaded}</span>
@@ -419,6 +428,14 @@ export const FileTransferCard: React.FC<FileTransferCardProps> = ({
           )}
         </button>
       </div>
+
+      {isDownloading && (
+        <TransferProgress
+          label={t.fileTransfer.receiving.replace('{name}', fileName)}
+          progress={downloadProgress}
+          busyText={isDecrypting ? t.fileTransfer.decrypting : undefined}
+        />
+      )}
 
       {errorMessage && (
         <div style={{ color: '#c5221f', fontSize: '9px', marginTop: '4px' }}>

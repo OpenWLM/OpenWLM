@@ -34,6 +34,8 @@ import VerifiedContactsStorage, { type VerifiedContactRecord } from './utils/Ver
 import WinkPlayer from './components/WinkPlayer';
 import VideoCall from './components/VideoCall';
 import { type FileDataPayload } from './components/FileTransferCard';
+import TransferProgress from './components/TransferProgress';
+import { createSpeedMeter, type TransferProgressState } from './utils/transferProgress';
 import MorpionGame from './components/MorpionGame';
 import CheckersGame from './components/CheckersGame';
 import Puissance4Game from './components/Puissance4Game';
@@ -153,6 +155,15 @@ const forceSocketReconnect = (s: Socket) => {
   try { s.io.engine?.close(); } catch { /* déjà fermée */ }
 };
 /** Clips vocaux : débit d'encodage et durée maximale (≈ 650 Ko une fois chiffrés). */
+/** Fichier en cours d'envoi : chiffrement local, téléversement, puis finalisation côté serveur. */
+interface FileUpload {
+  id: string;
+  chatId: number;
+  fileName: string;
+  phase: 'encrypting' | 'uploading' | 'finishing';
+  progress: TransferProgressState | null;
+}
+
 const VOICE_CLIP_BITRATE = 32_000;
 const VOICE_CLIP_MAX_MS = 90_000;
 
@@ -589,6 +600,9 @@ const App: React.FC = () => {
 
   // --- ÉTAT DU COLLAGE DE CAPTURE D'ÉCRAN ---
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
+  // Fichiers en cours d'envoi (chiffrement puis téléversement) : affichés avec leur progression
+  const [fileUploads, setFileUploads] = useState<FileUpload[]>([]);
+  const uploadAbortRef = useRef(new Map<string, AbortController>());
   const isSubmittingPasteRef = useRef(false);
 
   // --- RÉFÉRENCES ---
@@ -3522,26 +3536,50 @@ const App: React.FC = () => {
       return;
     }
 
+    const chatId = activeChatId;
+    const uploadId = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const abort = new AbortController();
+    uploadAbortRef.current.set(uploadId, abort);
+    const updateUpload = (patch: Partial<FileUpload>) =>
+      setFileUploads(prev => prev.map(u => (u.id === uploadId ? { ...u, ...patch } : u)));
+    setFileUploads(prev => [...prev, { id: uploadId, chatId, fileName: file.name, phase: 'encrypting', progress: null }]);
+
     try {
       // 1. Lire le fichier sous forme binaire
       const fileBuffer = await file.arrayBuffer();
 
       // 2. Chiffrer le fichier avec AES-GCM 256 bits et envelopper la clé AES avec RSA-OAEP
       const { encryptedBlob, fileKeys } = await encryptFileBinary(fileBuffer, contactPubKey, myKeys.publicKeyJwk);
+      // Annulé pendant le chiffrement : rien n'est envoyé
+      if (abort.signal.aborted) return;
 
       // 3. Téléverser le blob chiffré sur le serveur (Zero-Knowledge)
       const formData = new FormData();
       formData.append('file', encryptedBlob, file.name);
-      formData.append('receiverId', activeChatId.toString());
+      formData.append('receiverId', chatId.toString());
       formData.append('originalName', file.name);
       formData.append('fileType', file.type || 'application/octet-stream');
 
       // Auth via le cookie HttpOnly (user.token est souvent absent : le login ne renvoie
       // le JWT qu'en cookie). Ne jamais envoyer « Bearer undefined » → 403 côté serveur.
+      const speed = createSpeedMeter();
+      let lastPaint = 0;
+      updateUpload({ phase: 'uploading', progress: { loaded: 0, total: encryptedBlob.size, rate: null } });
       const res = await axios.post('/api/files/upload', formData, {
         headers: {
           ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}),
           'Content-Type': 'multipart/form-data'
+        },
+        signal: abort.signal,
+        onUploadProgress: (event) => {
+          const now = performance.now();
+          const rate = speed(event.loaded, now);
+          const total = event.total || encryptedBlob.size;
+          const done = event.loaded >= total;
+          // Au plus ~5 rafraîchissements par seconde : le débit ne saute pas à chaque paquet
+          if (!done && now - lastPaint < 200) return;
+          lastPaint = now;
+          updateUpload({ phase: done ? 'finishing' : 'uploading', progress: { loaded: event.loaded, total, rate } });
         }
       });
 
@@ -3565,16 +3603,16 @@ const App: React.FC = () => {
         senderId: user?.id
       };
 
-      const e2eData = await sealForContact(filePayload, activeChatId, contactPubKey);
+      const e2eData = await sealForContact(filePayload, chatId, contactPubKey);
 
       const msgData = {
         senderId: user?.id,
-        receiverId: activeChatId,
+        receiverId: chatId,
         text: JSON.stringify(e2eData),
         style: null,
         audio: null,
         type: 'file',
-        isPrivate: !!effectivePrivateModes[activeChatId]
+        isPrivate: !!effectivePrivateModes[chatId]
       };
 
       const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -3586,8 +3624,8 @@ const App: React.FC = () => {
         clientMsgId,
         senderId: user?.id,
         sender_id: user?.id,
-        receiverId: activeChatId,
-        receiver_id: activeChatId,
+        receiverId: chatId,
+        receiver_id: chatId,
         sender: senderDisplayName,
         text: t.notices.fileLabel.replace('{name}', file.name),
         type: 'file',
@@ -3599,11 +3637,13 @@ const App: React.FC = () => {
 
       setMessages(prev => ({
         ...prev,
-        [activeChatId]: [...(prev[activeChatId] || []), myLocalMsg]
+        [chatId]: [...(prev[chatId] || []), myLocalMsg]
       }));
 
-      deliverSealedMessage(activeChatId, clientMsgId, msgData, myLocalMsg, filePayload, 'file');
+      deliverSealedMessage(chatId, clientMsgId, msgData, myLocalMsg, filePayload, 'file');
     } catch (err: unknown) {
+      // Annulé par l'utilisateur (bouton « Annuler » de la barre) : pas de message d'erreur
+      if (abort.signal.aborted || axios.isCancel(err)) return;
       console.error("Erreur lors de l'envoi du fichier:", err);
       const axiosErr = err as { response?: { status?: number; data?: { error?: string } }; message?: string };
       const serverError = axiosErr.response?.data?.error;
@@ -3614,8 +3654,15 @@ const App: React.FC = () => {
       } else {
         notify(t.notices.fileSendError, { icon: '⚠️' });
       }
+    } finally {
+      uploadAbortRef.current.delete(uploadId);
+      setFileUploads(prev => prev.filter(u => u.id !== uploadId));
     }
   }, [socket, myKeys, activeChatId, user, myNickname, effectivePrivateModes]);
+
+  const cancelUpload = useCallback((uploadId: string) => {
+    uploadAbortRef.current.get(uploadId)?.abort();
+  }, []);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -5119,6 +5166,21 @@ const App: React.FC = () => {
                  hasOlder={!!historyHasMore[activeChatId]}
                  onLoadOlder={loadOlderMessages}
                />
+
+               {/* Fichiers en cours d'envoi vers ce contact : progression, débit, temps restant */}
+               {fileUploads.some(u => u.chatId === activeChatId) && (
+                 <div className="wlm-uploads">
+                   {fileUploads.filter(u => u.chatId === activeChatId).map(u => (
+                     <TransferProgress
+                       key={u.id}
+                       label={t.fileTransfer.sending.replace('{name}', u.fileName)}
+                       progress={u.progress}
+                       busyText={u.phase === 'encrypting' ? t.fileTransfer.encrypting : u.phase === 'finishing' ? t.fileTransfer.finishing : undefined}
+                       onCancel={u.phase === 'finishing' ? undefined : () => cancelUpload(u.id)}
+                     />
+                   ))}
+                 </div>
+               )}
 
                {/* Pied de page (Saisie du message) */}
                <div className="chat-footer">

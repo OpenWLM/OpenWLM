@@ -41,6 +41,8 @@ export const registerGameHandlers = (io, socket) => {
    * Contrôles communs à tout coup de jeu : débit, et relation toujours valide (un contact
    * bloqué ou supprimé en cours de partie ne peut plus jouer — comme pour resync/restart/quit).
    */
+  // `target` : déjà normalisé par asId (un identifiant brut peut être lu différemment par
+  // canInteract, parseInt, et par les requêtes SQLite)
   const guardMove = (userId, target) => {
     if (!isAllowed(gameMoveLimits, userId, GAME_MOVE_LIMIT, GAME_MOVE_WINDOW_MS)) {
       socket.emit('game_error', { message: 'Trop de coups envoyés. Patientez un instant.' });
@@ -268,8 +270,9 @@ export const registerGameHandlers = (io, socket) => {
   socket.on('game_move', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
-    const { target, index } = data || {};
-    if (!guardMove(userId, target)) return;
+    const { index } = data || {};
+    const target = asId(data?.target);
+    if (!target || !guardMove(userId, target)) return;
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
@@ -355,8 +358,9 @@ export const registerGameHandlers = (io, socket) => {
   socket.on('checkers_move', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
-    const { target, from, to } = data || {};
-    if (!guardMove(userId, target)) return;
+    const { from, to } = data || {};
+    const target = asId(data?.target);
+    if (!target || !guardMove(userId, target)) return;
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
@@ -461,8 +465,9 @@ export const registerGameHandlers = (io, socket) => {
   socket.on('puissance4_move', (data) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
-    const { target, col } = data || {};
-    if (!guardMove(userId, target)) return;
+    const { col } = data || {};
+    const target = asId(data?.target);
+    if (!target || !guardMove(userId, target)) return;
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);
@@ -540,8 +545,8 @@ export const registerGameHandlers = (io, socket) => {
     if (!socket.user || !socket.user.id) return;
     const userId = socket.user.id;
     const { index, bomb } = data || {};
-    const target = Number(data?.target);
-    if (!guardMove(userId, target)) return;
+    const target = asId(data?.target);
+    if (!target || !guardMove(userId, target)) return;
 
     const gameKey = getGameKey(userId, target);
     const game = activeGames.get(gameKey);

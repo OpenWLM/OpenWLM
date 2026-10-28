@@ -44,6 +44,9 @@ const isValidRsaJwk = (k) => {
   return true;
 };
 
+/** Relation non mutuelle ou bloquée (dans un sens ou l'autre) : présence masquée. */
+const HIDDEN = '(reverse_c.user_id IS NULL OR reverse_c.blocked = 1 OR contacts.blocked = 1)';
+
 export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => {
   /**
    * Après révocation des sessions (token_version incrémenté) : la connexion temps réel de
@@ -177,17 +180,21 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     const userId = parseInt(req.params.userId);
     if (req.user.id !== userId) return res.status(403).json({ error: "Accès refusé." });
 
+    // Présence et profil vivant (statut, message perso, scène) seulement entre contacts
+    // MUTUELS et non bloqués, comme en temps réel (broadcastStatusToContacts) : un contact qui
+    // m'a supprimé ou bloqué, ou que j'ai bloqué, apparaît hors ligne, sans message perso.
+    // Sans cela, il suffisait de recharger la liste pour suivre quelqu'un qui nous avait retiré.
     const contacts = db.prepare(`
       SELECT 
         users.id, 
         users.username, 
         users.nickname, 
-        users.psm, 
+        CASE WHEN ${HIDDEN} THEN '' ELSE users.psm END as psm, 
         users.avatar, 
-        users.scene, 
+        CASE WHEN ${HIDDEN} THEN NULL ELSE users.scene END as scene, 
         users.global_private, 
         users.public_key, 
-        CASE WHEN reverse_c.blocked = 1 THEN 'offline' ELSE users.status END as status, 
+        CASE WHEN ${HIDDEN} THEN 'offline' ELSE users.status END as status, 
         contacts.blocked,
         COALESCE(my_cp.is_private, 0) as my_private,
         COALESCE(their_cp.is_private, 0) as their_private

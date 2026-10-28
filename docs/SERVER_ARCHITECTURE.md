@@ -80,6 +80,7 @@ Chaque domaine métier est encapsulé dans une fonction usine injectant les dép
 - `createGamesRouter`
 
 ### E. Gestionnaires Socket.IO (`server/sockets/`)
+- Ouverture d'une connexion (`server/index.js`, `allowRequest`) : origine vérifiée (page servie par le serveur lui‑même, origines autorisées, ou client sans origine comme l'app native), WebSocket compris (l'option `cors` ne couvre que le polling). Identifiants de destinataire normalisés en entiers (`asId`) avant tout contrôle (`canInteract`), toute requête et toute notification.
 - `registerMessageHandlers` : Contrôle de débit, validation de taille (trames socket bornées à 1 Mo), persistance conditionnelle (neutralisée si la conversation est privée : mode global de l'un des deux, ou préférence de conversation de l'un des deux, persistée dans `conversation_privacy` ; le `isPrivate` envoyé par le client est ignoré), émission des notifications Web Push. `toggle_private_mode` n'écrit que la ligne de l'utilisateur authentifié.
 - `registerWebRtcHandlers` : Validation stricte des trames SDP / ICE (taille <= 64 Ko, structure autorisée) et relais vers le pair.
 - `registerGameHandlers` : Validation côté serveur du Morpion, du Puissance 4 (tour, gravité, colonne pleine, victoire/nul), des Dames (déplacements diagonaux, sauts, prises, promotions en dame, fin de partie) et du Démineur (`minesweeper_move` : la matrice des mines reste sur le serveur, les clients ne reçoivent que les cases révélées, y compris à la resynchronisation), avec invitation, reprise et abandon.

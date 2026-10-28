@@ -418,8 +418,12 @@ export const registerMessageHandlers = (io, socket) => {
    * Envoi d'un Wizz
    */
   socket.on('send_wizz', (data) => {
-    const { senderId, receiverId } = data || {};
+    const { senderId } = data || {};
     if (socket.user.id !== senderId) return;
+    // Identifiant normalisé AVANT tout usage : brut, « 7e1 » passait canInteract comme 7
+    // (parseInt) mais la notification Push partait vers 70 (conversion SQLite)
+    const receiverId = asId(data?.receiverId);
+    if (!receiverId) return;
 
     const check = canInteract(senderId, receiverId);
     if (!check.allowed) {
@@ -449,8 +453,10 @@ export const registerMessageHandlers = (io, socket) => {
    * Envoi d'un clin d'oeil (Wink)
    */
   socket.on('send_wink', (data) => {
-    const { senderId, receiverId, winkId } = data || {};
+    const { senderId, winkId } = data || {};
     if (socket.user.id !== senderId) return;
+    const receiverId = asId(data?.receiverId);
+    if (!receiverId) return;
 
     const check = canInteract(senderId, receiverId);
     if (!check.allowed) {

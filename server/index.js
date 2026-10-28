@@ -101,7 +101,25 @@ const isOriginAllowed = (origin) => {
   return allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:');
 };
 
+/** L'origine désigne ce même serveur (même hôte et port que la requête). */
+const isSameHostOrigin = (origin, host) => {
+  try {
+    return typeof host === 'string' && new URL(origin).host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+};
+
 const io = new Server(httpServer, {
+  // SÉCURITÉ : l'option `cors` ne vaut que pour le transport « polling » ; l'ouverture d'un
+  // WebSocket n'est pas soumise à CORS. Sans ce contrôle, une page d'un autre port du même
+  // hôte (même « site » pour le cookie SameSite) pouvait ouvrir une connexion authentifiée.
+  // Acceptées : la page servie par ce serveur, les origines autorisées, et les clients sans
+  // origine (app native, scripts), qui doivent de toute façon présenter un jeton valide.
+  allowRequest: (req, callback) => {
+    const origin = req.headers.origin;
+    callback(null, !origin || isOriginAllowed(origin) || isSameHostOrigin(origin, req.headers.host));
+  },
   cors: {
     origin: (origin, callback) => callback(null, isOriginAllowed(origin)),
     methods: ["GET", "POST"],

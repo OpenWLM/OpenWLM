@@ -84,6 +84,10 @@ interface OptionsModalProps {
       /** Null : pas de verrouillage possible sur cet appareil / navigateur. */
       method: DeviceLockMethod | null;
       active: boolean;
+      /** Réglage « verrouiller » de ce navigateur, même si la méthode n'est plus disponible. */
+      wanted: boolean;
+      /** Méthode indisponible : retirer le réglage (les connexions suivantes mémorisent sans scellé). */
+      onDropUnavailable: () => void;
       /** Le mot de passe ouvre le coffre (clé privée) : activer scelle, désactiver mémorise sans sceller. */
       onEnable: (password: string) => Promise<DeviceLockOutcome>;
       onDisable: (password: string) => Promise<DeviceLockOutcome>;
@@ -493,7 +497,15 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                 <div className="options-subsection" data-testid="device-lock">
                   <label className="options-label">{t.deviceLock.title}</label>
                   {!lockMethod ? (
-                    <div className="options-hint">{t.deviceLock.unsupported}</div>
+                    <>
+                      <div className="options-hint">{t.deviceLock.unsupported}</div>
+                      {security.deviceLock.wanted && (
+                        <div data-testid="device-lock-unavailable">
+                          <div className="options-hint" style={{ color: '#c02717' }}>{t.deviceLock.wantedUnavailable}</div>
+                          <button type="button" className="win-btn" style={{ marginTop: '6px' }} onClick={security.deviceLock.onDropUnavailable}>{t.deviceLock.dropUnavailable}</button>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <>
                       <PrefCheckbox

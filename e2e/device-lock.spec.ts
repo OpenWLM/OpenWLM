@@ -229,3 +229,33 @@ test('app Android : clés scellées par le Keystore, déverrouillage, secret cha
   await expect(page.locator('.wlm-auth-form')).toBeVisible();
   expect(await deviceRecord(page, id)).toEqual({ exists: false, hasPrivateKey: false, method: null });
 });
+
+test('verrouillage réglé mais plus disponible : clés non mémorisées, avertissement, réglage retirable', async ({ browser }) => {
+  test.setTimeout(120000);
+  const ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'CF-Connecting-IP': fakeClientIp() } });
+  // Aucun authentificateur de plateforme (Hello désactivé, autre navigateur…)
+  await ctx.addInitScript(() => {
+    if (typeof PublicKeyCredential !== 'undefined') {
+      Object.defineProperty(PublicKeyCredential, 'isUserVerifyingPlatformAuthenticatorAvailable', { value: () => Promise.resolve(false), configurable: true });
+    }
+  });
+  const page = await ctx.newPage();
+  const username = `e2e_lock_off_${Date.now()}`;
+  await register(page, username);
+  // Verrouillage réglé sur ce navigateur (activé auparavant, quand Hello était là)
+  await page.evaluate(() => localStorage.setItem('wlm_prefs', JSON.stringify({ security: { deviceLock: true, relockMinutes: 5 } })));
+  await page.reload();
+  await loginRemembered(page, username);
+  await expect(page.locator('.wlm-toast-persistence')).toContainText('Key lock is on but unavailable', { timeout: 30000 });
+  const id = await myId(page);
+  // Jamais de repli silencieux sur des clés mémorisées sans scellé
+  expect(await deviceRecord(page, id)).toEqual({ exists: false, hasPrivateKey: false, method: null });
+  await openSecurityTab(page);
+  const unavailable = page.getByTestId('device-lock-unavailable');
+  await expect(unavailable).toBeVisible();
+  await unavailable.getByRole('button', { name: /Remove the key lock/ }).click();
+  await expect(unavailable).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('wlm_prefs') || '{}').security?.deviceLock)).toBe(false);
+  await closeOptions(page);
+  await ctx.close();
+});

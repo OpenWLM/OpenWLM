@@ -323,7 +323,15 @@ natif de l'app (1 min en arrière‑plan) reste le re‑verrouillage ; l'emprein
 pour l'écran de verrouillage valent aussi pour le Keystore (clé liée au délai) : une seule
 demande à l'ouverture. Le réglage s'applique aussi aux connexions suivantes avec « Mémoriser » :
 si l'appareil refuse (annulation, non pris en charge), les clés **ne sont pas mémorisées**
-plutôt que mémorisées en clair.
+plutôt que mémorisées en clair. Il en va de même si le réglage est actif mais que la méthode
+n'est plus disponible dans ce navigateur (Windows Hello désactivé…) : la connexion le signale,
+et Options → Sécurité propose de retirer le réglage pour mémoriser de nouveau sans verrou.
+
+**Limite.** Le verrouillage protège la clé, pas la session : un appareil mémorisé garde son
+cookie de session (30 jours glissants). Une personne qui ouvre la session de l'ordinateur ne
+lit aucun message (historique local chiffré, messages signés : elle ne peut pas en fabriquer),
+mais peut agir sur le compte par l'API (profil, contacts, déconnexion des autres appareils) et
+récupérer le coffre chiffré, à attaquer ensuite hors ligne contre le mot de passe.
 
 **Ce que cela protège.** Vol ou copie du profil du navigateur / des données de l'app, session
 d'ordinateur laissée ouverte (après le délai), appareil perdu avec un verrouillage d'écran. La

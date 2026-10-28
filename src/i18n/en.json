@@ -429,6 +429,9 @@
     "failed": "Failed: nothing changed. Try again.",
     "loginEnabled": "E2EE keys remembered on this device, protected by {method}.",
     "loginFailed": "{method} cancelled or unavailable: E2EE keys are not remembered on this device.",
+    "loginUnavailable": "Key lock is on but unavailable on this device: E2EE keys are not remembered. Go to Options → Security to remove it.",
+    "wantedUnavailable": "Key lock is set on this browser but no longer available here, so keys are not remembered at sign-in.",
+    "dropUnavailable": "Remove the key lock (remember without a lock)",
     "unlockTitle": "Unlock OpenWLM",
     "unlockHello": "Hello {username}. Your keys are protected by {method}.",
     "unlocking": "Checking…",
@@ -790,6 +793,7 @@
     "callAlreadyActive": "A call is already in progress. Hang up before starting another one."
   },
   "errors": {
+    "emoticon_bytes_quota": "Emoticon space is full (20 MB per account). Delete some to add more.",
     "invalid_credentials": "Invalid sign-in address or password.",
     "credentials_required": "Sign-in address and password are required.",
     "login_rate_limited": "Too many sign-in attempts for this account. Please try again later.",

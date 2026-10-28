@@ -1492,8 +1492,13 @@ const App: React.FC = () => {
           // que CryptoKey ; refus ou échec → clés non mémorisées (jamais mémorisées en clair)
           let saveRes: { success: boolean; error?: string };
           let sealedWith: DeviceLockMethod | null = null;
-          const lockMethod = getAppPrefs().security.deviceLock ? await detectDeviceLock() : null;
-          if (lockMethod) {
+          const lockWanted = getAppPrefs().security.deviceLock;
+          const lockMethod = lockWanted ? await detectDeviceLock() : null;
+          if (lockWanted && !lockMethod) {
+            // Verrouillage demandé mais plus disponible ici (Hello désactivé, navigateur
+            // changé…) : jamais de repli silencieux sur des clés mémorisées sans scellé
+            saveRes = { success: false, error: 'device_lock_unavailable' };
+          } else if (lockMethod) {
             try {
               const blob = await protectPrivateKey(loggedInUser.id, loggedInUser.username, privJwk);
               saveRes = await E2EEKeyStorage.saveProtectedKeys(loggedInUser.id, loggedInUser.username, pubJwk, blob);
@@ -1517,10 +1522,10 @@ const App: React.FC = () => {
             setIsDeviceRemembered(true);
             setDeviceLockActive(!!sealedWith);
             setPersistenceNotice(sealedWith ? t.deviceLock.loginEnabled.replace('{method}', methodName(t, sealedWith)) : t.auth.deviceRememberedSuccess);
-          } else if (lockMethod) {
+          } else if (lockWanted) {
             localStorage.removeItem('wlm_user');
             setIsDeviceRemembered(false);
-            setPersistenceNotice(t.deviceLock.loginFailed.replace('{method}', methodName(t, lockMethod)));
+            setPersistenceNotice(lockMethod ? t.deviceLock.loginFailed.replace('{method}', methodName(t, lockMethod)) : t.deviceLock.loginUnavailable);
           } else {
             console.warn("[E2EE Storage] Échec persistance locale:", saveRes.error);
             // EXIGENCE UX ABSOLUE : La connexion n'est JAMAIS bloquée par l'échec de persistance
@@ -5697,7 +5702,7 @@ const App: React.FC = () => {
             onChangePassword: () => { setShowOptionsModal(false); setShowPasswordModal(true); },
             onResetKeys: () => { setShowOptionsModal(false); handleResetE2EKeys(); },
             onRevokeOtherSessions: revokeOtherSessions,
-            deviceLock: { method: deviceLockMethod, active: deviceLockActive, onEnable: enableDeviceLock, onDisable: disableDeviceLock, onLockNow: lockDeviceNow }
+            deviceLock: { method: deviceLockMethod, active: deviceLockActive, wanted: appPrefs.security.deviceLock, onEnable: enableDeviceLock, onDisable: disableDeviceLock, onLockNow: lockDeviceNow, onDropUnavailable: () => updateAppPrefs('security', { deviceLock: false }) }
           }}
           onClose={() => setShowOptionsModal(false)}
         />

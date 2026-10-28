@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **Security review (October 2026, batch 6)**: `server/sockets/{messages,games}.js`, `server/routes/{users,emoticons}.js` and `server/index.js` changed, no new route or column (WAF rules unchanged): restart the service.
 - **Recovery (wrong codes)**: `server/routes/auth.js` and `server/index.js` changed, no new route or column: restart the service.
 - **Dependencies (security)**: multer 2.5.0 and body-parser 2.4.0 (two denial-of-service advisories, GHSA-q7qp-rjg7-q26m and GHSA-27r3-jxmh-p828): `npm ci`, then restart the service.
 - **Account recovery**: `server/db.js` (`auth_recovery_code_hash`, `auth_recovery_attempts` columns, `auth_recovery_log` table, created at startup) and `server/routes/auth.js` changed: restart the service. Routes unchanged (WAF rules unchanged).
@@ -40,6 +41,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- `tests/test_lot6_hardening.js` (4 tests, isolated server): nudge to `"7e1"` without notifying user 70, presence hidden after removal or block, WebSocket origin, emoticon size quota. `e2e/device-lock.spec.ts`: lock set but unavailable (keys not remembered, warning, setting removable).
 - `tests/test_device_lock.js`: private-key sealing (right secret only, nothing in the clear, tampered seal refused, non-exportable wrapping key, seal shape). `e2e/device-lock.spec.ts`: simulated Windows Hello (Chromium virtual authenticator with PRF) — enabling with the password (wrong password refused), sealed key in IndexedDB, unlock screen on reload, "Lock now", Hello refused → password (keys removed), sign-in again with "Remember" → sealed again; simulated Android app (Keystore secret through the native bridge, no delay, changed secret → password).
 - `tests/test_auth_scope_recovery.js` (scope, recovery, script, `logout-device`), `e2e/auth-recovery.spec.ts` (scope change then recovery), per-sender emoticons in `e2e/peer-payload.spec.ts`, JVM test `BridgeTrustTest.cheminsLocauxNormalisesAvantComparaison`; fail on the previous version.
 - `tests/test_history_pagination.js` (pagination, `logout-device`), peer payload test in `tests/test_message_envelope.js`, `e2e/peer-payload.spec.ts` (IME, abandoned sign-in, "Earlier messages"); fail on the previous version.
@@ -62,6 +64,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Security review, batch 6**:
+  - **Nudge to an arbitrary user**: the recipient id of a nudge (and wink) was not normalized. `"7e1"` passed the friendship check as user 7, but the Push notification went to user 70, who could be a stranger or someone who had blocked the sender. Ids are now normalized before any use, game moves included.
+  - **Presence after removal**: a contact who removed or blocked you, or whom you blocked, still showed their real status and personal message in the contact list fetched from the server. They now appear offline, without personal message or scene, as in real time.
+  - **WebSocket origin**: the origin is checked when a real-time connection opens (Socket.IO's `cors` option only covers polling). A page from another port or host can no longer open an authenticated connection.
+  - **Custom emoticons**: total size limited to 20 MB per account (in addition to the 100 emoticons), against disk filling.
+  - **Key lock unavailable**: if the lock is set in this browser but Windows Hello is no longer available, keys are no longer silently remembered without a seal. Sign-in warns that keys are not remembered, and Options → Security offers to remove the setting.
 - **Recovery documentation**: "one-time code" clarified: the code allows **a single key change** (a successful recovery erases it), but until then its holder may request the vault again; reminder to delete the `--all` file after distribution.
 - **Sign-in screen**: the **Help** link is removed (help stays in the main menu and via `/help` once signed in).
 - **Following a third external review**:

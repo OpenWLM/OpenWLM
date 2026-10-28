@@ -12,6 +12,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 ## [Non publié]
 
 ### Mise à jour du serveur
+- **Relecture de sécurité (octobre 2026, lot 6)** : `server/sockets/{messages,games}.js`, `server/routes/{users,emoticons}.js` et `server/index.js` modifiés, sans nouvelle route ni colonne (règles WAF inchangées) : redémarrer le service.
 - **Récupération (codes erronés)** : `server/routes/auth.js` et `server/index.js` modifiés, aucune route ni colonne nouvelle : redémarrer le service.
 - **Dépendances (sécurité)** : multer 2.5.0 et body-parser 2.4.0 (deux dénis de service, avis GHSA-q7qp-rjg7-q26m et GHSA-27r3-jxmh-p828) : `npm ci`, puis redémarrer le service.
 - **Récupération de compte** : `server/db.js` (colonnes `auth_recovery_code_hash`, `auth_recovery_attempts`, table `auth_recovery_log`, créées au démarrage) et `server/routes/auth.js` modifiés : redémarrer le service. Les routes ne changent pas (règles WAF inchangées).
@@ -40,6 +41,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - **Visionneuse d'image agrandie et zoomable** : une image reçue ou envoyée s'ouvre presque en plein écran sur ordinateur, en plein écran sur téléphone (sans barre d'outils, avec une simple croix rouge Aero pour fermer), entière au départ. Zoom à la molette (centré sur le pointeur), au pincement à deux doigts, au double-clic ou double-tap (taille réelle sur le point visé, puis retour), aux boutons − / + / Ajuster / 100 % et au clavier (+, -, 0, 1) ; l'image zoomée se déplace à la souris ou au doigt sans sortir de l'écran. Le bouton Retour d'Android ferme la visionneuse au lieu de quitter la conversation. Une capture d'écran se lit sans l'enregistrer. Interface seulement : ni serveur ni APK à mettre à jour.
 
 ### Tests
+- `tests/test_lot6_hardening.js` (4 tests, serveur isolé) : Wizz vers `"7e1"` sans notifier l'utilisateur 70, présence masquée après suppression ou blocage, origine du WebSocket, quota d'émoticônes en octets. `e2e/device-lock.spec.ts` : verrouillage réglé mais indisponible (clés non mémorisées, avertissement, réglage retirable).
 - `tests/test_device_lock.js` : scellement de la clé privée (bon secret seulement, rien en clair, scellé altéré refusé, clé de scellement non exportable, forme du scellé). `e2e/device-lock.spec.ts` : Windows Hello simulé (authentificateur virtuel Chromium avec PRF) — activation avec le mot de passe (mauvais mot de passe refusé), clé scellée en IndexedDB, écran de déverrouillage au rechargement, « Verrouiller maintenant », refus de Hello → mot de passe (clés retirées), reconnexion avec « Mémoriser » → de nouveau scellées ; app Android simulée (secret du Keystore via le pont natif, pas de délai, secret changé → mot de passe).
 - `tests/test_auth_scope_recovery.js` (portée, récupération, script, `logout-device`), `e2e/auth-recovery.spec.ts` (changement de portée puis récupération), émoticônes par expéditeur dans `e2e/peer-payload.spec.ts`, test JVM `BridgeTrustTest.cheminsLocauxNormalisesAvantComparaison` ; en échec sur la version précédente.
 - `tests/test_history_pagination.js` (pagination, `logout-device`), test de payload d'un pair dans `tests/test_message_envelope.js`, `e2e/peer-payload.spec.ts` (IME, connexion abandonnée, « Messages précédents ») ; en échec sur la version précédente.
@@ -62,6 +64,12 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections
+- **Relecture de sécurité, lot 6** :
+  - **Wizz vers un utilisateur arbitraire** : l'identifiant du destinataire d'un Wizz (et d'un clin d'œil) n'était pas normalisé. `"7e1"` passait le contrôle d'amitié comme l'utilisateur 7, mais la notification Push partait vers l'utilisateur 70, inconnu ou qui avait bloqué l'expéditeur. Les identifiants sont désormais normalisés avant tout usage, coups de jeu compris.
+  - **Présence après suppression** : un contact qui vous avait supprimé ou bloqué, ou que vous aviez bloqué, voyait encore votre vrai statut et votre message perso dans la liste des contacts renvoyée par le serveur. Il apparaît désormais hors ligne, sans message perso ni scène, comme en temps réel.
+  - **Origine du WebSocket** : l'origine est vérifiée à l'ouverture d'une connexion temps réel (l'option `cors` de Socket.IO ne couvre que le polling). Une page d'un autre port ou d'un autre hôte ne peut plus ouvrir de connexion authentifiée.
+  - **Émoticônes personnalisées** : volume total limité à 20 Mo par compte (en plus des 100 émoticônes), contre le remplissage du disque.
+  - **Verrouillage des clés indisponible** : si le verrouillage est réglé dans ce navigateur mais que Windows Hello n'y est plus disponible, les clés ne sont plus mémorisées sans scellé en silence. La connexion prévient qu'elles ne sont pas mémorisées, et Options → Sécurité propose de retirer le réglage.
 - **Documentation de la récupération** : « code à usage unique » précisé : le code ne permet qu'**un seul changement de clé** (la récupération réussie l'efface), mais d'ici là son porteur peut redemander le coffre ; rappel de supprimer le fichier de `--all` après distribution.
 - **Écran de connexion** : le lien **Aide** est retiré (l'aide reste dans le menu principal et avec `/help`, une fois connecté).
 - **Suite à une troisième relecture externe** :

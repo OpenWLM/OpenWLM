@@ -45,6 +45,12 @@ const isValidEncryptedKey = (value) => {
   }
 };
 
+/**
+ * Volume total des émoticônes d'un compte (octets). Le nombre (100) seul laissait 100 Mo par
+ * compte, conservés sans limite de durée : avec plusieurs comptes, de quoi remplir le disque.
+ */
+export const EMOTICONS_BYTES_QUOTA = 20 * 1024 * 1024;
+
 export const createEmoticonsRouter = () => {
   const router = Router();
 
@@ -142,6 +148,12 @@ export const createEmoticonsRouter = () => {
         if (req.file.size > maxAllowedSize) {
           cleanupFile();
           return res.status(400).json({ error: isAnimated ? "Le GIF animé dépasse 1 Mo." : "L'image statique dépasse 256 Ko." });
+        }
+
+        const usedRow = db.prepare('SELECT COALESCE(SUM(file_size), 0) AS used FROM custom_emoticons WHERE owner_id = ?').get(req.user.id);
+        if (Number(usedRow?.used || 0) + req.file.size > EMOTICONS_BYTES_QUOTA) {
+          cleanupFile();
+          return res.status(400).json({ error: "Espace des émoticônes plein (20 Mo par compte). Supprimez-en pour en ajouter.", code: 'emoticon_bytes_quota' });
         }
 
         const encryptedKey = req.body.encryptedKey === undefined ? null : String(req.body.encryptedKey);

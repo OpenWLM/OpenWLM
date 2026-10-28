@@ -269,6 +269,9 @@ export const signupAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60
 export const changePasswordAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 export const resetE2eAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 export const revokeSessionsAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+// Remise du coffre contre la preuve du mot de passe : 10 mauvais mots de passe par 15 min et
+// par compte (comme la connexion depuis une adresse), compteur remis à zéro au succès.
+export const vaultAccountLimiter = createAccountRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 // Profil, statut et mode privé : chaque modification est diffusée à tous les contacts.
 // Large pour un usage normal (absence automatique, édition), mais bloque une boucle de spam.
 export const profileUpdateAccountLimiter = createAccountRateLimiter({ windowMs: 60 * 1000, limit: 30 });
@@ -281,6 +284,7 @@ export const accountLimiters = [
   changePasswordAccountLimiter,
   resetE2eAccountLimiter,
   revokeSessionsAccountLimiter,
+  vaultAccountLimiter,
   profileUpdateAccountLimiter
 ];
 

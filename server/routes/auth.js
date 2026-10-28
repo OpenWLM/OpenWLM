@@ -2,7 +2,7 @@ import { isValidFormattedField } from '../utils/plusText.js';
 import { removePushTargets } from '../utils/pushTargets.js';
 import { Router } from 'express';
 import crypto from 'crypto';
-import { db, toPrivateUserDTO, logRecoveryEvent } from '../db.js';
+import { db, toPrivateUserDTO, toPublicUserDTO, logRecoveryEvent } from '../db.js';
 import { getUserRoom } from '../sessionStore.js';
 import { 
   authRateLimiter, 
@@ -61,7 +61,10 @@ export const createAuthRouter = ({ io, broadcastStatusToContacts, isProd }) => {
       if (p?.rm && Number.isInteger(p.iat) && Date.now() / 1000 - p.iat > SESSION_RENEW_AFTER_S) {
         issueSessionCookie(req, res, { id: user.id, username: user.username, tv: user.token_version || 0, remember: true }, isProd);
       }
-      res.json({ success: true, user: toPrivateUserDTO(user) });
+      // Sans le coffre de clés : il n'est remis qu'avec la preuve du mot de passe (connexion,
+      // POST /api/user/vault). Un cookie volé ne permet plus d'emporter le coffre pour attaquer
+      // le mot de passe hors ligne.
+      res.json({ success: true, user: toPublicUserDTO(user) });
     } catch (err) {
       res.status(500).json({ error: "Erreur serveur." });
     }

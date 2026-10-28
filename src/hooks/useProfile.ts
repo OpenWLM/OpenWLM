@@ -6,6 +6,7 @@ import { getNativeFcmToken } from '../utils/platform';
 import { useI18n } from '../i18n';
 import { notify } from '../utils/dialogs';
 import E2EEKeyStorage from '../utils/E2EEKeyStorage';
+import { fetchVault, parseVault } from '../utils/vaultAccess';
 import {
   deriveZeroKnowledgeKeys,
   encryptPrivateKeyVault,
@@ -311,15 +312,19 @@ export function useProfile(options: UseProfileOptions): ProfileApi {
       // 2. Clé privée RSA en clair (JWK), obtenue en déchiffrant le coffre avec l'ancien mot de
       //    passe (échec = ancien mot de passe incorrect). La clé de la session ne convient pas :
       //    elle est NON EXTRACTIBLE (CryptoKey), la re-chiffrer donnait un coffre vide.
-      let vaultSource = user.encrypted_private_key;
-      if (!vaultSource) {
-        const me = await axios.get('/api/user/me');
-        vaultSource = me.data?.user?.encrypted_private_key;
+      //    Coffre de la connexion s'il est en mémoire, sinon demandé au serveur avec la preuve
+      //    de l'ancien mot de passe (le profil ne le contient plus).
+      let vault = parseVault(user.encrypted_private_key);
+      if (!vault) {
+        const fetched = await fetchVault(oldAuthKeyHex, oldLegacyAuthKeyHex);
+        if ('error' in fetched) {
+          if (fetched.error === 'wrongPassword') return { ok: false, error: 'wrongCurrent' };
+          return { ok: false, error: fetched.error === 'limited' ? 'limited' : 'failed' };
+        }
+        vault = fetched.vault;
       }
-      if (!vaultSource) return { ok: false, error: 'failed' };
       let privateKeyJwk: JsonWebKey | null = null;
       try {
-        const vault = typeof vaultSource === 'string' ? JSON.parse(vaultSource) : vaultSource;
         privateKeyJwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, oldVaultKey);
       } catch {
         privateKeyJwk = null;

@@ -22,7 +22,11 @@
 **Dérivation des clés (zero‑knowledge)** : le **mot de passe ne quitte jamais le navigateur**.
 `PBKDF2(600k)` → *MasterKey* → `HKDF` → `authKey` (transport) + `vaultKey` (AES‑GCM) qui
 **chiffre la clé privée RSA** avant son stockage serveur. Le serveur détient le **coffre
-chiffré**, jamais la clé en clair.
+chiffré**, jamais la clé en clair. Il ne le remet qu'avec une preuve du mot de passe : réponse
+de connexion, `POST /api/user/vault` (clé d'authentification vérifiée, 10 mauvais mots de passe
+par 15 min et par compte) ou récupération avec code. Le profil (`GET /api/user/me`) ne le
+contient pas : une session volée ne permet pas d'emporter le coffre pour attaquer le mot de
+passe hors ligne.
 
 ---
 
@@ -330,8 +334,9 @@ et Options → Sécurité propose de retirer le réglage pour mémoriser de nouv
 **Limite.** Le verrouillage protège la clé, pas la session : un appareil mémorisé garde son
 cookie de session (30 jours glissants). Une personne qui ouvre la session de l'ordinateur ne
 lit aucun message (historique local chiffré, messages signés : elle ne peut pas en fabriquer),
-mais peut agir sur le compte par l'API (profil, contacts, déconnexion des autres appareils) et
-récupérer le coffre chiffré, à attaquer ensuite hors ligne contre le mot de passe.
+mais peut agir sur le compte par l'API (profil, contacts, déconnexion des autres appareils).
+Elle n'obtient pas le coffre chiffré sans le mot de passe (§1) : elle ne peut que l'essayer en
+ligne, 10 fois par 15 minutes.
 
 **Ce que cela protège.** Vol ou copie du profil du navigateur / des données de l'app, session
 d'ordinateur laissée ouverte (après le délai), appareil perdu avec un verrouillage d'écran. La

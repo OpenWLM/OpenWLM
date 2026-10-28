@@ -156,6 +156,20 @@ test('ordinateur : clés scellées par Windows Hello (PRF), déverrouillage, ref
   await expect.poll(() => deviceRecord(page, id), { timeout: 30000 }).toEqual({ exists: true, hasPrivateKey: false, method: 'webauthn' });
   await openSecurityTab(page);
   await expect(page.locator('#pref-device-lock')).toBeChecked();
+
+  // Session restaurée (déverrouillée par Hello) : le profil ne contient plus le coffre, il est
+  // demandé au serveur avec la preuve du mot de passe pour désactiver le verrouillage
+  await page.reload();
+  await expect(page.locator('.status-trigger')).toBeVisible({ timeout: 30000 });
+  const me = await (await page.request.get('/api/user/me')).json();
+  expect(me.user.encrypted_private_key).toBeUndefined();
+  await openSecurityTab(page);
+  expect(await toggleDeviceLock(page, 'MauvaisMotDePasse-2')).toContain('Wrong password');
+  await page.locator('#device-lock-password').fill(PASSWORD);
+  await page.getByTestId('device-lock').locator('button[type="submit"]').click();
+  await expect(page.getByTestId('device-lock-outcome')).toContainText('Off', { timeout: 30000 });
+  await expect(page.locator('#pref-device-lock')).not.toBeChecked();
+  expect(await deviceRecord(page, id)).toEqual({ exists: true, hasPrivateKey: true, method: null });
 });
 
 /** Faux pont natif Android (cf. e2e/android-sounds.spec.ts) avec le secret du Keystore simulé. */

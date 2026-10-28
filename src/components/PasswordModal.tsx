@@ -12,7 +12,7 @@ import { PasswordStrengthMeter } from './PasswordStrengthMeter';
  * des clés, re-chiffrement du coffre, appel serveur) est fait par `onSubmit`.
  */
 
-export type ChangePasswordResult = { ok: true } | { ok: false; error: 'wrongCurrent' | 'revoked' | 'failed'; message?: string };
+export type ChangePasswordResult = { ok: true } | { ok: false; error: 'wrongCurrent' | 'revoked' | 'limited' | 'failed'; message?: string };
 
 interface PasswordModalProps {
   onClose: () => void;
@@ -52,6 +52,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ onClose, onSubmit 
     } else {
       // Le détail du serveur est en français : affiché seulement dans l'interface française
       setError(result.error === 'wrongCurrent' ? t.modals.changePasswordWrongCurrent
+        : result.error === 'limited' ? t.errors.rate_limited
         : (language === 'fr' && result.message) || t.modals.changePasswordFailed);
     }
   };

@@ -20,13 +20,18 @@ import { io as ClientIO } from 'socket.io-client';
  *  - liste des contacts : présence et message perso masqués hors relation mutuelle non bloquée
  *    (comme en temps réel) ;
  *  - WebSocket : origine vérifiée à l'ouverture (l'option cors ne couvre que le polling) ;
- *  - émoticônes personnalisées : volume total limité par compte.
+ *  - émoticônes personnalisées : volume total limité par compte ;
+ *  - coffre de clés : absent du profil, remis seulement contre la preuve du mot de passe.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_ENTRY = path.join(__dirname, '../server/index.js');
 const JWT_SECRET = crypto.randomBytes(32).toString('hex');
 const VAPID = webpush.generateVAPIDKeys();
+const PWD_HEX = crypto.randomBytes(32).toString('hex');
+const LEGACY_HEX = crypto.randomBytes(32).toString('hex');
+const hashPwd = (hex, salt) => crypto.pbkdf2Sync(hex, salt, 210000, 64, 'sha512').toString('hex');
+const VAULT = JSON.stringify({ encryptedKeyBase64: Buffer.alloc(300, 7).toString('base64'), ivBase64: Buffer.alloc(12, 1).toString('base64') });
 
 let serverProc;
 let tmpDir;
@@ -41,6 +46,8 @@ const DAVE = 70;
 const BOB = 501;
 const ERIN = 502;
 const FRANK = 503;
+const GRACE = 504;
+const HENRI = 505;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const getFreePort = () => new Promise((resolve, reject) => {
@@ -128,6 +135,12 @@ before(async () => {
   insert.run(BOB, 'l6_bob', 'Bob', 'psm bob');
   insert.run(ERIN, 'l6_erin', 'Erin', 'psm secret erin');
   insert.run(FRANK, 'l6_frank', 'Frank', 'psm secret frank');
+  // Grace : mot de passe connu et coffre ; Henri : compte pas encore migré (ancienne clé)
+  const salt = crypto.randomBytes(16).toString('hex');
+  db.prepare("INSERT INTO users (id, username, nickname, status, password_hash, salt, token_version, encrypted_private_key) VALUES (?, ?, ?, 'online', ?, ?, 0, ?)")
+    .run(GRACE, 'l6_grace', 'Grace', hashPwd(PWD_HEX, salt), salt, VAULT);
+  db.prepare("INSERT INTO users (id, username, nickname, status, password_hash, salt, token_version, encrypted_private_key) VALUES (?, ?, ?, 'online', ?, ?, 0, ?)")
+    .run(HENRI, 'l6_henri', 'Henri', hashPwd(LEGACY_HEX, salt), salt, VAULT);
   const c = db.prepare('INSERT INTO contacts (user_id, contact_id, status, blocked) VALUES (?, ?, 1, ?)');
   // Alice ↔ Carol (7) : amies ; Dave (70) n'a aucun lien avec Alice
   c.run(ALICE, CAROL, 0); c.run(CAROL, ALICE, 0);
@@ -201,4 +214,35 @@ test('émoticônes : volume total par compte limité (20 Mo)', async () => {
   db.prepare("DELETE FROM custom_emoticons WHERE owner_id = ? AND id LIKE 'emo_fill_%'").run(BOB);
   const ok = await upload('/api/emoticons/custom/upload', tok(BOB), { shortcut: 'small', mimeType: 'image/png', width: '32', height: '32', isAnimated: '0' }, crypto.randomBytes(4096));
   assert.equal(ok.status, 200, JSON.stringify(ok.data));
+});
+
+test('coffre de clés : absent du profil, remis seulement contre la preuve du mot de passe', async () => {
+  const me = await request('/api/user/me', 'GET', tok(GRACE));
+  assert.equal(me.status, 200);
+  assert.equal(me.data.user.id, GRACE);
+  assert.ok(!('encrypted_private_key' in me.data.user), 'le profil ne contient plus le coffre');
+  // Sans session : refusé
+  assert.equal((await request('/api/user/vault', 'POST', null, { authKeyHex: PWD_HEX })).status, 401);
+  // Mauvais mot de passe : refusé ; bon : coffre remis
+  const wrong = await request('/api/user/vault', 'POST', tok(GRACE), { authKeyHex: 'a'.repeat(64) });
+  assert.equal(wrong.status, 401);
+  assert.equal(wrong.data.code, 'wrong_password');
+  assert.ok(!wrong.data.vault);
+  const ok = await request('/api/user/vault', 'POST', tok(GRACE), { authKeyHex: PWD_HEX });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.equal(ok.data.vault, VAULT);
+  // Compte pas encore migré : l'ancienne clé est acceptée dans la même tentative
+  const legacy = await request('/api/user/vault', 'POST', tok(HENRI), { authKeyHex: 'b'.repeat(64), legacyAuthKeyHex: LEGACY_HEX });
+  assert.equal(legacy.status, 200);
+  // Format invalide : refusé sans compter
+  assert.equal((await request('/api/user/vault', 'POST', tok(GRACE), { authKeyHex: 'zz' })).status, 400);
+});
+
+test('coffre de clés : 10 mauvais mots de passe par 15 min, même le bon est ensuite refusé', async () => {
+  for (let i = 0; i < 10; i++) {
+    assert.equal((await request('/api/user/vault', 'POST', tok(HENRI), { authKeyHex: 'c'.repeat(64) })).status, 401, `essai ${i + 1}`);
+  }
+  const blocked = await request('/api/user/vault', 'POST', tok(HENRI), { authKeyHex: LEGACY_HEX });
+  assert.equal(blocked.status, 429);
+  assert.ok(!blocked.data.vault);
 });

@@ -5,6 +5,7 @@ import Auth from './components/Auth';
 import './WLM.css';
 import SoundManager from './utils/SoundManager';
 import LocalDB from './utils/LocalDB';
+import { fetchVault, parseVault } from './utils/vaultAccess';
 import { 
   generateKeyPair, 
   encryptPrivateKeyVault, 
@@ -1311,29 +1312,31 @@ const App: React.FC = () => {
     setIsDeviceRemembered(false);
     setLockedSession(null);
   };
-  /** Clé privée (JWK) obtenue du coffre serveur avec le mot de passe ; null : mot de passe faux. */
-  const privateJwkFromPassword = async (password: string): Promise<JsonWebKey | null> => {
-    if (!user) return null;
-    const { vaultKey } = await deriveZeroKnowledgeKeys(user.username, password);
-    let vaultSource = user.encrypted_private_key;
-    if (!vaultSource) {
-      const me = await axios.get('/api/user/me');
-      vaultSource = me.data?.user?.encrypted_private_key;
+  /**
+   * Clé privée (JWK) ouverte avec le mot de passe. Coffre de la connexion s'il est en mémoire,
+   * sinon demandé au serveur avec la preuve du mot de passe (le profil ne le contient plus).
+   */
+  const privateJwkFromPassword = async (password: string): Promise<JsonWebKey | 'wrongPassword' | 'limited' | 'failed'> => {
+    if (!user) return 'failed';
+    const { vaultKey, authKeyHex, legacyAuthKeyHex } = await deriveZeroKnowledgeKeys(user.username, password);
+    let vault = parseVault(user.encrypted_private_key);
+    if (!vault) {
+      const fetched = await fetchVault(authKeyHex, legacyAuthKeyHex);
+      if ('error' in fetched) return fetched.error;
+      vault = fetched.vault;
     }
-    if (!vaultSource) return null;
     try {
-      const vault = typeof vaultSource === 'string' ? JSON.parse(vaultSource) : vaultSource;
       const jwk = await decryptPrivateKeyVault(vault.encryptedKeyBase64, vault.ivBase64, vaultKey);
-      return jwk && typeof jwk === 'object' && jwk.d ? jwk : null;
+      return jwk && typeof jwk === 'object' && jwk.d ? jwk : 'wrongPassword';
     } catch {
-      return null;
+      return 'wrongPassword';
     }
   };
   /** Options → Sécurité : sceller les clés mémorisées avec l'appareil (et mémoriser si besoin). */
   const enableDeviceLock = async (password: string): Promise<DeviceLockOutcome> => {
     if (!user) return 'failed';
-    const privJwk = await privateJwkFromPassword(password).catch(() => null);
-    if (!privJwk) return 'wrongPassword';
+    const privJwk = await privateJwkFromPassword(password).catch(() => 'failed' as const);
+    if (typeof privJwk === 'string') return privJwk;
     let blob: ProtectedKeyBlob;
     try {
       blob = await protectPrivateKey(user.id, user.username, privJwk);
@@ -1353,8 +1356,8 @@ const App: React.FC = () => {
   /** Options → Sécurité : clés mémorisées de nouveau sans scellé (CryptoKey non extractible). */
   const disableDeviceLock = async (password: string): Promise<DeviceLockOutcome> => {
     if (!user) return 'failed';
-    const privJwk = await privateJwkFromPassword(password).catch(() => null);
-    if (!privJwk) return 'wrongPassword';
+    const privJwk = await privateJwkFromPassword(password).catch(() => 'failed' as const);
+    if (typeof privJwk === 'string') return privJwk;
     const privateCryptoKey = await importPrivateCryptoKey(privJwk, false);
     const signingKey = await importPrivateKeyForSigning(privJwk);
     const saved = await E2EEKeyStorage.saveKeys(user.id, user.username, myKeysRef.current?.publicKeyJwk ?? JSON.parse(user.public_key || 'null'), privateCryptoKey, signingKey ?? undefined);

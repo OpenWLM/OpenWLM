@@ -30,7 +30,7 @@ import { RELOCK_CHOICES, methodName, type DeviceLockFailure, type DeviceLockMeth
  * hooks. L'onglet actif est un état local à la modale ; l'i18n est lue directement.
  */
 
-export type DeviceLockOutcome = 'ok' | 'wrongPassword' | DeviceLockFailure;
+export type DeviceLockOutcome = 'ok' | 'wrongPassword' | 'limited' | DeviceLockFailure;
 
 interface OptionsModalProps {
   myNickname: string;
@@ -194,6 +194,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   const lockMethodName = lockMethod ? methodName(t, lockMethod) : '';
   const lockOutcomeText = lockOutcome === 'ok' ? (lockOutcomeFor === 'enable' ? t.deviceLock.enabled : t.deviceLock.disabled)
     : lockOutcome === 'wrongPassword' ? t.deviceLock.wrongPassword
+    : lockOutcome === 'limited' ? t.errors.rate_limited
     : lockOutcome === 'cancelled' ? t.deviceLock.cancelled
     : lockOutcome === 'unsupported' ? t.deviceLock.unsupportedNow
     : lockOutcome ? t.deviceLock.failed : null;

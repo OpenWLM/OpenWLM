@@ -17,7 +17,8 @@ import {
   isValidPath, 
   hashPassword, 
   verifyPasswordHash,
-  migrateAuthKeyAccountLimiter
+  migrateAuthKeyAccountLimiter,
+  vaultAccountLimiter
 } from '../middleware/auth.js';
 
 // SÉCURITÉ : validation stricte du coffre chiffré — champs, base64, longueurs DÉCODÉES
@@ -283,6 +284,35 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
       console.error('Erreur migration clé d\'authentification :', err);
       res.status(500).json({ error: 'Erreur lors de la mise à jour.' });
     }
+  });
+
+  /**
+   * Coffre de clés (clé privée chiffrée par le mot de passe), remis seulement contre la PREUVE
+   * du mot de passe (clé d'authentification). Il n'est plus dans GET /api/user/me : une
+   * session volée (cookie) ne permet plus d'emporter le coffre pour attaquer le mot de passe
+   * hors ligne, seulement de l'essayer en ligne, 10 fois par 15 min. `legacyAuthKeyHex` :
+   * compte pas encore migré vers la clé liée au serveur ; les deux sont vérifiées dans la
+   * même tentative.
+   */
+  router.post('/user/vault', authenticateToken, sensitiveRateLimiter, async (req, res) => {
+    const userId = req.user.id;
+    const { authKeyHex, legacyAuthKeyHex } = req.body || {};
+    const isKey = (k) => typeof k === 'string' && /^[a-fA-F0-9]{64}$/.test(k);
+    if (!isKey(authKeyHex) || (legacyAuthKeyHex !== undefined && legacyAuthKeyHex !== null && !isKey(legacyAuthKeyHex))) {
+      return res.status(400).json({ error: "Format de la clé d'authentification invalide (hex 256 bits requis)." });
+    }
+    if (!vaultAccountLimiter.attempt(userId).allowed) {
+      return res.status(429).json({ error: 'Trop de mots de passe erronés. Réessayez plus tard.', code: 'rate_limited' });
+    }
+    const user = db.prepare('SELECT password_hash, salt, encrypted_private_key FROM users WHERE id = ?').get(userId);
+    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+    const ok = (await verifyPasswordHash(authKeyHex, user.salt, user.password_hash))
+      || (isKey(legacyAuthKeyHex) && await verifyPasswordHash(legacyAuthKeyHex, user.salt, user.password_hash));
+    if (!ok) return res.status(401).json({ error: 'Mot de passe incorrect.', code: 'wrong_password' });
+    vaultAccountLimiter.reset(userId);
+    if (!user.encrypted_private_key) return res.status(404).json({ error: 'Aucun coffre de clés pour ce compte.', code: 'no_vault' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, vault: user.encrypted_private_key });
   });
 
   /**

@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
+- **Key vault behind the password**: `server/routes/{auth,users}.js` and `server/middleware/auth.js` changed. **New route `POST /api/user/vault`**: WAF rules regenerated, to copy into Cloudflare from `docs/cloudflare-waf.generated.json`. Restart the service. A tab left open during the update shows "wrong password" when enabling the key lock or changing the password, until the page is reloaded.
 - **Security review (October 2026, batch 6)**: `server/sockets/{messages,games}.js`, `server/routes/{users,emoticons}.js` and `server/index.js` changed, no new route or column (WAF rules unchanged): restart the service.
 - **Recovery (wrong codes)**: `server/routes/auth.js` and `server/index.js` changed, no new route or column: restart the service.
 - **Dependencies (security)**: multer 2.5.0 and body-parser 2.4.0 (two denial-of-service advisories, GHSA-q7qp-rjg7-q26m and GHSA-27r3-jxmh-p828): `npm ci`, then restart the service.
@@ -41,6 +42,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Larger, zoomable image viewer**: a received or sent image opens almost full screen on desktop and full screen on phones (no toolbar, just a red Aero close cross), showing the whole image first. Zoom with the mouse wheel (centred on the pointer), a two-finger pinch, a double-click or double-tap (actual size on the spot you aimed at, then back), the − / + / Fit / 100% buttons and the keyboard (+, -, 0, 1); a zoomed image can be dragged with the mouse or a finger without leaving the screen. Android's Back button closes the viewer instead of leaving the conversation. A screenshot can be read without saving it. Interface only: no server or APK update needed.
 
 ### Tests
+- `tests/test_lot6_hardening.js`: vault absent from the profile, handed over only with proof of the password (legacy key accepted, 10 attempts per 15 minutes). `e2e/device-lock.spec.ts`: disabling the lock in a restored session (vault requested from the server).
 - `tests/test_lot6_hardening.js` (4 tests, isolated server): nudge to `"7e1"` without notifying user 70, presence hidden after removal or block, WebSocket origin, emoticon size quota. `e2e/device-lock.spec.ts`: lock set but unavailable (keys not remembered, warning, setting removable).
 - `tests/test_device_lock.js`: private-key sealing (right secret only, nothing in the clear, tampered seal refused, non-exportable wrapping key, seal shape). `e2e/device-lock.spec.ts`: simulated Windows Hello (Chromium virtual authenticator with PRF) — enabling with the password (wrong password refused), sealed key in IndexedDB, unlock screen on reload, "Lock now", Hello refused → password (keys removed), sign-in again with "Remember" → sealed again; simulated Android app (Keystore secret through the native bridge, no delay, changed secret → password).
 - `tests/test_auth_scope_recovery.js` (scope, recovery, script, `logout-device`), `e2e/auth-recovery.spec.ts` (scope change then recovery), per-sender emoticons in `e2e/peer-payload.spec.ts`, JVM test `BridgeTrustTest.cheminsLocauxNormalisesAvantComparaison`; fail on the previous version.
@@ -64,6 +66,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Key vault behind the password**: the profile returned by the server for any valid session no longer contains the encrypted key vault. It is only handed over with proof of the password: at sign-in, through the new `POST /api/user/vault` route (10 wrong passwords per 15 minutes per account), or during recovery. A stolen session cookie no longer lets anyone take the vault away and attack the password offline. Nothing changes for the user: the vault is only needed where the password is already typed (enabling or disabling the key lock, changing the password).
 - **Security review, batch 6**:
   - **Nudge to an arbitrary user**: the recipient id of a nudge (and wink) was not normalized. `"7e1"` passed the friendship check as user 7, but the Push notification went to user 70, who could be a stranger or someone who had blocked the sender. Ids are now normalized before any use, game moves included.
   - **Presence after removal**: a contact who removed or blocked you, or whom you blocked, still showed their real status and personal message in the contact list fetched from the server. They now appear offline, without personal message or scene, as in real time.

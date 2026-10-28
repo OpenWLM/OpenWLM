@@ -26,7 +26,7 @@ server/
 │   └── auth.js               # authenticateToken, hash/verify Password, canInteract, rate limiters IP
 │
 ├── routes/
-│   ├── auth.js               # /api/login, /api/signup, /api/logout, /api/captcha, /api/user/me
+│   ├── auth.js               # /api/login, /api/signup, /api/logout, /api/captcha, /api/user/me (sans le coffre)
 │   ├── users.js              # Contacts, invitations, profil, clés E2E, reset d'urgence, mot de passe
 │   ├── messages.js           # Historique, conversations en attente (messages non remis), purge
 │   ├── files.js              # Téléversement et téléchargement de fichiers E2EE (Multer, quotas, CSP)

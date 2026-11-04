@@ -56,6 +56,20 @@ principal). Emplacements habituels de *userData* :
 > en qui vous avez confiance. (Un sélecteur de serveur au premier lancement, comme sur
 > Android, est une évolution naturelle de cette coquille.)
 
+## Conversations en fenêtres séparées
+
+Comme le vrai WLM, une conversation peut être **détachée dans sa propre fenêtre**. Par
+défaut, les conversations restent en **onglets** ; chaque onglet porte un bouton
+« détacher » (⧉) qui ouvre la conversation dans une fenêtre indépendante.
+
+- Le processus principal ouvre une fenêtre chargeant la SPA avec `?detached=<id>` ; cette
+  fenêtre n'affiche que la conversation (ni liste de contacts, ni onglets).
+- Les fenêtres **partagent la session** (cookie + coffre IndexedDB) : pas de
+  réauthentification, le chiffrement E2EE fonctionne à l'identique.
+- Seul le processus principal crée des fenêtres (via un pont `preload` minimal) ; le
+  contenu de la page ne peut pas en ouvrir (`setWindowOpenHandler` refuse tout).
+- Le bouton n'apparaît que dans le client de bureau ; sur le web, rien ne change.
+
 ## Durcissement
 
 La coquille conserve le durcissement d'Electron déjà en place : `contextIsolation`,

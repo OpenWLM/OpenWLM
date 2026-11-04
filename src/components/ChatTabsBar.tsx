@@ -21,6 +21,8 @@ interface ChatTabsBarProps {
   isGameTab: (id: number) => boolean;
   onSelectTab: (id: number) => void;
   onCloseTab: (e: React.MouseEvent, id: number) => void;
+  /** Détacher l'onglet dans une fenêtre séparée (client de bureau uniquement). */
+  onDetachTab?: (e: React.MouseEvent, id: number) => void;
   onMobileBack: () => void;
   onDragStart: (e: React.DragEvent<HTMLDivElement>, id: number) => void;
   onDragOver: (e: React.DragEvent<HTMLDivElement>, id: number) => void;
@@ -40,6 +42,7 @@ export const ChatTabsBar: React.FC<ChatTabsBarProps> = ({
   isGameTab,
   onSelectTab,
   onCloseTab,
+  onDetachTab,
   onMobileBack,
   onDragStart,
   onDragOver,
@@ -72,6 +75,17 @@ export const ChatTabsBar: React.FC<ChatTabsBarProps> = ({
             </span>
             {/* Compteur hors du nom (qui est tronqué) pour rester toujours visible */}
             {unreadCounts[id] && activeChatId !== id ? <span className="chat-tab-unread" aria-label={`${unreadCounts[id]}`}>{unreadCounts[id]}</span> : null}
+            {onDetachTab ? (
+              <span
+                className="chat-tab-detach"
+                title="Détacher dans une fenêtre"
+                draggable={false}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => onDetachTab(e, id)}
+              >
+                ⧉
+              </span>
+            ) : null}
             <span
               className="chat-tab-close"
               draggable={false}

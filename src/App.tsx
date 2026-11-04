@@ -458,6 +458,34 @@ function renderRichTokens(root: HTMLElement, tokens: RichToken[]): void {
 }
 
 /**
+ * CLIENT DE BUREAU (Electron) — conversation détachée en fenêtre séparée.
+ * Le processus principal ouvre une conversation détachée via le bridge preload
+ * (window.openwlmDesktop) en chargeant la SPA avec ?detached=<id>.
+ */
+declare global {
+  interface Window {
+    openwlmDesktop?: {
+      isDesktop: boolean;
+      openConversation: (contactId: number) => void;
+    };
+  }
+}
+
+/** Id de contact à afficher seul (fenêtre de conversation détachée), ou 0 sinon. */
+const DETACHED_CHAT_ID: number = (() => {
+  try {
+    const m = /[?&]detached=(\d+)/.exec(window.location.search);
+    const id = m ? Number(m[1]) : 0;
+    return Number.isInteger(id) && id > 0 ? id : 0;
+  } catch {
+    return 0;
+  }
+})();
+
+/** Vrai si on tourne dans la coquille de bureau (bridge preload présent). */
+const IS_DESKTOP: boolean = typeof window !== 'undefined' && !!window.openwlmDesktop?.isDesktop;
+
+/**
  * COMPOSANTS AUXILIAIRES
  */
 
@@ -506,8 +534,14 @@ const App: React.FC = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const socketRef = useRef<Socket | null>(null);
   useEffect(() => { socketRef.current = socket; }, [socket]);
-  const [openChatIds, setOpenChatIds] = useState<number[]>(loadOpenChatIds);
-  const [activeChatId, setActiveChatId] = useState<number>(loadActiveChatId);
+  // En fenêtre détachée, on force l'unique conversation demandée (sans toucher
+  // aux onglets enregistrés de la fenêtre principale).
+  const [openChatIds, setOpenChatIds] = useState<number[]>(
+    DETACHED_CHAT_ID ? () => [DETACHED_CHAT_ID] : loadOpenChatIds
+  );
+  const [activeChatId, setActiveChatId] = useState<number>(
+    DETACHED_CHAT_ID ? () => DETACHED_CHAT_ID : loadActiveChatId
+  );
   const activeChatIdRef = useRef(activeChatId);
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -1659,10 +1693,14 @@ const App: React.FC = () => {
    * PERSISTENCE DE LA NAVIGATION
    */
   useEffect(() => {
+    // Une fenêtre détachée ne persiste pas sa navigation (localStorage partagé
+    // avec la fenêtre principale : on ne veut pas écraser ses onglets).
+    if (DETACHED_CHAT_ID) return;
     saveOpenChatIds(openChatIds);
   }, [openChatIds]);
 
   useEffect(() => {
+    if (DETACHED_CHAT_ID) return;
     saveActiveChatId(activeChatId);
   }, [activeChatId]);
 
@@ -4310,6 +4348,16 @@ const App: React.FC = () => {
     }
   };
 
+  // Détacher une conversation dans sa propre fenêtre (client de bureau), façon
+  // WLM : on demande au processus principal d'ouvrir la fenêtre, puis on retire
+  // l'onglet de la fenêtre courante.
+  const detachChat = (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    if (!window.openwlmDesktop?.isDesktop) return;
+    window.openwlmDesktop.openConversation(id);
+    closeChat(e, id);
+  };
+
   /**
    * GLISSER-DÉPOSER DES ONGLETS DE DISCUSSION (DnD natif HTML5)
    */
@@ -4766,7 +4814,7 @@ const App: React.FC = () => {
 
   return (
     <div
-      className={`wlm-desktop ${activeChatId !== 0 ? 'chat-open' : ''} ${isNudging ? 'wlm-nudge' : ''}`}
+      className={`wlm-desktop ${activeChatId !== 0 ? 'chat-open' : ''} ${isNudging ? 'wlm-nudge' : ''} ${DETACHED_CHAT_ID ? 'detached' : ''}`}
       style={{ '--roster-width': `${appPrefs.layout.rosterWidth}px` } as React.CSSProperties}
     >
       {/* Affichage d'un Wink (Clin d'œil) si actif */}
@@ -4948,6 +4996,7 @@ const App: React.FC = () => {
             isGameTab={(id) => activeGame?.opponentId === id || resumableGames.some(g => g.opponentId === id)}
             onSelectTab={setActiveChatId}
             onCloseTab={closeChat}
+            onDetachTab={IS_DESKTOP && !DETACHED_CHAT_ID ? detachChat : undefined}
             onMobileBack={() => setActiveChatId(0)}
             onDragStart={handleTabDragStart}
             onDragOver={handleTabDragOver}

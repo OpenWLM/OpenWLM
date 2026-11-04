@@ -5341,3 +5341,23 @@ input.user-psm-integrated:focus { background-color: white !important; border: 1p
 .wlm-unlock-fallback .auth-link-btn:disabled { color: #999; cursor: default; }
 .wlm-unlock-hint { font-size: 10px; color: #666; margin-top: 4px; }
 .options-device-lock-select { margin-left: 6px; font-size: 11px; }
+
+/* ===========================================================================
+   CLIENT DE BUREAU (Electron) — conversation détachée en fenêtre séparée
+   Charge la SPA avec ?detached=<id> ; on force le mono-panneau (une seule
+   conversation plein cadre, sans liste de contacts ni barre d'onglets).
+   =========================================================================== */
+.wlm-desktop.detached .contact-list-window { display: none; }
+.wlm-desktop.detached .conversation-window { width: 100% !important; }
+.wlm-desktop.detached .chat-tabs-bar { display: none; }
+
+/* Bouton « détacher » d'un onglet (visible uniquement dans le client de bureau) */
+.chat-tab-detach {
+  cursor: pointer;
+  opacity: 0.55;
+  margin-left: 2px;
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.chat-tab-detach:hover { opacity: 1; }

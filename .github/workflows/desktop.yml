@@ -1,0 +1,54 @@
+name: Build desktop installers
+
+# Construit les installeurs du client de bureau sur les 3 OS, via runners natifs.
+# Déclenchement manuel (bouton "Run workflow") ou sur un tag de version `v*`.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            artifacts: |
+              release/*.AppImage
+              release/*.deb
+          - os: windows-latest
+            target: win
+            artifacts: release/*.exe
+          - os: macos-latest
+            target: mac
+            artifacts: release/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installer (${{ matrix.target }})
+        run: npm run dist:${{ matrix.target }}
+        env:
+          # Évite une publication involontaire : electron-builder ne fait que packager.
+          GH_TOKEN: ''
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwlm-${{ matrix.target }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error

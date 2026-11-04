@@ -24,6 +24,7 @@ npmRebuild: false
 # n'est requis à l'exécution, on les exclut donc pour un paquet léger.
 files:
   - electron-main.cjs
+  - preload.cjs
   - build/icon.png
   - package.json
   - "!node_modules/**/*"

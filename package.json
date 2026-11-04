@@ -3,6 +3,11 @@
   "private": true,
   "version": "1.7.0",
   "type": "module",
+  "description": "Client de bureau OpenWLM : messagerie chiffrée de bout en bout façon Windows Live Messenger.",
+  "author": {
+    "name": "OpenWLM",
+    "email": "openwlm@users.noreply.github.com"
+  },
   "main": "electron-main.cjs",
   "scripts": {
     "dev": "concurrently \"vite\" \"node --watch server/index.js\"",
@@ -13,6 +18,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron": "electron .",
+    "dist": "electron-builder",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
     "start": "npm run build && concurrently \"node server/index.js\" \"wait-on http://localhost:3001 && npm run electron\"",
     "android:sync": "cap sync android",
     "android:icons": "node scripts/gen_android_icons.cjs",
@@ -60,7 +69,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^10.0.3",
     "electron": "^42.4.0",
-    "electron-is-dev": "^3.0.1",
+    "electron-builder": "^26.18.0",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",

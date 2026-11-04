@@ -1,0 +1,70 @@
+# Configuration de l'empaquetage du client de bureau OpenWLM (electron-builder).
+#
+# Le client de bureau est une coquille Electron durcie (electron-main.cjs) qui se
+# connecte à un serveur OpenWLM (local ou distant, cf. electron-main.cjs). Il
+# n'embarque PAS le serveur ni le build Vite : il charge l'interface servie par
+# le serveur configuré. L'empaquetage reste donc léger.
+#
+#   npm run dist          -> installeur pour l'OS courant
+#   npm run dist:linux    -> AppImage + .deb
+#   npm run dist:win      -> installeur NSIS (.exe)   (nécessite Windows ou Wine)
+#   npm run dist:mac      -> .dmg                      (nécessite macOS)
+appId: com.openwlm.desktop
+productName: OpenWLM
+copyright: Copyright © 2026 OpenWLM
+
+# La coquille de bureau (electron-main.cjs) n'utilise AUCUN module natif : elle
+# ne fait qu'ouvrir une fenêtre vers le serveur OpenWLM. On désactive donc la
+# recompilation des modules natifs (better-sqlite3, sharp… appartiennent au
+# serveur, qui n'est pas empaqueté), inutile et source d'échecs de build.
+npmRebuild: false
+
+# Seuls les fichiers nécessaires à la coquille sont empaquetés. electron-main.cjs
+# n'utilise que des modules du cœur de Node et l'API Electron : aucun node_modules
+# n'est requis à l'exécution, on les exclut donc pour un paquet léger.
+files:
+  - electron-main.cjs
+  - build/icon.png
+  - package.json
+  - "!node_modules/**/*"
+
+directories:
+  output: release
+  buildResources: build
+
+# --- Linux ---
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Network
+  icon: build/icon.png
+  synopsis: Client de bureau OpenWLM (messagerie E2EE façon WLM)
+  description: >-
+    Coquille de bureau pour OpenWLM : une messagerie chiffrée de bout en bout
+    inspirée de Windows Live Messenger. Se connecte à un serveur OpenWLM local
+    ou auto-hébergé.
+
+# --- Windows ---
+win:
+  target:
+    - nsis
+  icon: build/icon.png
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: OpenWLM
+
+# --- macOS ---
+mac:
+  target:
+    - dmg
+  category: public.app-category.social-networking
+  icon: build/icon.png
+
+dmg:
+  title: OpenWLM

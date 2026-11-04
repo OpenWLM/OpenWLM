@@ -112,7 +112,7 @@ OpenWLM applies the security measures below. They are checked by an automated te
 ## Tech Stack
 
 - **Frontend**: React 19, TypeScript, Vite, Vanilla CSS (Aero retro theme).
-- **Client Platforms**: Web browser, Progressive Web App (PWA) with Service Worker & Web App Manifest, Android app (Capacitor, [docs/ANDROID.md](docs/ANDROID.md)), Desktop (Optional Electron wrapper).
+- **Client Platforms**: Web browser, Progressive Web App (PWA) with Service Worker & Web App Manifest, Android app (Capacitor, [docs/ANDROID.md](docs/ANDROID.md)), Desktop (Electron wrapper + installers, [docs/DESKTOP.md](docs/DESKTOP.md)).
 - **Backend**: Node.js, Express, Socket.IO.
 - **Database**: SQLite (via `better-sqlite3`).
 - **Cryptography**: Web Crypto API (`SubtleCrypto`), Node.js `crypto` (PBKDF2 SHA-512, AES-GCM, RSA-OAEP).

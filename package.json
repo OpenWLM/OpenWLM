@@ -9,6 +9,7 @@
     "email": "openwlm@users.noreply.github.com"
   },
   "main": "electron-main.cjs",
+  "desktopName": "openwlm.desktop",
   "scripts": {
     "dev": "concurrently \"vite\" \"node --watch server/index.js\"",
     "server": "node --watch server/index.js",
@@ -18,10 +19,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron": "electron .",
-    "dist": "electron-builder",
-    "dist:linux": "electron-builder --linux",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
     "start": "npm run build && concurrently \"node server/index.js\" \"wait-on http://localhost:3001 && npm run electron\"",
     "android:sync": "cap sync android",
     "android:icons": "node scripts/gen_android_icons.cjs",

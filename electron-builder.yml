@@ -35,12 +35,17 @@ directories:
   output: release
   buildResources: build
 
+# Les installeurs ne sont jamais publiés automatiquement (pas de Release implicite
+# sur un tag v*) : les scripts npm passent --publish never.
+
 # --- Linux ---
 linux:
   target:
     - AppImage
     - deb
   category: Network
+  # Associe les fenêtres à l'entrée .desktop (app_id / WM_CLASS), cf. desktopName.
+  syncDesktopName: true
   icon: build/icon.png
   synopsis: Client de bureau OpenWLM (messagerie E2EE façon WLM)
   description: >-

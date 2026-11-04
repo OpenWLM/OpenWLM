@@ -9,7 +9,7 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
-## [Non publié]
+## [2.0.1] - 2026-11-04
 
 ### Mise à jour du serveur
 - **Relecture de sécurité de la 2.0.0** : `server/index.js` (origines locales) et `server/routes/users.js` modifiés, aucune nouvelle route (règles WAF inchangées) : redémarrer le service. **Un serveur de production appelé depuis une origine locale autre que sa propre page** (autre port de `localhost` / `127.0.0.1`) doit désormais la déclarer dans `ALLOWED_ORIGINS`.

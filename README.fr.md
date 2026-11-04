@@ -235,8 +235,8 @@ git tag pre-feature-$(date +%Y%m%d)
 
 ## Version & Référence
 
-- **Version actuelle** : `v2.0.0` (application Android : versionCode 12)
-- **Tag Git de référence** : `v2.0.0`
+- **Version actuelle** : `v2.0.1` (application Android : versionCode 12)
+- **Tag Git de référence** : `v2.0.1`
 - **Historique** : Voir le fichier [CHANGELOG.md](CHANGELOG.md).
 
 ---

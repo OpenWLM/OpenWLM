@@ -9,7 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [2.0.1] - 2026-11-04
 
 ### Server update
 - **Security review of 2.0.0**: `server/index.js` (local origins) and `server/routes/users.js` changed, no new route (WAF rules unchanged): restart the service. **Production servers reached from a local origin other than their own page** (another port of `localhost` / `127.0.0.1`) must now list it in `ALLOWED_ORIGINS`.

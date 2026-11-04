@@ -410,6 +410,12 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                     <label htmlFor="pref-sort-name">{t.settings.layoutSortName}</label>
                   </div>
                 </div>
+                {typeof window !== 'undefined' && window.openwlmDesktop?.isDesktop && (
+                  <div className="options-subsection">
+                    <label className="options-label">{t.settings.layoutConversations}</label>
+                    <PrefCheckbox id="pref-conv-windows" checked={prefs.layout.conversationWindows} onChange={v => updateAppPrefs('layout', { conversationWindows: v })} label={t.settings.layoutConversationWindows} />
+                  </div>
+                )}
                 <div className="options-hint">{t.settings.prefsDeviceNote}</div>
               </div>
             )}

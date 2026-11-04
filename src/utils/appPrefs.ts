@@ -72,6 +72,11 @@ export interface AppPrefs {
     sortBy: 'status' | 'name';
     /** Contact de test « OpenWLM » dans la liste. */
     showBot: boolean;
+    /**
+     * Client de bureau uniquement : ouvrir chaque conversation dans sa propre
+     * fenêtre (comme le vrai WLM) au lieu d'un onglet. Sans effet sur le web.
+     */
+    conversationWindows: boolean;
     /** Largeur de la liste de contacts sur ordinateur (px), réglée en faisant glisser son bord. */
     rosterWidth: number;
   };
@@ -97,7 +102,7 @@ export const clampRosterWidth = (w: number) =>
 export const DEFAULT_PREFS: AppPrefs = {
   sounds: { enabled: true, volume: 1, message: true, contactOnline: true, nudge: true, call: true, games: true, winks: true, muteWhenBusy: false },
   messages: { emoticonImages: true, showTimestamps: true, receiveNudges: true, autoPlayWinks: true, keepLocalHistory: true, showFormatting: true, quickTexts: [] },
-  layout: { showOffline: true, showPsm: true, sortBy: 'status', showBot: true, rosterWidth: ROSTER_WIDTH_DEFAULT },
+  layout: { showOffline: true, showPsm: true, sortBy: 'status', showBot: true, rosterWidth: ROSTER_WIDTH_DEFAULT, conversationWindows: false },
   security: { deviceLock: false, relockMinutes: 5 }
 };
 

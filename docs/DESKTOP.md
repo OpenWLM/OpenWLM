@@ -33,13 +33,19 @@ Wine ; Linux (AppImage/.deb) se construit nativement sous Linux.
 
 ## Choix du serveur
 
-L'application se connecte à un serveur OpenWLM, résolu dans cet ordre (première valeur
-retenue) :
+Au **premier lancement**, la version installée affiche une **fenêtre de configuration** :
+l'utilisateur saisit l'adresse de son serveur OpenWLM, qui est validée (test de
+joignabilité `GET /api/push/status`) puis enregistrée dans `config.json`. L'adresse est
+modifiable ensuite via le menu **Serveur → Changer de serveur…**.
+
+L'adresse est résolue dans cet ordre (première valeur retenue) :
 
 1. **Variable d'environnement** `OPENWLM_URL` (dev, CI, utilisateurs avancés) ;
-2. **Fichier de config** `config.json` dans le dossier *userData* de l'application, au
-   format `{ "serverUrl": "https://mon-serveur.example" }` ;
-3. **Défaut** `http://localhost:3001` (rétro-compatible avec `npm start`).
+2. **Fichier de config** `config.json` dans le dossier *userData*, au format
+   `{ "serverUrl": "https://mon-serveur.example" }` (écrit par la fenêtre de configuration) ;
+3. **Développement uniquement** (`npm run electron` non empaqueté) : `http://localhost:3001`
+   (compat `npm start`) ;
+4. **Version installée sans config** : fenêtre de configuration au premier lancement.
 
 Le chemin exact de `config.json` est journalisé au démarrage (console du processus
 principal). Emplacements habituels de *userData* :
@@ -58,9 +64,13 @@ principal). Emplacements habituels de *userData* :
 
 ## Conversations en fenêtres séparées
 
-Comme le vrai WLM, une conversation peut être **détachée dans sa propre fenêtre**. Par
-défaut, les conversations restent en **onglets** ; chaque onglet porte un bouton
-« détacher » (⧉) qui ouvre la conversation dans une fenêtre indépendante.
+Comme le vrai WLM, une conversation peut s'afficher dans **sa propre fenêtre**.
+
+- **Option globale** : *Options → Mise en page → Conversations → « Ouvrir chaque conversation
+  dans sa propre fenêtre »*. Activée, ouvrir une conversation ouvre une fenêtre ; désactivée,
+  on reste en onglets. (Visible uniquement dans le client de bureau.)
+- **Au cas par cas** : chaque onglet porte un bouton « détacher » (⧉) qui sort la
+  conversation dans une fenêtre indépendante.
 
 - Le processus principal ouvre une fenêtre chargeant la SPA avec `?detached=<id>` ; cette
   fenêtre n'affiche que la conversation (ni liste de contacts, ni onglets).

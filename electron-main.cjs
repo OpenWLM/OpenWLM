@@ -1,56 +1,117 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 
 // ---------------------------------------------------------------------------
 // Origine du serveur OpenWLM
 // ---------------------------------------------------------------------------
 // L'application de bureau est un client : elle n'embarque PAS le serveur, elle
-// s'y connecte. L'URL est résolue dans cet ordre (la première valeur gagne) :
-//   1. Variable d'environnement OPENWLM_URL  (dev, CI, utilisateurs avancés)
-//   2. config.json dans le dossier userData  ({ "serverUrl": "https://..." })
-//   3. Défaut http://localhost:3001          (rétro-compatible : `npm start`)
+// s'y connecte. L'adresse est résolue dans cet ordre :
+//   1. Variable d'environnement OPENWLM_URL        (dev, CI, utilisateurs avancés)
+//   2. config.json dans le dossier userData        ({ "serverUrl": "https://..." })
+//   3. En DÉVELOPPEMENT uniquement : http://localhost:3001 (compat `npm start`)
+//   4. En version installée sans config : fenêtre de configuration au 1er lancement
 //
-// Pour pointer vers une instance OpenWLM auto-hébergée, l'utilisateur crée
-// <userData>/config.json avec { "serverUrl": "https://mon-serveur.example" }.
-// Le chemin exact de userData est journalisé au démarrage.
+// L'adresse saisie au 1er lancement est enregistrée dans <userData>/config.json et
+// modifiable ensuite via le menu « Serveur → Changer de serveur… ».
 const DEFAULT_URL = 'http://localhost:3001';
 
 // Résolus une fois l'app prête, réutilisés par toutes les fenêtres.
 let APP_URL = DEFAULT_URL;
 let APP_ORIGIN = new URL(DEFAULT_URL).origin;
 
+function configPath() {
+  return path.join(app.getPath('userData'), 'config.json');
+}
+
 function readConfigUrl() {
   try {
-    const cfgPath = path.join(app.getPath('userData'), 'config.json');
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    const cfg = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
     if (cfg && typeof cfg.serverUrl === 'string' && cfg.serverUrl.trim()) {
       return cfg.serverUrl.trim();
     }
   } catch {
-    // pas de config.json lisible : on passe au défaut
+    // pas de config.json lisible
   }
   return null;
 }
 
-function resolveAppUrl() {
-  const fromEnv = (process.env.OPENWLM_URL || '').trim();
-  if (fromEnv) return fromEnv;
-  const fromCfg = readConfigUrl();
-  if (fromCfg) return fromCfg;
-  return DEFAULT_URL;
+function writeConfigUrl(url) {
+  fs.writeFileSync(configPath(), JSON.stringify({ serverUrl: url }, null, 2), 'utf8');
 }
 
-// Permissions strictement nécessaires à l'application :
-// - media : appels audio/vidéo WebRTC (getUserMedia)
-// - notifications : alertes système et notifications push
-// - idle-detection : option « inactivité de tout l'ordinateur » (statut Absent automatique)
-// Tout le reste (géolocalisation, USB, Bluetooth, MIDI, etc.) est refusé.
-const ALLOWED_PERMISSIONS = new Set(['media', 'notifications', 'idle-detection']);
+/** Adresse déjà configurée (env ou config.json), ou null. */
+function configuredUrl() {
+  const fromEnv = (process.env.OPENWLM_URL || '').trim();
+  if (fromEnv) return fromEnv;
+  return readConfigUrl();
+}
+
+/** Ajoute https:// si le schéma est absent, et valide la forme. Renvoie l'URL ou null. */
+function normalizeUrl(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return null;
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  try {
+    const u = new URL(s);
+    // On retire un éventuel chemin / slash final superflu : on garde l'origine.
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
 
 /**
- * Indique si une URL est une URL web externe chargeable dans le navigateur système.
+ * Vérifie que l'adresse répond comme un serveur OpenWLM (GET /api/push/status).
+ * Comme l'app Android, ce n'est PAS une authentification : juste un test de joignabilité.
  */
+function probeServer(originUrl) {
+  return new Promise((resolve) => {
+    let u;
+    try {
+      u = new URL('/api/push/status', originUrl);
+    } catch {
+      resolve({ ok: false, error: 'Adresse invalide.' });
+      return;
+    }
+    const lib = u.protocol === 'http:' ? http : https;
+    const req = lib.request(
+      u,
+      { method: 'GET', timeout: 8000 },
+      (res) => {
+        // On consomme et on ignore le corps ; un code HTTP = serveur joignable.
+        res.resume();
+        if (res.statusCode && res.statusCode < 500) {
+          resolve({ ok: true });
+        } else {
+          resolve({ ok: false, error: `Le serveur a répondu ${res.statusCode}.` });
+        }
+      }
+    );
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'Délai dépassé.' }); });
+    req.on('error', (e) => resolve({ ok: false, error: `Injoignable : ${e.message}` }));
+    req.end();
+  });
+}
+
+function applyUrl(url) {
+  APP_URL = url;
+  try {
+    APP_ORIGIN = new URL(url).origin;
+  } catch {
+    APP_URL = DEFAULT_URL;
+    APP_ORIGIN = new URL(DEFAULT_URL).origin;
+  }
+}
+
+// Permissions strictement nécessaires :
+// - media : appels audio/vidéo WebRTC (getUserMedia)
+// - notifications : alertes système et notifications push
+// - idle-detection : statut Absent automatique (inactivité de tout l'ordinateur)
+const ALLOWED_PERMISSIONS = new Set(['media', 'notifications', 'idle-detection']);
+
 function isExternalWebUrl(rawUrl) {
   try {
     const { protocol, origin } = new URL(rawUrl);
@@ -60,43 +121,28 @@ function isExternalWebUrl(rawUrl) {
   }
 }
 
-/**
- * Durcissement commun à toutes les fenêtres (principale et conversations détachées).
- */
+/** Durcissement commun à toutes les fenêtres de l'application. */
 function hardenWindow(win) {
-  // Toute navigation hors de l'origine de l'application est déviée vers le
-  // navigateur système au lieu d'être chargée dans la fenêtre Electron.
   win.webContents.on('will-navigate', (event, url) => {
     if (isExternalWebUrl(url)) {
       event.preventDefault();
       shell.openExternal(url);
     }
   });
-
-  // Interdit au renderer d'ouvrir des fenêtres Electron (window.open, target=_blank).
-  // Les fenêtres de conversation sont créées par le processus principal via IPC,
-  // jamais par le contenu de la page.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
       shell.openExternal(url);
     }
     return { action: 'deny' };
   });
-
-  // N'accorde que les permissions nécessaires ; tout le reste est refusé.
   const { session } = win.webContents;
-  session.setPermissionRequestHandler((_webContents, permission, callback) => {
+  session.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(ALLOWED_PERMISSIONS.has(permission));
   });
-  session.setPermissionCheckHandler((_webContents, permission) => {
-    return ALLOWED_PERMISSIONS.has(permission);
-  });
+  session.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
 }
 
 const COMMON_WEB_PREFERENCES = {
-  // Durcissement du renderer : la web app ne requiert aucun accès natif.
-  // Le contenu distant (messages, fichiers, liens) ne doit jamais pouvoir
-  // atteindre Node ni l'API Electron.
   preload: path.join(__dirname, 'preload.cjs'),
   nodeIntegration: false,
   nodeIntegrationInWorker: false,
@@ -108,9 +154,9 @@ const COMMON_WEB_PREFERENCES = {
   webviewTag: false,
 };
 
-/**
- * Fenêtre principale (liste de contacts + conversations en onglets).
- */
+let setupWindow = null;
+
+/** Fenêtre principale (liste de contacts + conversations en onglets). */
 function createMainWindow() {
   const win = new BrowserWindow({
     width: 1000,
@@ -120,8 +166,6 @@ function createMainWindow() {
     title: 'OpenWLM',
     icon: path.join(__dirname, 'build/icon.png'),
     webPreferences: COMMON_WEB_PREFERENCES,
-    // WLM 2009 avait un cadre personnalisé (custom frame), désactivé ici pour la stabilité
-    // frame: false,
   });
   hardenWindow(win);
   win.loadURL(APP_URL);
@@ -129,25 +173,18 @@ function createMainWindow() {
 }
 
 /**
- * Fenêtre de conversation détachée (le ressenti « une fenêtre par conversation »
- * du vrai WLM). On recharge la même SPA avec ?detached=<id> : la session (cookie +
- * coffre IndexedDB) étant partagée entre fenêtres, l'authentification et le
- * chiffrement fonctionnent à l'identique, sans réauthentification.
+ * Fenêtre de conversation détachée (« une fenêtre par conversation » du vrai WLM).
+ * On recharge la même SPA avec ?detached=<id> : la session (cookie + coffre IndexedDB)
+ * étant partagée entre fenêtres, auth et chiffrement fonctionnent à l'identique.
  */
 function openConversationWindow(contactId) {
   const id = Number(contactId);
   if (!Number.isInteger(id) || id <= 0) return;
 
-  // Évite les doublons : si une fenêtre pour ce contact existe déjà, on la ramène.
   const existing = BrowserWindow.getAllWindows().find((w) => w.openwlmChatId === id);
-  if (existing) {
-    existing.focus();
-    return;
-  }
+  if (existing) { existing.focus(); return; }
 
   const sep = APP_URL.includes('?') ? '&' : '?';
-  const url = `${APP_URL}${sep}detached=${id}`;
-
   const win = new BrowserWindow({
     width: 420,
     height: 640,
@@ -159,46 +196,103 @@ function openConversationWindow(contactId) {
   });
   win.openwlmChatId = id;
   hardenWindow(win);
-  win.loadURL(url);
+  win.loadURL(`${APP_URL}${sep}detached=${id}`);
 }
 
-// Le renderer (via preload) demande l'ouverture d'une conversation détachée.
-ipcMain.on('open-conversation-window', (_event, contactId) => {
-  openConversationWindow(contactId);
-});
+/** Fenêtre de configuration du serveur (1er lancement ou changement). */
+function openSetupWindow() {
+  if (setupWindow && !setupWindow.isDestroyed()) { setupWindow.focus(); return; }
+  setupWindow = new BrowserWindow({
+    width: 480,
+    height: 440,
+    resizable: false,
+    title: 'OpenWLM — Configuration',
+    icon: path.join(__dirname, 'build/icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'desktop/preload-setup.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+  setupWindow.setMenuBarVisibility(false);
+  setupWindow.loadFile(path.join(__dirname, 'desktop/setup.html'));
+  setupWindow.on('closed', () => { setupWindow = null; });
+}
 
-/**
- * Initialisation de l'application Electron
- */
-app.whenReady().then(() => {
-  APP_URL = resolveAppUrl();
+// --- IPC : conversations détachées ---------------------------------------------------------
+ipcMain.on('open-conversation-window', (_event, contactId) => openConversationWindow(contactId));
+
+// --- IPC : fenêtre de configuration --------------------------------------------------------
+ipcMain.handle('openwlm-setup:default-url', () => configuredUrl() || (app.isPackaged ? '' : DEFAULT_URL));
+
+ipcMain.handle('openwlm-setup:save', async (_event, rawUrl) => {
+  const url = normalizeUrl(rawUrl);
+  if (!url) return { ok: false, error: 'Adresse invalide.' };
+  const probe = await probeServer(url);
+  if (!probe.ok) return probe;
   try {
-    APP_ORIGIN = new URL(APP_URL).origin;
-  } catch {
-    console.error(`[OpenWLM] URL de serveur invalide : "${APP_URL}" — repli sur ${DEFAULT_URL}`);
-    APP_URL = DEFAULT_URL;
-    APP_ORIGIN = new URL(DEFAULT_URL).origin;
+    writeConfigUrl(url);
+  } catch (e) {
+    return { ok: false, error: `Impossible d'enregistrer : ${e.message}` };
   }
-  console.log(`[OpenWLM] Serveur : ${APP_URL}`);
-  console.log(`[OpenWLM] Config utilisateur : ${path.join(app.getPath('userData'), 'config.json')}`);
+  applyUrl(url);
+  const toClose = setupWindow;
+  setupWindow = null;
   createMainWindow();
+  if (toClose && !toClose.isDestroyed()) toClose.close();
+  return { ok: true };
 });
 
-/**
- * Gestion de la fermeture de toutes les fenêtres
- */
-app.on('window-all-closed', () => {
-  // Sur macOS, l'application reste généralement active jusqu'à ce que l'utilisateur quitte explicitement
-  if (process.platform !== 'darwin') {
-    app.quit();
+/** Menu applicatif minimal : changer de serveur + rôles d'édition usuels. */
+function buildMenu() {
+  const template = [
+    {
+      label: 'Serveur',
+      submenu: [
+        { label: 'Changer de serveur…', click: () => openSetupWindow() },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quitter' },
+      ],
+    },
+    { label: 'Édition', submenu: [
+      { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+    ] },
+    { label: 'Affichage', submenu: [
+      { role: 'reload' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
+      { type: 'separator' }, { role: 'togglefullscreen' },
+    ] },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+app.whenReady().then(() => {
+  buildMenu();
+  const existing = configuredUrl();
+  if (existing) {
+    applyUrl(existing);
+    console.log(`[OpenWLM] Serveur : ${APP_URL}`);
+    createMainWindow();
+  } else if (!app.isPackaged) {
+    // Développement : connexion directe au serveur local (compat `npm start`).
+    applyUrl(DEFAULT_URL);
+    console.log(`[OpenWLM] Serveur (dev) : ${APP_URL}`);
+    createMainWindow();
+  } else {
+    // Version installée sans configuration : demander l'adresse au 1er lancement.
+    console.log(`[OpenWLM] Aucun serveur configuré — fenêtre de configuration (${configPath()})`);
+    openSetupWindow();
   }
 });
 
-/**
- * Réactivation de l'application (macOS)
- */
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createMainWindow();
+    if (configuredUrl() || !app.isPackaged) createMainWindow();
+    else openSetupWindow();
   }
 });

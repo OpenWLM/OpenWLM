@@ -25,6 +25,8 @@ npmRebuild: false
 files:
   - electron-main.cjs
   - preload.cjs
+  - desktop/setup.html
+  - desktop/preload-setup.cjs
   - build/icon.png
   - package.json
   - "!node_modules/**/*"

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenWLM — Configuration</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg1: #d5e9f8; --bg2: #eaf4fc; --fg: #123; --muted: #5b7a93;
+      --card: rgba(255,255,255,0.75); --border: #9cc4e4;
+      --accent: #0099d6; --accent2: #74c2e6; --err: #c0392b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg1:#0f2233; --bg2:#13283b; --fg:#e8f2fb; --muted:#9fc0da;
+        --card: rgba(20,40,58,0.8); --border:#2c5272; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif; color: var(--fg);
+      background: linear-gradient(160deg, var(--bg2), var(--bg1));
+      padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 420px; background: var(--card); backdrop-filter: blur(6px);
+      border: 1px solid var(--border); border-radius: 12px; padding: 26px 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    }
+    .brand { display:flex; align-items:center; gap:10px; margin-bottom: 4px; }
+    .brand .dot { width:14px; height:14px; border-radius:50%;
+      background: radial-gradient(circle at 30% 30%, var(--accent2), var(--accent)); }
+    h1 { font-size: 18px; margin: 0; font-weight: 700; }
+    h1 span { color: var(--accent); }
+    p.lead { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 10px 0 18px; }
+    label { display:block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    input {
+      width: 100%; padding: 10px 12px; font-size: 14px; border-radius: 8px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.9); color: #123;
+    }
+    @media (prefers-color-scheme: dark) { input { background: rgba(10,22,33,0.9); color: #e8f2fb; } }
+    input:focus { outline: 2px solid var(--accent2); border-color: var(--accent); }
+    .row { display:flex; gap:10px; margin-top: 18px; }
+    button {
+      flex: 1; padding: 11px 14px; font-size: 14px; font-weight: 600; cursor: pointer;
+      border: none; border-radius: 8px; color: #fff;
+      background: linear-gradient(to bottom, var(--accent2), var(--accent));
+    }
+    button:disabled { opacity: 0.6; cursor: default; }
+    button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .msg { margin-top: 14px; font-size: 12.5px; min-height: 18px; }
+    .msg.err { color: var(--err); }
+    .msg.ok { color: var(--accent); }
+    .note { margin-top: 16px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="dot"></span><h1>Open<span>WLM</span></h1></div>
+    <p class="lead">Indiquez l'adresse de votre serveur OpenWLM. L'application s'y
+      connectera pour afficher la messagerie (chiffrement de bout en bout inchangé).</p>
+
+    <label for="url">Adresse du serveur</label>
+    <input id="url" type="text" inputmode="url" autocomplete="off"
+           placeholder="https://messenger.exemple.fr" />
+
+    <div class="row">
+      <button id="connect">Se connecter</button>
+    </div>
+
+    <div id="msg" class="msg" role="status"></div>
+
+    <p class="note">⚠️ Serveur de confiance uniquement : il affiche l'interface et
+      reçoit votre identifiant et votre clé de connexion. Ne saisissez que l'adresse d'un
+      serveur OpenWLM que vous contrôlez ou en qui vous avez confiance.</p>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const input = $('url'), btn = $('connect'), msg = $('msg');
+
+    (async () => {
+      try {
+        const def = await window.openwlmSetup.defaultUrl();
+        if (def) input.value = def;
+      } catch {}
+      input.focus();
+      input.select();
+    })();
+
+    function setMsg(text, cls) { msg.textContent = text; msg.className = 'msg ' + (cls || ''); }
+
+    async function connect() {
+      const url = input.value.trim();
+      if (!url) { setMsg('Saisissez une adresse.', 'err'); return; }
+      btn.disabled = true;
+      setMsg('Connexion au serveur…');
+      try {
+        const res = await window.openwlmSetup.save(url);
+        if (res && res.ok) {
+          setMsg('Connecté. Ouverture…', 'ok');
+        } else {
+          setMsg((res && res.error) || 'Serveur injoignable.', 'err');
+          btn.disabled = false;
+        }
+      } catch (e) {
+        setMsg('Erreur : ' + (e && e.message ? e.message : e), 'err');
+        btn.disabled = false;
+      }
+    }
+
+    btn.addEventListener('click', connect);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect(); });
+  </script>
+</body>
+</html>

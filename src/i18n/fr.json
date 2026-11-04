@@ -465,6 +465,8 @@
     "layoutShowOffline": "Afficher les contacts hors ligne",
     "layoutShowPsm": "Afficher les messages personnels",
     "layoutShowBot": "Afficher le contact de test « OpenWLM »",
+    "layoutConversations": "Conversations",
+    "layoutConversationWindows": "Ouvrir chaque conversation dans sa propre fenêtre",
     "layoutSort": "Trier les contacts",
     "layoutSortStatus": "Par statut (Disponible, Occupé, Absent), puis par nom",
     "layoutSortName": "Par nom",

@@ -465,6 +465,8 @@
     "layoutShowOffline": "Show offline contacts",
     "layoutShowPsm": "Show personal messages",
     "layoutShowBot": "Show the \"OpenWLM\" test contact",
+    "layoutConversations": "Conversations",
+    "layoutConversationWindows": "Open each conversation in its own window",
     "layoutSort": "Sort contacts",
     "layoutSortStatus": "By status (Available, Busy, Away), then by name",
     "layoutSortName": "By name",

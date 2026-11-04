@@ -4329,6 +4329,18 @@ const App: React.FC = () => {
    * GESTION DES DISCUSSIONS OUVERTES
    */
   const openChat = async (id: number) => {
+    // Client de bureau, mode « une fenêtre par conversation » : ouvrir dans une
+    // fenêtre séparée au lieu d'un onglet (le bot reste en onglet : id négatif).
+    if (
+      !DETACHED_CHAT_ID &&
+      IS_DESKTOP &&
+      appPrefs.layout.conversationWindows &&
+      id !== SYSTEM_BOT_ID &&
+      window.openwlmDesktop
+    ) {
+      window.openwlmDesktop.openConversation(id);
+      return;
+    }
     if (!openChatIds.includes(id)) {
       setOpenChatIds(prev => [...prev, id]);
 

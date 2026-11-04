@@ -9,6 +9,11 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 
 ---
 
+## [Non publié]
+
+### Mise à jour du serveur
+- **Dépendances (sécurité)** : follow-redirects 1.16.2 (tiré par axios ; alerte haute GHSA-mrwp-f3q8-3g9p, des identifiants pouvaient suivre une redirection) : `npm ci`, puis redémarrer le service.
+
 ## [2.0.0] - 2026-11-04
 
 ### Mise à jour du serveur

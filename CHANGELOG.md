@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Server update
+- **Dependencies (security)**: follow-redirects 1.16.2 (pulled in by axios; high advisory GHSA-mrwp-f3q8-3g9p, credentials could follow a redirect): `npm ci`, then restart the service.
+
 ## [2.0.0] - 2026-11-04
 
 ### Server update

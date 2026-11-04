@@ -59,8 +59,8 @@ principal). Emplacements habituels de *userData* :
 > ⚠️ **Serveur de confiance uniquement**, comme pour l'app Android : le serveur choisi
 > affiche l'interface, reçoit l'identifiant et la clé de connexion, et accède aux API
 > natives via Electron. Ne pointez l'app que vers un serveur OpenWLM que vous contrôlez ou
-> en qui vous avez confiance. (Un sélecteur de serveur au premier lancement, comme sur
-> Android, est une évolution naturelle de cette coquille.)
+> en qui vous avez confiance. Changer de serveur ferme toutes les fenêtres ouvertes sur
+> l'ancien.
 
 ## Conversations en fenêtres séparées
 
@@ -79,6 +79,10 @@ Comme le vrai WLM, une conversation peut s'afficher dans **sa propre fenêtre**.
 - Seul le processus principal crée des fenêtres (via un pont `preload` minimal) ; le
   contenu de la page ne peut pas en ouvrir (`setWindowOpenHandler` refuse tout).
 - Le bouton n'apparaît que dans le client de bureau ; sur le web, rien ne change.
+- Une fenêtre détachée ne réagit qu'à sa propre conversation : sons, wizz des autres
+  contacts et notifications de connexion restent gérés par la fenêtre principale.
+- Le pont `preload` n'accepte les demandes que du cadre principal servi par le serveur
+  configuré ; la fenêtre de configuration a son propre pont, inaccessible aux autres fenêtres.
 
 ## Durcissement
 

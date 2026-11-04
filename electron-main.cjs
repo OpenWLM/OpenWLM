@@ -216,17 +216,42 @@ function openSetupWindow() {
     },
   });
   setupWindow.setMenuBarVisibility(false);
+  // Page locale sans contenu distant : aucune navigation ni nouvelle fenêtre autorisée.
+  setupWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  setupWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   setupWindow.loadFile(path.join(__dirname, 'desktop/setup.html'));
   setupWindow.on('closed', () => { setupWindow = null; });
 }
 
+/** L'IPC applicatif n'est accepté que depuis le cadre principal servi par le serveur configuré. */
+function isTrustedAppSender(event) {
+  try {
+    const frame = event.senderFrame;
+    return !!frame && frame === event.sender.mainFrame && new URL(frame.url).origin === APP_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
+/** L'IPC de configuration n'est accepté que depuis la fenêtre de configuration locale. */
+function isSetupSender(event) {
+  return !!setupWindow && !setupWindow.isDestroyed() && event.sender === setupWindow.webContents;
+}
+
 // --- IPC : conversations détachées ---------------------------------------------------------
-ipcMain.on('open-conversation-window', (_event, contactId) => openConversationWindow(contactId));
+ipcMain.on('open-conversation-window', (event, contactId) => {
+  if (!isTrustedAppSender(event)) return;
+  openConversationWindow(contactId);
+});
 
 // --- IPC : fenêtre de configuration --------------------------------------------------------
-ipcMain.handle('openwlm-setup:default-url', () => configuredUrl() || (app.isPackaged ? '' : DEFAULT_URL));
+ipcMain.handle('openwlm-setup:default-url', (event) => {
+  if (!isSetupSender(event)) return '';
+  return configuredUrl() || (app.isPackaged ? '' : DEFAULT_URL);
+});
 
-ipcMain.handle('openwlm-setup:save', async (_event, rawUrl) => {
+ipcMain.handle('openwlm-setup:save', async (event, rawUrl) => {
+  if (!isSetupSender(event)) return { ok: false, error: 'Requête refusée.' };
   const url = normalizeUrl(rawUrl);
   if (!url) return { ok: false, error: 'Adresse invalide.' };
   const probe = await probeServer(url);
@@ -236,10 +261,14 @@ ipcMain.handle('openwlm-setup:save', async (_event, rawUrl) => {
   } catch (e) {
     return { ok: false, error: `Impossible d'enregistrer : ${e.message}` };
   }
-  applyUrl(url);
+  // Changement de serveur : on ferme les fenêtres pointant vers l'ancienne origine
+  // (fenêtre principale et conversations détachées) avant d'ouvrir la nouvelle.
   const toClose = setupWindow;
   setupWindow = null;
+  const stale = BrowserWindow.getAllWindows().filter((w) => w !== toClose);
+  applyUrl(url);
   createMainWindow();
+  for (const w of stale) if (!w.isDestroyed()) w.close();
   if (toClose && !toClose.isDestroyed()) toClose.close();
   return { ok: true };
 });

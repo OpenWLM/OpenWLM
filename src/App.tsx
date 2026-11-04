@@ -2547,12 +2547,18 @@ const App: React.FC = () => {
         // (pas de son, pas de wizz/wink rejoué, pas de notification).
         if (isSender) return;
 
+        // Fenêtre détachée (client de bureau) : seule sa propre conversation la concerne.
+        // Sons, wizz et notifications des autres contacts restent à la fenêtre principale
+        // (sinon ils seraient rejoués une fois par fenêtre ouverte).
+        if (DETACHED_CHAT_ID && conversationContactId !== DETACHED_CHAT_ID) return;
+
         // Déclenchement des actions spéciales si chiffré
         if (decryptedData.type === 'wink' && decryptedData.winkId) {
           handleSendWink(decryptedData.winkId, true, senderId);
         } else if (decryptedData.type === 'nudge') {
           handleNudge(true, senderId);
-        } else {
+        } else if (!DETACHED_CHAT_ID) {
+          // Le son « nouveau message » est joué par la fenêtre principale (pas de doublon).
           SoundManager.play('NEW_MESSAGE');
         }
 
@@ -2620,6 +2626,8 @@ const App: React.FC = () => {
       // Réception d'un Wizz
       newSocket.on('receive_wizz', (data) => {
         const senderId = data.senderId;
+        // Fenêtre détachée : le wizz d'un autre contact est traité par la fenêtre principale.
+        if (DETACHED_CHAT_ID && senderId !== DETACHED_CHAT_ID) return;
         setOpenChatIds(prev => prev.includes(senderId) ? prev : [...prev, senderId]);
         if (typeof window !== 'undefined' && window.innerWidth <= 768) {
           setActiveChatId(prev => (prev === 0 ? senderId : prev));
@@ -2803,7 +2811,8 @@ const App: React.FC = () => {
         // Le serveur marque les vraies connexions (`signedIn`) : une mise à jour de profil ou un
         // état local périmé ne déclenchent plus de faux « vient de se connecter »
         const isSignIn = !!knownContact && data.signedIn === true;
-        if (isSignIn && Date.now() > signInQuietUntil) {
+        // (pas en fenêtre détachée : la fenêtre principale s'en charge, sans doublon)
+        if (isSignIn && !DETACHED_CHAT_ID && Date.now() > signInQuietUntil) {
           const signInName = knownContact.nickname || knownContact.username;
           const signInAvatar = data.avatar || knownContact.avatar || '/assets/usertiles/chess.png';
           const signInDecision = decideNotificationType({

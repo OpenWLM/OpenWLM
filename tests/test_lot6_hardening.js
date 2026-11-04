@@ -205,6 +205,9 @@ test('liste des contacts : un contact qui m’a supprimé ou bloqué apparaît h
 test('WebSocket : origine étrangère refusée, page du serveur et clients sans origine acceptés', async () => {
   await assert.rejects(connect(tok(ALICE), 'https://evil.example'), 'origine étrangère');
   await assert.rejects(connect(tok(ALICE), 'http://192.0.2.10:8080'), 'autre hôte du réseau');
+  // Autre port de la même machine (même « site » pour le cookie) : refusé hors développement
+  await assert.rejects(connect(tok(ALICE), `http://localhost:${port + 1}`), 'autre port local');
+  await assert.rejects(connect(tok(ALICE), `http://127.0.0.1:${port + 1}`), 'autre port local (IP)');
   const same = await connect(tok(ALICE), `http://127.0.0.1:${port}`);
   same.close();
   const none = await connect(tok(ALICE));
@@ -252,6 +255,11 @@ test('coffre de clés : 10 mauvais mots de passe par 15 min, même le bon est en
   const blocked = await request('/api/user/vault', 'POST', tok(HENRI), { authKeyHex: LEGACY_HEX });
   assert.equal(blocked.status, 429);
   assert.ok(!blocked.data.vault);
+  // Même compteur pour l'enregistrement des clés (/user/keys) : pas de budget d'essais en plus
+  const { publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: 'jwk' });
+  const keys = await request('/api/user/keys', 'POST', tok(HENRI), { publicKey: jwk, encryptedPrivateKey: JSON.parse(VAULT), authKeyHex: LEGACY_HEX });
+  assert.equal(keys.status, 429, JSON.stringify(keys.data));
 });
 
 test('appel : un blocage pendant l’appel ne laisse plus les deux « occupés »', async () => {

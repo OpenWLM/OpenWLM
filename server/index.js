@@ -86,19 +86,27 @@ const httpServer = createServer(app);
 app.set('trust proxy', false);
 
 // SÉCURITÉ (M1) : Origines autorisées pour CORS/Socket.IO
-const allowedOrigins = [
-  'http://localhost:3001',
-  'http://127.0.0.1:3001',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'file://'
-];
+// Les origines locales (localhost / 127.0.0.1, tout port : Vite, Electron en dev) ne sont
+// acceptées qu'en développement. En production (et sous NODE_ENV=test, qui en vérifie le
+// comportement) : seulement ALLOWED_ORIGINS et la page servie par ce serveur (même hôte,
+// cf. isSameHostOrigin) — sinon une page servie sur un autre port de la même machine
+// (même « site » pour le cookie SameSite) pouvait ouvrir une connexion authentifiée.
+const allowLocalDevOrigins = !['production', 'test'].includes(process.env.NODE_ENV);
+const allowedOrigins = [];
 if (process.env.ALLOWED_ORIGINS) {
   allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean));
 }
+const isLocalDevOrigin = (origin) => {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return protocol === 'http:' && (hostname === 'localhost' || hostname === '127.0.0.1');
+  } catch {
+    return false;
+  }
+};
 const isOriginAllowed = (origin) => {
   if (!origin) return true;
-  return allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:');
+  return allowedOrigins.includes(origin) || (allowLocalDevOrigins && isLocalDevOrigin(origin));
 };
 
 /** L'origine désigne ce même serveur (même hôte et port que la requête). */

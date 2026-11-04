@@ -87,7 +87,16 @@ Comme le vrai WLM, une conversation peut s'afficher dans **sa propre fenêtre**.
 ## Durcissement
 
 La coquille conserve le durcissement d'Electron déjà en place : `contextIsolation`,
-`sandbox`, `nodeIntegration: false`, `webSecurity`, pas de `webviewTag`. Les permissions
-accordées se limitent à `media` (WebRTC), `notifications` et `idle-detection` ; toute
-navigation hors de l'origine du serveur est renvoyée vers le navigateur système, et
-l'ouverture de nouvelles fenêtres Electron est interdite.
+`sandbox`, `nodeIntegration: false`, `webSecurity`, pas de `webviewTag`.
+
+- **HTTPS obligatoire** : comme l'app Android, l'adresse du serveur doit être en `https://`.
+  HTTP n'est accepté que pour un serveur sur la machine elle-même (`localhost`, `127.0.0.1`,
+  `[::1]`). Une adresse HTTP distante dans `OPENWLM_URL` ou `config.json` est ignorée
+  (avertissement dans la console) ; la fenêtre de configuration la refuse.
+- **Navigation** : seule l'origine du serveur reste dans l'application (navigations et
+  redirections). Un lien web externe s'ouvre dans le navigateur système ; tout autre schéma
+  (`file:`, `data:`, `javascript:`…) est refusé. L'ouverture de nouvelles fenêtres Electron
+  par la page est interdite.
+- **Permissions** : seulement `media` (WebRTC), `notifications` et `idle-detection`, et
+  seulement pour l'origine du serveur configuré (ni la page de configuration locale, ni un
+  cadre d'une autre origine).

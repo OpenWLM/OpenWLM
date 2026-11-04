@@ -359,10 +359,16 @@ export const createUsersRouter = ({ io, broadcastStatusToContacts, isProd }) => 
     if (!authKeyHex || typeof authKeyHex !== 'string' || !/^[a-fA-F0-9]{64}$/.test(authKeyHex)) {
       return res.status(403).json({ error: "Clé d'authentification requise pour enregistrer des clés." });
     }
+    // Essais de mot de passe limités par compte, avec le même compteur que /user/vault : une
+    // session volée ne peut pas tester des mots de passe plus vite en alternant les deux routes.
+    if (!vaultAccountLimiter.attempt(userId).allowed) {
+      return res.status(429).json({ error: 'Trop de mots de passe erronés. Réessayez plus tard.', code: 'rate_limited' });
+    }
     const existing = db.prepare('SELECT password_hash, salt FROM users WHERE id = ?').get(userId);
     if (!existing || !(await verifyPasswordHash(authKeyHex, existing.salt, existing.password_hash))) {
       return res.status(403).json({ error: "Clé d'authentification invalide." });
     }
+    vaultAccountLimiter.reset(userId);
 
     try {
       db.prepare('UPDATE users SET public_key = ?, encrypted_private_key = ? WHERE id = ?')

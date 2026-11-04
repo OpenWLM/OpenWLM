@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Menu, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -42,25 +42,42 @@ function writeConfigUrl(url) {
   fs.writeFileSync(configPath(), JSON.stringify({ serverUrl: url }, null, 2), 'utf8');
 }
 
-/** Adresse déjà configurée (env ou config.json), ou null. */
-function configuredUrl() {
-  const fromEnv = (process.env.OPENWLM_URL || '').trim();
-  if (fromEnv) return fromEnv;
-  return readConfigUrl();
+/** Hôte de la machine locale (seul cas où HTTP reste accepté). */
+function isLoopbackHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
-/** Ajoute https:// si le schéma est absent, et valide la forme. Renvoie l'URL ou null. */
+/**
+ * Ajoute https:// si le schéma est absent, valide la forme et impose HTTPS hors de la
+ * machine locale (comme l'app Android) : en HTTP, l'interface et la clé de connexion
+ * transiteraient en clair. Renvoie { url } (l'origine seule) ou { error }.
+ */
 function normalizeUrl(raw) {
   let s = String(raw || '').trim();
-  if (!s) return null;
+  if (!s) return { error: 'Adresse invalide.' };
   if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  let u;
   try {
-    const u = new URL(s);
-    // On retire un éventuel chemin / slash final superflu : on garde l'origine.
-    return u.origin;
+    u = new URL(s);
   } catch {
-    return null;
+    return { error: 'Adresse invalide.' };
   }
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && isLoopbackHost(u.hostname))) {
+    return { error: 'HTTPS obligatoire (HTTP seulement pour un serveur sur cet ordinateur).' };
+  }
+  // On retire un éventuel chemin / slash final superflu : on garde l'origine.
+  return { url: u.origin };
+}
+
+/** Adresse déjà configurée (env ou config.json) et acceptable, ou null. */
+function configuredUrl() {
+  for (const [source, raw] of [['OPENWLM_URL', (process.env.OPENWLM_URL || '').trim()], ['config.json', readConfigUrl()]]) {
+    if (!raw) continue;
+    const { url, error } = normalizeUrl(raw);
+    if (url) return url;
+    console.warn(`[OpenWLM] Adresse ignorée (${source}) : ${error}`);
+  }
+  return null;
 }
 
 /**
@@ -112,34 +129,58 @@ function applyUrl(url) {
 // - idle-detection : statut Absent automatique (inactivité de tout l'ordinateur)
 const ALLOWED_PERMISSIONS = new Set(['media', 'notifications', 'idle-detection']);
 
-function isExternalWebUrl(rawUrl) {
+function originOf(rawUrl) {
   try {
-    const { protocol, origin } = new URL(rawUrl);
-    return (protocol === 'http:' || protocol === 'https:') && origin !== APP_ORIGIN;
+    return new URL(rawUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isWebUrl(rawUrl) {
+  try {
+    const { protocol } = new URL(rawUrl);
+    return protocol === 'http:' || protocol === 'https:';
   } catch {
     return false;
   }
 }
 
+/**
+ * Navigation du cadre principal : seule l'origine du serveur reste dans l'application.
+ * Un lien web externe s'ouvre dans le navigateur système ; tout autre schéma (file:, data:,
+ * javascript:, schémas d'applications…) est simplement refusé.
+ */
+function guardNavigation(event, url) {
+  if (originOf(url) === APP_ORIGIN) return;
+  event.preventDefault();
+  if (isWebUrl(url)) shell.openExternal(url);
+}
+
 /** Durcissement commun à toutes les fenêtres de l'application. */
 function hardenWindow(win) {
-  win.webContents.on('will-navigate', (event, url) => {
-    if (isExternalWebUrl(url)) {
-      event.preventDefault();
-      shell.openExternal(url);
-    }
-  });
+  win.webContents.on('will-navigate', guardNavigation);
+  win.webContents.on('will-redirect', guardNavigation);
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http:') || url.startsWith('https:')) {
-      shell.openExternal(url);
-    }
+    if (isWebUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  const { session } = win.webContents;
-  session.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(ALLOWED_PERMISSIONS.has(permission));
+}
+
+/**
+ * Permissions de la session (partagée par toutes les fenêtres) : uniquement celles de
+ * ALLOWED_PERMISSIONS, et uniquement pour l'origine du serveur configuré (pas pour la page
+ * de configuration locale ni pour un éventuel cadre d'une autre origine).
+ */
+function installPermissionHandlers() {
+  const ses = session.defaultSession;
+  ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    const origin = originOf(details && (details.requestingUrl || details.securityOrigin));
+    callback(ALLOWED_PERMISSIONS.has(permission) && origin === APP_ORIGIN);
   });
-  session.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+    return ALLOWED_PERMISSIONS.has(permission) && originOf(requestingOrigin) === APP_ORIGIN;
+  });
 }
 
 const COMMON_WEB_PREFERENCES = {
@@ -252,8 +293,8 @@ ipcMain.handle('openwlm-setup:default-url', (event) => {
 
 ipcMain.handle('openwlm-setup:save', async (event, rawUrl) => {
   if (!isSetupSender(event)) return { ok: false, error: 'Requête refusée.' };
-  const url = normalizeUrl(rawUrl);
-  if (!url) return { ok: false, error: 'Adresse invalide.' };
+  const { url, error } = normalizeUrl(rawUrl);
+  if (!url) return { ok: false, error };
   const probe = await probeServer(url);
   if (!probe.ok) return probe;
   try {
@@ -297,6 +338,7 @@ function buildMenu() {
 }
 
 app.whenReady().then(() => {
+  installPermissionHandlers();
   buildMenu();
   const existing = configuredUrl();
   if (existing) {

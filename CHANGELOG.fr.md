@@ -12,11 +12,18 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 ## [Non publié]
 
 ### Mise à jour du serveur
-- **Dépendances (sécurité)** : follow-redirects 1.16.2 (tiré par axios ; alerte haute GHSA-mrwp-f3q8-3g9p, des identifiants pouvaient suivre une redirection) : `npm ci`, puis redémarrer le service.
+- **Relecture de sécurité de la 2.0.0** : `server/index.js` (origines locales) et `server/routes/users.js` modifiés, aucune nouvelle route (règles WAF inchangées) : redémarrer le service. **Un serveur de production appelé depuis une origine locale autre que sa propre page** (autre port de `localhost` / `127.0.0.1`) doit désormais la déclarer dans `ALLOWED_ORIGINS`.
+
+### Corrections
+- **Origines locales en production** : `http://localhost:*` et `http://127.0.0.1:*` (tout port) étaient acceptées pour CORS et Socket.IO même en production ; avec le cookie `SameSite=Strict` (même site pour tous les ports locaux), une page servie sur un autre port de la machine du serveur pouvait ouvrir une connexion authentifiée. Elles ne sont plus acceptées qu'en développement ; en production (et sous `NODE_ENV=test`) : `ALLOWED_ORIGINS` et la page du serveur lui-même.
+- **Essais de mot de passe sur `POST /api/user/keys`** : limités par compte avec le même compteur que `/api/user/vault` (10 mauvais mots de passe par 15 min), au lieu de la seule limite par IP (60/min) : une session volée pouvait tester des mots de passe plus vite qu'annoncé.
+- **Client de bureau : HTTPS obligatoire** hors de l'ordinateur lui-même (`localhost`, `127.0.0.1`, `[::1]`), comme l'app Android ; une adresse HTTP distante dans `OPENWLM_URL` ou `config.json` est ignorée.
+- **Client de bureau : navigation et permissions liées à l'origine du serveur** : les navigations et redirections du cadre principal ne quittent l'app que pour un lien web (ouvert dans le navigateur système) ; `file:`, `data:`, `javascript:` et autres schémas sont refusés. `media`, `notifications` et `idle-detection` ne sont accordés qu'à l'origine du serveur configuré.
 
 ## [2.0.0] - 2026-11-04
 
 ### Mise à jour du serveur
+- **Dépendances (sécurité)** : follow-redirects 1.16.2 (tiré par axios ; alerte haute GHSA-mrwp-f3q8-3g9p, des identifiants pouvaient suivre une redirection) : `npm ci`, puis redémarrer le service.
 - **Client de bureau** : aucun changement serveur (règles WAF inchangées). Les installeurs sont construits par le workflow *Build desktop installers* (lancement manuel ou tag `v*`).
 - **Progression des transferts de fichiers** : interface seule, aucun changement serveur (règles WAF inchangées) : déployer puis recharger la page.
 - **Appels et jeux après un blocage** : `server/sockets/{webrtc,games}.js` modifiés, sans nouvelle route : redémarrer le service.
@@ -79,6 +86,8 @@ Ce projet respecte les principes de [Semantic Versioning](https://semver.org/lan
 - `tests/test_session_renewal.js` : durée du cookie selon « se souvenir », renouvellement après 12 h, jamais pour une session normale ni pour un jeton révoqué.
 
 ### Corrections
+- **Installeurs de bureau jamais publiés implicitement** (`--publish never`) : sur un tag `v*`, electron-builder tentait de publier une Release GitHub et échouait sans `GH_TOKEN`. Ajout de `desktopName` (fenêtres Linux associées à l'entrée `.desktop`).
+- CI : actions GitHub passées à leurs dernières versions (runtime Node 24).
 - **Blocage pendant un appel** : raccrocher un appel avec un contact bloqué entre-temps libère désormais l'état d'appel. Les deux restaient « occupés » pour tous leurs contacts jusqu'à leur déconnexion. De même pour l'abandon d'une partie après un blocage, qui restait en mémoire.
 - **« Verrouiller maintenant » verrouille tous les onglets** : les autres onglets du même compte dans le navigateur se verrouillent aussi (jamais pendant un appel). Ils gardaient la clé en mémoire.
 - **Plus de passkeys en double** : réactiver le verrouillage des clés réutilise la passkey déjà créée pour le compte dans ce navigateur, au lieu d'en ajouter une dans Windows à chaque fois. Une passkey supprimée est remplacée automatiquement.

@@ -12,11 +12,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Server update
-- **Dependencies (security)**: follow-redirects 1.16.2 (pulled in by axios; high advisory GHSA-mrwp-f3q8-3g9p, credentials could follow a redirect): `npm ci`, then restart the service.
+- **Security review of 2.0.0**: `server/index.js` (local origins) and `server/routes/users.js` changed, no new route (WAF rules unchanged): restart the service. **Production servers reached from a local origin other than their own page** (another port of `localhost` / `127.0.0.1`) must now list it in `ALLOWED_ORIGINS`.
+
+### Fixed
+- **Local origins in production**: `http://localhost:*` and `http://127.0.0.1:*` (any port) were accepted for CORS and Socket.IO even in production; combined with the `SameSite=Strict` cookie (same site for every local port), a page served on another port of the server's machine could open an authenticated connection. They are now accepted only in development; in production (and under `NODE_ENV=test`): `ALLOWED_ORIGINS` and the server's own page.
+- **Password attempts on `POST /api/user/keys`**: limited per account with the same counter as `/api/user/vault` (10 wrong passwords per 15 min), instead of only the per-IP limit (60/min): a stolen session could test passwords faster than announced.
+- **Desktop client: HTTPS required** outside the computer itself (`localhost`, `127.0.0.1`, `[::1]`), like the Android app; a remote HTTP address in `OPENWLM_URL` or `config.json` is ignored.
+- **Desktop client: navigation and permissions tied to the server origin**: main-frame navigations and redirects leave the app only for web links (opened in the system browser); `file:`, `data:`, `javascript:` and other schemes are refused. `media`, `notifications` and `idle-detection` are granted only to the configured server's origin.
 
 ## [2.0.0] - 2026-11-04
 
 ### Server update
+- **Dependencies (security)**: follow-redirects 1.16.2 (pulled in by axios; high advisory GHSA-mrwp-f3q8-3g9p, credentials could follow a redirect): `npm ci`, then restart the service.
 - **Desktop client**: no server change (WAF rules unchanged). Installers are built by the *Build desktop installers* workflow (manual run or `v*` tag).
 - **File transfer progress**: interface only, no server change (WAF rules unchanged): deploy and reload the page.
 - **Calls and games after a block**: `server/sockets/{webrtc,games}.js` changed, no new route: restart the service.
@@ -79,6 +86,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `tests/test_session_renewal.js`: cookie lifetime depending on "remember", renewal after 12 h, never for a normal session or a revoked token.
 
 ### Fixed
+- **Desktop installers never published implicitly** (`--publish never`): on a `v*` tag, electron-builder tried to publish a GitHub Release and failed without `GH_TOKEN`. `desktopName` added (Linux windows associated with the `.desktop` entry).
+- CI: GitHub actions moved to their latest versions (Node 24 runtime).
 - **Blocking during a call**: hanging up a call with a contact blocked meanwhile now frees the call state. Both stayed "busy" for all their contacts until they disconnected. Same for a game quit after a block, which stayed in memory.
 - **"Lock now" locks every tab**: other tabs of the same account in the browser lock too (never during a call). They used to keep the key in memory.
 - **No more duplicate passkeys**: re-enabling the key lock reuses the passkey already created for the account in this browser, instead of adding a new one to Windows each time. A deleted passkey is replaced automatically.
